@@ -1,5 +1,9 @@
 use std::collections::HashMap;
+use std::process::exit;
 use rust_htslib::{bam, bam::Read};
+use rust_htslib::bam::Format;
+use rust_htslib::bam::record::Cigar;
+use rust_htslib::bam::record::CigarString;
 
 pub struct Region {
     chr: String,
@@ -54,7 +58,7 @@ impl BamReader {
     pub fn read_pileup(&self) {
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(self.bam_path.clone()).unwrap();
         if self.region.start == 0 && self.region.end == 0 {
-            bam.fetch((self.region.chr.as_str())).unwrap(); // set region
+            bam.fetch(self.region.chr.as_str()).unwrap(); // set region
         } else {
             bam.fetch((self.region.chr.as_str(), self.region.start, self.region.end)).unwrap(); // set region
         }
@@ -102,14 +106,13 @@ impl BamReader {
         }
     }
 
-    pub fn get_read_records(&self) -> HashMap<String, Vec<bam::Record>> {
+    pub fn get_read_records(&self, read_records: &mut HashMap<String, Vec<bam::Record>>) {
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(self.bam_path.clone()).unwrap();
         if self.region.start == 0 && self.region.end == 0 {
-            bam.fetch((self.region.chr.as_str())).unwrap(); // set region
+            bam.fetch(self.region.chr.as_str()).unwrap(); // set region
         } else {
             bam.fetch((self.region.chr.as_str(), self.region.start, self.region.end)).unwrap(); // set region
         }
-        let mut read_records: HashMap<String, Vec<bam::Record>> = HashMap::new();
         for r in bam.records() {
             let record = r.unwrap();
             let qname = std::str::from_utf8(record.qname()).unwrap();
@@ -119,15 +122,87 @@ impl BamReader {
                 read_records.insert(qname.to_string(), vec![record]);
             }
         }
-        for (rname, record_vec) in read_records.iter() {
+        for (rname, record_vec) in read_records.iter_mut() {
             println!("{}:", rname);
-            for r in record_vec.iter() {
-                for cg in r.cigar().iter() {
+            for record in record_vec.iter() {
+                for cg in record.cigar().iter() {
                     print!("{}{}", cg.len(), cg.char());
                 }
                 println!("");
             }
         }
-        read_records
+    }
+
+    pub fn get_bam_header(&self) -> bam::header::Header {
+        let bam: bam::IndexedReader = bam::IndexedReader::from_path(self.bam_path.clone()).unwrap();
+        bam::Header::from_template(bam.header())
+    }
+}
+
+// write read records to a new bam file
+pub fn write_read_records1(read_records: &HashMap<String, Vec<bam::Record>>, bam_header: &bam::header::Header, bam_path: String) {
+    let mut bam_writer = bam::Writer::from_path(&bam_path, &bam_header, Format::Bam).unwrap();
+    for (rname, record_vec) in read_records.iter() {
+        for r in record_vec.iter() {
+            let re = bam_writer.write(r);
+            if re == Ok(()) {
+                println!("write success");
+            } else {
+                println!("write failed");
+            }
+        }
+    }
+}
+
+pub fn write_read_records2(read_records: &mut HashMap<String, Vec<bam::Record>>, bam_header: &bam::header::Header, bam_path: String) {
+    let mut bam_writer = bam::Writer::from_path(&bam_path, &bam_header, Format::Bam).unwrap();
+    for (rname, record_vec) in read_records.iter_mut() {
+        for record in record_vec.iter_mut() {
+            let mut out_record = bam::Record::from(record.clone());
+            out_record.set_pos(123456);
+            // let mut new_cigar = CigarString(vec![Cigar::Match(1), Cigar::Ins(1), Cigar::Match(1)]);
+            // Warning: cigar length should be the same as the read length
+            // out_record.set(record.qname(),
+            //                Some(&new_cigar),
+            //                &record.seq().as_bytes(),
+            //                record.qual());
+            let origin_cigar = record.cigar().take();
+            out_record.set(record.qname(),
+                           Some(&origin_cigar),
+                           &record.seq().as_bytes(),
+                           record.qual());
+            println!("rname: {:?}, pos: {:?}", rname, record.pos());
+            let re = bam_writer.write(&out_record);
+            if re == Ok(()) {
+                println!("write success");
+            } else {
+                println!("write failed");
+                exit(1);
+            }
+        }
+    }
+}
+
+pub fn write_read_records3(read_records: &mut HashMap<String, Vec<bam::Record>>, bam_header: &bam::header::Header, bam_path: String) {
+    let mut bam_writer = bam::Writer::from_path(&bam_path, &bam_header, Format::Bam).unwrap();
+    for (rname, record_vec) in read_records.iter_mut() {
+        for record in record_vec.iter_mut() {
+            let mut out_record = bam::Record::from(record.clone());
+            out_record.set_pos(123456);
+            let mut new_cigar = CigarString(vec![Cigar::Match(1), Cigar::Ins(1), Cigar::Match(1)]);
+            // Warning: cigar length should be the same as the read length
+            out_record.set(record.qname(),
+                           Some(&new_cigar),
+                           &record.seq().as_bytes(),
+                           record.qual());
+            println!("rname: {:?}, pos: {:?}", rname, record.pos());
+            let re = bam_writer.write(&out_record);
+            if re == Ok(()) {
+                println!("write success");
+            } else {
+                println!("write failed");
+                exit(1);
+            }
+        }
     }
 }
