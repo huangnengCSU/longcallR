@@ -5,15 +5,16 @@ use rust_htslib::bam::Format;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::record::CigarString;
 
+#[derive(Clone)]
 pub struct Region {
-    chr: String,
-    start: u32,
+    pub(crate) chr: String,
+    pub(crate) start: u32,
     // 1-based
-    end: u32,   // 1-based
+    pub(crate) end: u32,   // 1-based
 }
 
 impl Region {
-    fn new(region: String) -> Region {
+    pub fn new(region: String) -> Region {
         // region format: chr:start-end
         if !region.contains(":") {
             let chr = region;
