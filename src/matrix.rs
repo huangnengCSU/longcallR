@@ -1,7 +1,6 @@
 use std::process;
 use std::cmp::max;
 use std::collections::HashMap;
-// use rust_htslib::htslib::exit;
 use crate::bam_reader::Region;
 
 #[derive(Clone)]
@@ -88,19 +87,75 @@ impl PileupMatrix {
         self.max_idx = -1;
         self.region = Region::new("c:0-0".to_string());
     }
+
+    pub fn generate_column_profile(base_matrix: &HashMap<String, Vec<u8>>, column_base_counts: &mut Vec<ColumnBaseCount>) {
+        assert!(base_matrix.len() > 0);
+        let ncols = base_matrix.iter().next().unwrap().1.len();
+        let mut ref_base: u8 = 0;
+        let mut column_bases: Vec<u8> = Vec::new();
+        for i in 0..ncols {
+            for (readname, base_vec) in base_matrix.iter() {
+                if *readname == "ref".to_string() {
+                    ref_base = base_vec[i];
+                    continue;
+                }
+                column_bases.push(base_vec[i]);
+            }
+            let cbc = ColumnBaseCount::new_from_column(&column_bases, ref_base);
+            column_base_counts.push(cbc);
+            column_bases.clear();
+        }
+    }
+
+    pub fn generate_reduced_profile(base_matrix: &HashMap<String, Vec<u8>>,
+                                    column_base_counts: &mut Vec<ColumnBaseCount>,
+                                    column_indexes: &mut Vec<usize>,
+                                    reduced_base_matrix: &mut HashMap<String, Vec<u8>>) {
+        assert!(base_matrix.len() > 0);
+        let ncols = base_matrix.iter().next().unwrap().1.len();
+        let mut ref_base: u8 = 0;
+        let mut column_bases: Vec<u8> = Vec::new();
+        for i in 0..ncols {
+            for (readname, base_vec) in base_matrix.iter() {
+                if *readname == "ref".to_string() {
+                    ref_base = base_vec[i];
+                    continue;
+                }
+                column_bases.push(base_vec[i]);
+            }
+            let cbc = ColumnBaseCount::new_from_column(&column_bases, ref_base);
+            if (cbc.n_a + cbc.n_c + cbc.n_g + cbc.n_t + cbc.n_dash) == 0 && cbc.n_n == 0 {
+                column_bases.clear();
+                continue;
+            }
+            column_base_counts.push(cbc);
+            column_indexes.push(i);
+            column_bases.clear();
+        }
+        reduced_base_matrix.clear();
+        for i in column_indexes.iter() {
+            for (readname, base_vec) in base_matrix.iter() {
+                if reduced_base_matrix.get(readname).is_none() {
+                    reduced_base_matrix.insert(readname.clone(), vec![base_vec[*i]]);
+                } else {
+                    reduced_base_matrix.get_mut(readname).unwrap().push(base_vec[*i]);
+                }
+            }
+        }
+    }
 }
 
 
 pub struct ColumnBaseCount {
-    n_a: u16,
-    n_c: u16,
-    n_g: u16,
-    n_t: u16,
-    n_n: u16,
-    n_dash: u16,
-    n_blank: u16,
-    max_count: u16,
-    ref_base: u8,
+    pub n_a: u16,
+    pub n_c: u16,
+    pub n_g: u16,
+    pub n_t: u16,
+    pub n_n: u16,
+    pub n_dash: u16,
+    pub n_blank: u16,
+    pub max_count: u16,
+    pub ref_base: u8,
 }
 
 impl ColumnBaseCount {
@@ -205,7 +260,7 @@ impl ColumnBaseCount {
     }
 
     pub fn get_score2(&self, x: &u8) -> f64 {
-        let s: f64 = self.n_a + self.n_c + self.n_g + self.n_t + self.n_dash as f64;
+        let s: f64 = (self.n_a + self.n_c + self.n_g + self.n_t + self.n_dash) as f64;
         if s == 0.0 {
             return 0.0;
         } else {
