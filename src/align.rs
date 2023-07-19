@@ -92,7 +92,7 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
             let qbase = query.as_bytes()[j - 1];
             // let tbase = target.chars().nth(i - 1).unwrap();
             let col = &profile[i - 1];
-            let sij = 2 - 4 * col.get_score(&qbase);
+            let sij = 2.0 - 4.0 * col.get_score(&qbase);
 
             // if target is dash, the cost of gap open and gap extension is 0
             if col.get_major_base() == b'-' {
@@ -203,12 +203,12 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
 
     while i > 0 && j > 0 {
         let qbase = query.chars().nth(j - 1).unwrap();
-        let ref_base = &profile[i - 1].get_ref_base() as char;
-        let major_base = &profile[i - 1].get_major_base() as char;
+        let ref_base = profile[i - 1].get_ref_base() as char;
+        let major_base = profile[i - 1].get_major_base() as char;
         if trace_back_stat == TraceBack::M {
             if mat[i][j].m_prev_m {
                 aligned_query.push(qbase);
-                ref_target_target.push(ref_base);
+                ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 j -= 1;
@@ -223,7 +223,6 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
         } else if trace_back_stat == TraceBack::IX {
             if mat[i][j].ix_prev_m {
                 aligned_query.push('-');
-                aligned_target.push(tbase);
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
@@ -269,8 +268,8 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
     }
 
     while i > 0 {
-        let ref_base = &profile[i - 1].get_ref_base() as char;
-        let major_base = &profile[i - 1].get_major_base() as char;
+        let ref_base = profile[i - 1].get_ref_base() as char;
+        let major_base = profile[i - 1].get_major_base() as char;
         aligned_query.push(' ');
         ref_target.push(ref_base);
         major_target.push(major_base);
