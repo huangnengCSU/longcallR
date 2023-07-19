@@ -229,4 +229,10 @@ impl ColumnBaseCount {
             }
         }
     }
+
+    pub fn get_score(&self, x: &u8) -> f64 {
+        let s1 = self.get_score1(x) as f64;
+        let s2 = self.get_score2(x);
+        (s1 + s2) / 2.0
+    }
 }
