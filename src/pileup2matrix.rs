@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::matrix::PileupMatrix;
-pub use crate::bam_reader::Region;
+use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read};
 use rust_htslib::faidx::Reader;
 use bio::io::fasta;
