@@ -18,7 +18,8 @@ use pileup2matrix::generate_pileup_matrix;
 fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
-    let region = "chr22:30425831-30425912";
+    // let region = "chr22:30425831-30425912";
+    let region = "chr22:37063258-37063422";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
