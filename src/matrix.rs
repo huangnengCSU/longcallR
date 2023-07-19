@@ -1,7 +1,10 @@
 use std::process;
 use std::cmp::max;
 use std::collections::HashMap;
+use std::fs::read;
+use std::sync::TryLockError::Poisoned;
 use crate::bam_reader::Region;
+use crate::align::nw_splice_aware;
 
 #[derive(Clone)]
 pub struct PileupMatrix {
@@ -62,7 +65,7 @@ impl PileupMatrix {
             let expand_size = max_insertion_size - seq_len.clone() as i32;
             if expand_size > 0 {
                 for i in 0..expand_size {
-                    self.base_matrix.get_mut(readname).unwrap().push(b' ');
+                    self.base_matrix.get_mut(readname).unwrap().push(b'-');
                 }
             }
         }
@@ -124,7 +127,7 @@ impl PileupMatrix {
                 column_bases.push(base_vec[i]);
             }
             let cbc = ColumnBaseCount::new_from_column(&column_bases, ref_base);
-            if (cbc.n_a + cbc.n_c + cbc.n_g + cbc.n_t + cbc.n_dash) == 0 && cbc.n_n == 0 {
+            if (cbc.n_a + cbc.n_c + cbc.n_g + cbc.n_t + cbc.n_dash) == 0 && cbc.n_n > 0 {
                 column_bases.clear();
                 continue;
             }
@@ -142,6 +145,66 @@ impl PileupMatrix {
                 }
             }
         }
+    }
+
+    pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>) {
+        let mut old_score = -f64::INFINITY;
+        let mut new_score = 0.0;
+        let mut profile: Vec<ColumnBaseCount> = Vec::new();
+        let mut column_indexes: Vec<usize> = Vec::new();
+        let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut prev_aligned_seq = String::new();
+        PileupMatrix::generate_reduced_profile(&base_matrix, &mut profile, &mut column_indexes, &mut reduced_base_matrix);
+        for i in 0..profile.len() {
+            prev_aligned_seq.push(profile[i].get_major_base() as char);
+        }
+        println!("major sequence:");
+        for i in 0..profile.len() {
+            print!("{}", profile[i].get_major_base() as char);
+        }
+        println!();
+        println!("ref sequence:");
+        for i in 0..profile.len() {
+            print!("{}", profile[i].get_ref_base() as char);
+        }
+        println!();
+        for i in 0..profile.len() {
+            let cbc = &profile[i];
+            new_score += cbc.get_score(&cbc.get_major_base());
+        }
+        let mut iteration = 0;
+        while new_score > old_score {
+            iteration += 1;
+            println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
+            for (readname, base_vec) in base_matrix.iter() {
+                if *readname == "ref".to_string() {
+                    continue;
+                }
+
+                let query = String::from_utf8(base_vec.clone()).unwrap().replace(" ", "").replace("-", "").replace("N", "");
+                // println!("align begin, profile length: {}", &profile.len());
+                let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query, &profile);
+                // println!("align end");
+                assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
+                reduced_base_matrix.insert(readname.clone(), aligned_query.as_bytes().to_vec().clone());
+                profile.clear();
+                PileupMatrix::generate_column_profile(&reduced_base_matrix, &mut profile);
+            }
+            old_score = new_score;
+            new_score = 0.0;
+            for i in 0..profile.len() {
+                let cbc = &profile[i];
+                new_score += cbc.get_score(&cbc.get_major_base());
+            }
+            if new_score > old_score {
+                prev_aligned_seq.clear();
+                for i in 0..profile.len() {
+                    prev_aligned_seq.push(profile[i].get_major_base() as char);
+                }
+            }
+        }
+        println!("new major sequence:");
+        println!("{}", prev_aligned_seq);
     }
 }
 

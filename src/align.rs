@@ -90,20 +90,19 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
     for i in 1..t_len + 1 {
         for j in 1..q_len + 1 {
             let qbase = query.as_bytes()[j - 1];
-            // let tbase = target.chars().nth(i - 1).unwrap();
             let col = &profile[i - 1];
             let sij = 2.0 - 4.0 * col.get_score(&qbase);
 
             // if target is dash, the cost of gap open and gap extension is 0
             if col.get_major_base() == b'-' {
-                mat[i][j].ix = mat[i - 1][j].ix.max(mat[i - 1][j].m);
+                mat[i][j].ix = mat[i - 1][j].m.max(mat[i - 1][j].ix);
                 if mat[i][j].ix == mat[i - 1][j].m {
                     mat[i][j].ix_prev_m = true;
                 } else if mat[i][j].ix == mat[i - 1][j].ix {
                     mat[i][j].ix_prev_ix = true;
                 }
             } else {
-                mat[i][j].ix = (mat[i - 1][j].ix - g).max(mat[i - 1][j].m - h - g);
+                mat[i][j].ix = (mat[i - 1][j].m - h - g).max(mat[i - 1][j].ix - g);
                 if mat[i][j].ix == mat[i - 1][j].m - h - g {
                     mat[i][j].ix_prev_m = true;
                 } else if mat[i][j].ix == mat[i - 1][j].ix - g {
@@ -111,37 +110,37 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
                 }
             }
 
-            mat[i][j].iy = (mat[i][j - 1].iy - g - f64::INFINITY).max(mat[i][j - 1].m - h - g - f64::INFINITY);
-            if (mat[i][j].iy == mat[i][j - 1].m - h - g - f64::INFINITY) {
+            mat[i][j].iy = (mat[i][j - 1].m - h - g - f64::INFINITY).max(mat[i][j - 1].iy - g - f64::INFINITY);
+            if mat[i][j].iy == mat[i][j - 1].m - h - g - f64::INFINITY {
                 mat[i][j].iy_prev_m = true;
-            } else if (mat[i][j].iy == mat[i][j - 1].iy - g - f64::INFINITY) {
+            } else if mat[i][j].iy == mat[i][j - 1].iy - g - f64::INFINITY {
                 mat[i][j].iy_prev_iy = true;
             }
 
             if col.get_major_base() == b'-' {
-                mat[i][j].ix2 = mat[i - 1][j].ix2.max(mat[i - 1][j].m);
-                if (mat[i][j].ix2 == mat[i - 1][j].m) {
+                mat[i][j].ix2 = mat[i - 1][j].m.max(mat[i - 1][j].ix2);
+                if mat[i][j].ix2 == mat[i - 1][j].m {
                     mat[i][j].ix2_prev_m = true;
-                } else if (mat[i][j].ix2 == mat[i - 1][j].ix2) {
+                } else if mat[i][j].ix2 == mat[i - 1][j].ix2 {
                     mat[i][j].ix2_prev_ix2 = true;
                 }
             } else {
-                mat[i][j].ix2 = mat[i - 1][j].ix2.max(mat[i - 1][j].m - p - h2);
-                if (mat[i][j].ix2 == mat[i - 1][j].m - p - h2) {
+                mat[i][j].ix2 = (mat[i - 1][j].m - p - h2).max(mat[i - 1][j].ix2);
+                if mat[i][j].ix2 == mat[i - 1][j].m - p - h2 {
                     mat[i][j].ix2_prev_m = true;
-                } else if (mat[i][j].ix2 == mat[i - 1][j].ix2) {
+                } else if mat[i][j].ix2 == mat[i - 1][j].ix2 {
                     mat[i][j].ix2_prev_ix2 = true;
                 }
             }
 
             mat[i][j].m = (mat[i - 1][j - 1].m + sij).max(mat[i][j].ix.max(mat[i][j].iy.max(mat[i][j].ix2 - p)));
-            if (mat[i][j].m == mat[i][j].ix) {
+            if mat[i][j].m == mat[i][j].ix {
                 mat[i][j].m_prev_ix = true;
-            } else if (mat[i][j].m == mat[i][j].iy) {
+            } else if mat[i][j].m == mat[i][j].iy {
                 mat[i][j].m_prev_iy = true;
-            } else if (mat[i][j].m == mat[i][j].ix2 - p) {
+            } else if mat[i][j].m == mat[i][j].ix2 - p {
                 mat[i][j].m_prev_ix2 = true;
-            } else if (mat[i][j].m == mat[i - 1][j - 1].m + sij) {
+            } else if mat[i][j].m == mat[i - 1][j - 1].m + sij {
                 mat[i][j].m_prev_m = true;
             }
         }

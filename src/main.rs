@@ -1,6 +1,7 @@
 mod bam_reader;
 mod matrix;
 mod pileup2matrix;
+mod align;
 
 // extern crate bio;
 
@@ -14,12 +15,15 @@ use bio::io::fasta;
 use std::io;
 use matrix::PileupMatrix;
 use pileup2matrix::generate_pileup_matrix;
+use crate::matrix::ColumnBaseCount;
+use align::nw_splice_aware;
 
 fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
     // let region = "chr22:30425831-30425912";
-    let region = "chr22:37063258-37063422";
+    // let region = "chr22:37063258-37063422";
+    let region = "chr22:37051423-37063390";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
@@ -99,5 +103,26 @@ fn main() {
         println!("ref_pos: {:?}", ref_pos);
     }
 
+    let mut column_base_counts: Vec<ColumnBaseCount> = Vec::new();
+    let mut column_indexes: Vec<usize> = Vec::new();
+    let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
 
+    PileupMatrix::generate_reduced_profile(&matrices_vec[0].base_matrix, &mut column_base_counts, &mut column_indexes, &mut reduced_base_matrix);
+    // for cbc in column_base_counts.iter() {
+    //     println!("A:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
+    // }
+    for i in 0..column_base_counts.len() {
+        let cbc = &column_base_counts[i];
+        println!("idx:{}\tA:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", &column_indexes[i], cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
+    }
+
+    // let query = String::from_utf8(matrices_vec[0].base_matrix.iter().next().unwrap().1.to_vec()).unwrap().replace("N", "").replace(" ", "");
+    // let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query, &column_base_counts);
+    // println!("alignment_score: {:?}", alignment_score);
+    // println!("aligned_query:\n {:?}", aligned_query);
+    // println!("ref_target:\n {:?}", ref_target);
+    // println!("major_target:\n {:?}", major_target);
+    for i in 0..matrices_vec.len() {
+        PileupMatrix::profile_realign(&matrices_vec[i].base_matrix);
+    }
 }
