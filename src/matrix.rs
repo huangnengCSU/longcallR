@@ -153,10 +153,10 @@ impl PileupMatrix {
         let mut profile: Vec<ColumnBaseCount> = Vec::new();
         let mut column_indexes: Vec<usize> = Vec::new();
         let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
-        let mut prev_aligned_seq = String::new();
-        PileupMatrix::generate_reduced_profile(&base_matrix, &mut profile, &mut column_indexes, &mut reduced_base_matrix);
+        let mut prev_aligned_seq: Vec<u8> = Vec::new();
+        PileupMatrix::generate_reduced_profile(base_matrix, &mut profile, &mut column_indexes, &mut reduced_base_matrix);
         for i in 0..profile.len() {
-            prev_aligned_seq.push(profile[i].get_major_base() as char);
+            prev_aligned_seq.push(profile[i].get_major_base());
         }
         println!("major sequence:");
         for i in 0..profile.len() {
@@ -183,10 +183,10 @@ impl PileupMatrix {
 
                 let query = String::from_utf8(base_vec.clone()).unwrap().replace(" ", "").replace("-", "").replace("N", "");
                 // println!("align begin, profile length: {}", &profile.len());
-                let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query, &profile);
+                let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // println!("align end");
                 assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
-                reduced_base_matrix.insert(readname.clone(), aligned_query.as_bytes().to_vec().clone());
+                reduced_base_matrix.insert(readname.clone(), aligned_query);
                 profile.clear();
                 PileupMatrix::generate_column_profile(&reduced_base_matrix, &mut profile);
             }
@@ -199,12 +199,12 @@ impl PileupMatrix {
             if new_score > old_score {
                 prev_aligned_seq.clear();
                 for i in 0..profile.len() {
-                    prev_aligned_seq.push(profile[i].get_major_base() as char);
+                    prev_aligned_seq.push(profile[i].get_major_base());
                 }
             }
         }
         println!("new major sequence:");
-        println!("{}", prev_aligned_seq);
+        println!("{}", String::from_utf8(prev_aligned_seq).unwrap());
     }
 }
 

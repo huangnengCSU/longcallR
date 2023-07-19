@@ -1,5 +1,6 @@
 use std::process;
 use crate::matrix::ColumnBaseCount;
+use std::time::{Duration, Instant};
 
 struct SpliceMatrixElement {
     m: f64,
@@ -22,6 +23,48 @@ struct SpliceMatrixElement {
     ix2_prev_ix2: bool,
 }
 
+impl Default for SpliceMatrixElement {
+    fn default() -> SpliceMatrixElement {
+        SpliceMatrixElement {
+            m: 0.0,
+            ix: 0.0,
+            iy: 0.0,
+            ix2: 0.0,
+            m_prev_m: false,
+            m_prev_ix: false,
+            m_prev_iy: false,
+            m_prev_ix2: false,
+            ix_prev_m: false,
+            ix_prev_ix: false,
+            iy_prev_m: false,
+            iy_prev_iy: false,
+            ix2_prev_m: false,
+            ix2_prev_ix2: false,
+        }
+    }
+}
+
+impl Clone for SpliceMatrixElement {
+    fn clone(&self) -> SpliceMatrixElement {
+        SpliceMatrixElement {
+            m: self.m,
+            ix: self.ix,
+            iy: self.iy,
+            ix2: self.ix2,
+            m_prev_m: self.m_prev_m,
+            m_prev_ix: self.m_prev_ix,
+            m_prev_iy: self.m_prev_iy,
+            m_prev_ix2: self.m_prev_ix2,
+            ix_prev_m: self.ix_prev_m,
+            ix_prev_ix: self.ix_prev_ix,
+            iy_prev_m: self.iy_prev_m,
+            iy_prev_iy: self.iy_prev_iy,
+            ix2_prev_m: self.ix2_prev_m,
+            ix2_prev_ix2: self.ix2_prev_ix2,
+        }
+    }
+}
+
 #[derive(Eq, PartialEq)]
 enum TraceBack {
     M,
@@ -31,7 +74,9 @@ enum TraceBack {
 }
 
 
-pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, String, String, String) {
+pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    // let now = Instant::now();
+    // let declare_now = Instant::now();
     let h = 2.0;
     let g = 1.0;
     let h2 = 12.0;
@@ -41,31 +86,23 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
     let t_len = profile.len();
 
 
-    let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
-    for _ in 0..t_len + 1 {
-        let mut row: Vec<SpliceMatrixElement> = Vec::new();
-        for _ in 0..q_len + 1 {
-            row.push(SpliceMatrixElement {
-                m: 0.0,
-                ix: 0.0,
-                iy: 0.0,
-                ix2: 0.0,
-                m_prev_m: false,
-                m_prev_ix: false,
-                m_prev_iy: false,
-                m_prev_ix2: false,
-                ix_prev_m: false,
-                ix_prev_ix: false,
-                iy_prev_m: false,
-                iy_prev_iy: false,
-                ix2_prev_m: false,
-                ix2_prev_ix2: false,
-            });
-        }
-        mat.push(row);
-    }
+    // let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
+    // for _ in 0..t_len + 1 {
+    //     let mut row: Vec<SpliceMatrixElement> = Vec::new();
+    //     for _ in 0..q_len + 1 {
+    //         row.push(SpliceMatrixElement { ..Default::default() });
+    //     }
+    //     mat.push(row);
+    // }
+
+    let mut mat = vec![vec![SpliceMatrixElement { ..Default::default() }; q_len + 1]; t_len + 1];
+
+
+    // let declare_end = declare_now.elapsed().as_millis();
+    // println!("Declare Elapsed: {} millisecond", declare_end);
 
     // Initialize first row and column
+    // let init_now = Instant::now();
     mat[0][0].ix = -h - g;
     mat[0][0].iy = -h - g - f64::INFINITY;  // no gap in target
     mat[0][0].ix2 = -h2;
@@ -86,10 +123,15 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
         mat[i][0].m = mat[i][0].ix.max(mat[i][0].iy).max(mat[i][0].ix2 - p);
     }
 
+    // let init_end = init_now.elapsed().as_millis();
+    // println!("Init Elapsed: {} millisecond", init_end);
+
+
     // Fill in matrices
+    // let fill_now = Instant::now();
     for i in 1..t_len + 1 {
         for j in 1..q_len + 1 {
-            let qbase = query.as_bytes()[j - 1];
+            let qbase = query[j - 1];
             let col = &profile[i - 1];
             let sij = 2.0 - 4.0 * col.get_score(&qbase);
 
@@ -146,6 +188,9 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
         }
     }
 
+    // let fill_end = fill_now.elapsed().as_millis();
+    // println!("Fill Elapsed: {} millisecond", fill_end);
+
     // // print matrix
     // // println!("m matrix:");
     // for i in 0..t_len + 1 {
@@ -178,9 +223,10 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
 
 
     // Trace back
-    let mut aligned_query = String::new();
-    let mut ref_target = String::new();
-    let mut major_target = String::new();
+    // let trace_now = Instant::now();
+    let mut aligned_query: Vec<u8> = Vec::new();
+    let mut ref_target: Vec<u8> = Vec::new();
+    let mut major_target: Vec<u8> = Vec::new();
 
     let mut i = t_len;
     let mut j = q_len;
@@ -201,9 +247,9 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
     }
 
     while i > 0 && j > 0 {
-        let qbase = query.chars().nth(j - 1).unwrap();
-        let ref_base = profile[i - 1].get_ref_base() as char;
-        let major_base = profile[i - 1].get_major_base() as char;
+        let qbase = query[j - 1];
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == TraceBack::M {
             if mat[i][j].m_prev_m {
                 aligned_query.push(qbase);
@@ -221,13 +267,13 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
             }
         } else if trace_back_stat == TraceBack::IX {
             if mat[i][j].ix_prev_m {
-                aligned_query.push('-');
+                aligned_query.push(b'-');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::M;
             } else if (mat[i][j].ix_prev_ix) {
-                aligned_query.push('-');
+                aligned_query.push(b'-');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
@@ -238,26 +284,26 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
             process::exit(1);
             if mat[i][j].iy_prev_m {
                 aligned_query.push(qbase);
-                ref_target.push('-');
-                major_target.push('-');
+                ref_target.push(b'-');
+                major_target.push(b'-');
                 j -= 1;
                 trace_back_stat = TraceBack::M;
             } else if mat[i][j].iy_prev_iy {
                 aligned_query.push(qbase);
-                ref_target.push('-');
-                major_target.push('-');
+                ref_target.push(b'-');
+                major_target.push(b'-');
                 j -= 1;
                 trace_back_stat = TraceBack::IY;
             }
         } else if trace_back_stat == TraceBack::IX2 {
             if mat[i][j].ix2_prev_m {
-                aligned_query.push('N');
+                aligned_query.push(b'N');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::M;
             } else if mat[i][j].ix2_prev_ix2 {
-                aligned_query.push('N');
+                aligned_query.push(b'N');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
@@ -267,24 +313,31 @@ pub fn nw_splice_aware(query: &String, profile: &Vec<ColumnBaseCount>) -> (f64, 
     }
 
     while i > 0 {
-        let ref_base = profile[i - 1].get_ref_base() as char;
-        let major_base = profile[i - 1].get_major_base() as char;
-        aligned_query.push(' ');
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        aligned_query.push(b' ');
         ref_target.push(ref_base);
         major_target.push(major_base);
         i -= 1;
     }
     while j > 0 {
-        let qbase = query.chars().nth(j - 1).unwrap();
+        let qbase = query[j - 1];
         aligned_query.push(qbase);
-        ref_target.push(' ');
-        major_target.push(' ');
+        ref_target.push(b' ');
+        major_target.push(b' ');
         j -= 1;
     }
-    aligned_query = aligned_query.chars().rev().collect();
-    ref_target = ref_target.chars().rev().collect();
-    major_target = major_target.chars().rev().collect();
+    // let trace_end = trace_now.elapsed().as_millis();
+    // println!("Trace Elapsed: {} millisecond", trace_end);
 
+    // let rev_now = Instant::now();
+    aligned_query.reverse();
+    ref_target.reverse();
+    major_target.reverse();
+    // let rev_end = rev_now.elapsed().as_millis();
+    // println!("Reverse Elapsed: {} millisecond", rev_end);
 
+    // let end = now.elapsed().as_millis();
+    // println!("Elapsed: {} millisecond", end);
     (alignment_score, aligned_query, ref_target, major_target)
 }
