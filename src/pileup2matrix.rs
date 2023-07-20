@@ -75,6 +75,13 @@ pub fn generate_pileup_matrix(bam_file: &String, ref_path: &String, region_strin
             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
             let seq = record.seq();
             let mut allele_base = Vec::new();
+            if pm.bam_records.get(qname.as_str()).is_none() {
+                let record = alignment.record();
+                if record.is_secondary() || record.is_supplementary() || record.is_unmapped() {
+                    continue;
+                }
+                pm.bam_records.insert(qname.clone(), record);   // input bam are filtered by secondary, supplementary, and unmapped reads.
+            }
             if !alignment.is_del() {
                 allele_base.push(seq[q_pos.unwrap()]);
                 qpos_record_map.insert(qname.clone(), q_pos.unwrap());
