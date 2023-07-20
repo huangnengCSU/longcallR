@@ -5,6 +5,9 @@ use std::fs::read;
 use rust_htslib::{bam, bam::Read};
 use crate::bam_reader::Region;
 use crate::align::nw_splice_aware;
+use rust_htslib::bam::Format;
+use rust_htslib::bam::record::Cigar;
+use rust_htslib::bam::record::CigarString;
 
 #[derive(Clone)]
 pub struct PileupMatrix {
@@ -40,7 +43,7 @@ impl PileupMatrix {
             self.current_pos = pos.clone() as i64;
         }
 
-        if self.base_matrix.get(readname).is_none() {
+        if self.base_matrix.get_mut(readname).is_none() {
             let mut base_vec = Vec::new();
             if self.max_idx == 0 {
                 for i in 0..base_seq.len() {
@@ -231,23 +234,12 @@ impl PileupMatrix {
     }
 
     pub fn update_bam_records_from_realign(&mut self) {
-        let matrix_ref_start = self.region.start;
-        for (readname, base_vec) in self.base_matrix.iter() {
+        // let matrix_ref_start = self.region.start;
+        let ref_seq = self.base_matrix.get("ref").unwrap().clone();
+        for (readname, base_vec) in self.base_matrix.iter_mut() {
+            let mut new_cigar: Vec<Cigar> = Vec::new();
             if *readname == "ref".to_string() {
                 continue;
-            }
-            // count how many blank bases in the beginning, this will add to the ref_start
-            let mut blank_count = 0;
-            let mut read_ref_start = matrix_ref_start;
-            for i in 0..base_vec.len() {
-                if base_vec[i] == b' ' {
-                    blank_count += 1;
-                } else {
-                    break;
-                }
-            }
-            if blank_count > 0 {
-                read_ref_start = matrix_ref_start + blank_count as u32;
             }
 
             // get the left clip and right clip, the updated cigar will have the same left clip and right clip
@@ -259,8 +251,10 @@ impl PileupMatrix {
             let cg = self.bam_records.get(readname).unwrap().cigar().iter().next().unwrap().clone();
             if cg.char() == 'S' {
                 left_soft_clip = cg.len() as u32;
+                new_cigar.push(Cigar::SoftClip(cg.len() as u32));
             } else if cg.char() == 'H' {
                 left_hard_clip = cg.len() as u32;
+                new_cigar.push(Cigar::HardClip(cg.len() as u32));
             }
 
             let cg = self.bam_records.get(readname).unwrap().cigar().iter().last().unwrap().clone();
@@ -270,7 +264,181 @@ impl PileupMatrix {
                 right_hard_clip = cg.len() as u32;
             }
 
+
             // update the cigar
+            let mut first_base_pair_index = 0;
+            let mut last_base_pair_index = 0;
+            for i in 0..base_vec.len() {
+                if base_vec[i] != b' ' && base_vec[i] != b'N' {
+                    first_base_pair_index = i;
+                    break;
+                }
+            }
+            for i in (0..base_vec.len()).rev() {
+                if base_vec[i] != b' ' && base_vec[i] != b'N' {
+                    last_base_pair_index = i;
+                    break;
+                }
+            }
+            // begin:       NNNNNNNACGT
+            for i in 0..first_base_pair_index {
+                if base_vec[i] == b'N' {
+                    base_vec[i] = b' ';
+                }
+            }
+            // ACGTNNNNNNNNN          :end
+            for i in last_base_pair_index..base_vec.len() {
+                if base_vec[i] == b'N' {
+                    base_vec[i] = b' ';
+                }
+            }
+
+            //  ACTGNNNNN         GTACNN         NNNNNNNN
+            for i in first_base_pair_index..=last_base_pair_index {
+                if base_vec[i] == b' ' {
+                    base_vec[i] = b'N';
+                }
+            }
+
+            let mut prev_op: char = ' ';
+            let mut prev_len = 0;
+            let mut op: char = ' ';
+            for i in first_base_pair_index..=last_base_pair_index {
+                if prev_op == ' ' {
+                    if base_vec[i] != b'-' && ref_seq[i] != b'-' {
+                        prev_op = 'M';
+                        prev_len += 1;
+                        continue;
+                    } else if base_vec[i] == b'-' && ref_seq[i] != b'-' {
+                        prev_op = 'D';
+                        prev_len += 1;
+                        continue;
+                    } else if base_vec[i] != b'-' && ref_seq[i] == b'-' {
+                        prev_op = 'I';
+                        prev_len += 1;
+                        continue;
+                    } else {
+                        panic!("should not happen1");
+                        process::exit(1);
+                    }
+                }
+
+                if base_vec[i] != b'-' && base_vec[i] != b'N' && ref_seq[i] != b'-' && ref_seq[i] != b'N' {
+                    op = 'M';
+                } else if base_vec[i] == b'-' && ref_seq[i] != b'-' && ref_seq[i] != b'N' {
+                    op = 'D';
+                } else if base_vec[i] != b'-' && base_vec[i] != b'N' && ref_seq[i] == b'-' {
+                    op = 'I';
+                } else if base_vec[i] == b'N' && ref_seq[i] != b'N' && ref_seq[i] != b'-' {
+                    op = 'N';
+                } else if base_vec[i] == b'N' && ref_seq[i] == b'-' {
+                    continue;
+                } else if base_vec[i] == b'-' && ref_seq[i] == b'-' {
+                    continue;
+                } else {
+                    panic!("should not happen2");
+                    process::exit(1);
+                }
+
+                if op == prev_op {
+                    prev_len += 1;
+                } else {
+                    if prev_op == 'M' {
+                        new_cigar.push(Cigar::Match(prev_len));
+                        prev_op = op;
+                        prev_len = 1;
+                    } else if prev_op == 'I' {
+                        new_cigar.push(Cigar::Ins(prev_len));
+                        prev_op = op;
+                        prev_len = 1;
+                    } else if prev_op == 'D' {
+                        new_cigar.push(Cigar::Del(prev_len));
+                        prev_op = op;
+                        prev_len = 1;
+                    } else if prev_op == 'N' {
+                        new_cigar.push(Cigar::RefSkip(prev_len));
+                        prev_op = op;
+                        prev_len = 1;
+                    } else {
+                        panic!("should not happen3");
+                        process::exit(1);
+                    }
+                }
+            }
+
+            if prev_op == 'M' {
+                new_cigar.push(Cigar::Match(prev_len));
+            } else if prev_op == 'I' {
+                new_cigar.push(Cigar::Ins(prev_len));
+            } else if prev_op == 'D' {
+                new_cigar.push(Cigar::Del(prev_len));
+            } else if prev_op == 'N' {
+                new_cigar.push(Cigar::RefSkip(prev_len));
+            } else {
+                panic!("should not happen4");
+                process::exit(1);
+            }
+
+            if right_hard_clip > 0 {
+                new_cigar.push(Cigar::HardClip(right_hard_clip));
+            } else if (right_soft_clip > 0) {
+                new_cigar.push(Cigar::SoftClip(right_soft_clip));
+            }
+
+            let new_cigar_string = CigarString(new_cigar);
+            let mut cglen = 0;
+            for cg in new_cigar_string.iter() {
+                print!("{}{}", cg.len(), cg.char());
+                if cg.char() == 'M' || cg.char() == 'I' || cg.char() == 'S' {
+                    cglen += cg.len();
+                }
+            }
+            println!();
+            println!("readname: {}", readname);
+            println!("cigar len: {} read len:{}", cglen, self.bam_records.get(readname).unwrap().seq_len());
+            assert!(cglen == self.bam_records.get(readname).unwrap().seq_len() as u32);
+
+
+            println!("ref: \n{}", String::from_utf8(ref_seq.to_vec()).unwrap().clone());
+            println!("read: \n{}", String::from_utf8(base_vec.to_vec()).unwrap());
+
+            // count how many blank bases in the beginning, this will add to the ref_start
+            let mut blank_count = 0;
+            let mut read_ref_start = self.region.start as i64;
+            for i in 0..base_vec.len() {
+                if base_vec[i] == b' ' {
+                    if ref_seq[i] != b' ' && ref_seq[i] != b'-' && ref_seq[i] != b'N'{
+                        blank_count += 1;
+                    }
+                } else {
+                    break;
+                }
+            }
+            if blank_count > 0 {
+                read_ref_start += blank_count as i64;
+            }
+
+            let record = self.bam_records.get(readname).unwrap();
+            let mut out_record = bam::Record::from(record.clone());
+            out_record.set_pos(read_ref_start as i64);
+            out_record.set(record.qname(),
+                           Some(&new_cigar_string),
+                           &record.seq().as_bytes(),
+                           record.qual());
+            self.bam_records.insert(readname.clone(), out_record);
+        }
+    }
+
+    pub fn write_bam_records(&self, bam_file: &str, bam_header: &bam::header::Header) {
+        let mut bam_writer = bam::Writer::from_path(bam_file, bam_header, Format::Bam).unwrap();
+        for (_, record) in self.bam_records.iter() {
+            let re = bam_writer.write(&record);
+            if re == Ok(()) {
+                println!("write success");
+            } else {
+                println!("write failed");
+                process::exit(1);
+            }
         }
     }
 }

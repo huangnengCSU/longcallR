@@ -23,7 +23,10 @@ fn main() {
     // let region = "chr22:30425877-30425912"; // 1-based
     // let region = "chr22:30425831-30425912";
     // let region = "chr22:37063258-37063422";
-    let region = "chr22:37051423-37063390";
+    // let region = "chr22:37051423-37063584";
+    // let region = "chr22:36651200-36651536";
+    // let region = "chr22:34628310-34634051";
+    let region = "chr22:37051212-37073437";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
@@ -126,6 +129,16 @@ fn main() {
         let mut best_reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut best_column_indexes: Vec<usize> = Vec::new();
         PileupMatrix::profile_realign(&matrices_vec[i].base_matrix, &mut best_reduced_base_matrix, &mut best_column_indexes);
+        // let seq = std::str::from_utf8(matrices_vec[i].base_matrix.iter().next().unwrap().1).unwrap().to_string();
+        // println!("seq: \n{:?}", seq);
         matrices_vec[i].update_base_matrix_from_realign(&best_reduced_base_matrix, &best_column_indexes);
+        let it = matrices_vec[i].base_matrix.iter().next().unwrap();
+        let qname = it.0;
+        let seq = std::str::from_utf8(it.1).unwrap().to_string();
+        println!("new seq: {} \n{:?}", qname, seq);
+        println!("start pos: {}, end pos: {}", matrices_vec[i].region.start, matrices_vec[i].region.end);
+
+        matrices_vec[i].update_bam_records_from_realign();
+        matrices_vec[i].write_bam_records("new4.bam", &header);
     }
 }
