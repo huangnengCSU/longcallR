@@ -147,7 +147,9 @@ impl PileupMatrix {
         }
     }
 
-    pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>) {
+    pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>,
+                           best_reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
+                           best_column_indexes: &mut Vec<usize>) {
         let mut old_score = -f64::INFINITY;
         let mut new_score = 0.0;
         let mut profile: Vec<ColumnBaseCount> = Vec::new();
@@ -155,6 +157,8 @@ impl PileupMatrix {
         let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut prev_aligned_seq: Vec<u8> = Vec::new();
         PileupMatrix::generate_reduced_profile(base_matrix, &mut profile, &mut column_indexes, &mut reduced_base_matrix);
+        best_column_indexes.clear();
+        *best_column_indexes = column_indexes.clone();
         for i in 0..profile.len() {
             prev_aligned_seq.push(profile[i].get_major_base());
         }
@@ -201,10 +205,25 @@ impl PileupMatrix {
                 for i in 0..profile.len() {
                     prev_aligned_seq.push(profile[i].get_major_base());
                 }
+                best_reduced_base_matrix.clear();
+                *best_reduced_base_matrix = reduced_base_matrix.clone();
             }
         }
         println!("new major sequence:");
         println!("{}", String::from_utf8(prev_aligned_seq).unwrap());
+    }
+
+    pub fn update_base_matrix_from_realign(&mut self, realign_base_matrix: &HashMap<String, Vec<u8>>, column_indexes: &Vec<usize>) {
+        for (readname, base_vec) in realign_base_matrix.iter() {
+            if *readname == "ref".to_string() {
+                continue;
+            }
+            println!("readname: {}, base_vec length: {}, column_indexes length: {}", readname, base_vec.len(), column_indexes.len());
+            assert!(base_vec.len() == column_indexes.len());
+            for i in 0..column_indexes.len() {
+                self.base_matrix.get_mut(readname).unwrap()[column_indexes[i]] = base_vec[i];
+            }
+        }
     }
 }
 
