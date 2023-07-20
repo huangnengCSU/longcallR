@@ -2,7 +2,7 @@ use std::process;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fs::read;
-use std::sync::TryLockError::Poisoned;
+use rust_htslib::{bam, bam::Read};
 use crate::bam_reader::Region;
 use crate::align::nw_splice_aware;
 
@@ -12,6 +12,8 @@ pub struct PileupMatrix {
     // key: position on reference 0-based, value: index in matrix 0-based
     pub base_matrix: HashMap<String, Vec<u8>>,
     // key: read name, value: base sequence
+    pub bam_records: HashMap<String, bam::Record>,
+    // key: read name, value: bam record
     pub current_pos: i64,
     // current index of matrix, 0-based
     pub max_idx: i32,
@@ -24,6 +26,7 @@ impl PileupMatrix {
         PileupMatrix {
             positions: HashMap::new(),
             base_matrix: HashMap::new(),
+            bam_records: HashMap::new(),
             current_pos: -1,
             max_idx: -1,
             region: Region::new("c:0-0".to_string()),
@@ -86,6 +89,7 @@ impl PileupMatrix {
     pub fn clear(&mut self) {
         self.positions.clear();
         self.base_matrix.clear();
+        self.bam_records.clear();
         self.current_pos = -1;
         self.max_idx = -1;
         self.region = Region::new("c:0-0".to_string());
@@ -218,7 +222,7 @@ impl PileupMatrix {
             if *readname == "ref".to_string() {
                 continue;
             }
-            println!("readname: {}, base_vec length: {}, column_indexes length: {}", readname, base_vec.len(), column_indexes.len());
+            // println!("readname: {}, base_vec length: {}, column_indexes length: {}", readname, base_vec.len(), column_indexes.len());
             assert!(base_vec.len() == column_indexes.len());
             for i in 0..column_indexes.len() {
                 self.base_matrix.get_mut(readname).unwrap()[column_indexes[i]] = base_vec[i];
