@@ -229,6 +229,50 @@ impl PileupMatrix {
             }
         }
     }
+
+    pub fn update_bam_records_from_realign(&mut self) {
+        let matrix_ref_start = self.region.start;
+        for (readname, base_vec) in self.base_matrix.iter() {
+            if *readname == "ref".to_string() {
+                continue;
+            }
+            // count how many blank bases in the beginning, this will add to the ref_start
+            let mut blank_count = 0;
+            let mut read_ref_start = matrix_ref_start;
+            for i in 0..base_vec.len() {
+                if base_vec[i] == b' ' {
+                    blank_count += 1;
+                } else {
+                    break;
+                }
+            }
+            if blank_count > 0 {
+                read_ref_start = matrix_ref_start + blank_count as u32;
+            }
+
+            // get the left clip and right clip, the updated cigar will have the same left clip and right clip
+            let mut left_soft_clip = 0;
+            let mut right_soft_clip = 0;
+            let mut left_hard_clip = 0;
+            let mut right_hard_clip = 0;
+
+            let cg = self.bam_records.get(readname).unwrap().cigar().iter().next().unwrap().clone();
+            if cg.char() == 'S' {
+                left_soft_clip = cg.len() as u32;
+            } else if cg.char() == 'H' {
+                left_hard_clip = cg.len() as u32;
+            }
+
+            let cg = self.bam_records.get(readname).unwrap().cigar().iter().last().unwrap().clone();
+            if cg.char() == 'S' {
+                right_soft_clip = cg.len() as u32;
+            } else if cg.char() == 'H' {
+                right_hard_clip = cg.len() as u32;
+            }
+
+            // update the cigar
+        }
+    }
 }
 
 
