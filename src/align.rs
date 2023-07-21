@@ -176,14 +176,14 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
             }
 
             mat[i][j].m = (mat[i - 1][j - 1].m + sij).max(mat[i][j].ix.max(mat[i][j].iy.max(mat[i][j].ix2 - p)));
-            if mat[i][j].m == mat[i][j].ix {
+            if mat[i][j].m == mat[i - 1][j - 1].m + sij {
+                mat[i][j].m_prev_m = true;
+            } else if mat[i][j].m == mat[i][j].ix {
                 mat[i][j].m_prev_ix = true;
             } else if mat[i][j].m == mat[i][j].iy {
                 mat[i][j].m_prev_iy = true;
             } else if mat[i][j].m == mat[i][j].ix2 - p {
                 mat[i][j].m_prev_ix2 = true;
-            } else if mat[i][j].m == mat[i - 1][j - 1].m + sij {
-                mat[i][j].m_prev_m = true;
             }
         }
     }
