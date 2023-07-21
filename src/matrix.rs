@@ -407,7 +407,7 @@ impl PileupMatrix {
             let mut read_ref_start = self.region.start as i64;
             for i in 0..base_vec.len() {
                 if base_vec[i] == b' ' {
-                    if ref_seq[i] != b' ' && ref_seq[i] != b'-' && ref_seq[i] != b'N'{
+                    if ref_seq[i] != b' ' && ref_seq[i] != b'-' && ref_seq[i] != b'N' {
                         blank_count += 1;
                     }
                 } else {
@@ -433,9 +433,7 @@ impl PileupMatrix {
         let mut bam_writer = bam::Writer::from_path(bam_file, bam_header, Format::Bam).unwrap();
         for (_, record) in self.bam_records.iter() {
             let re = bam_writer.write(&record);
-            if re == Ok(()) {
-                println!("write success");
-            } else {
+            if re != Ok(()) {
                 println!("write failed");
                 process::exit(1);
             }

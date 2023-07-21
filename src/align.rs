@@ -77,10 +77,10 @@ enum TraceBack {
 pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
     // let now = Instant::now();
     // let declare_now = Instant::now();
-    let h = 2.0;
-    let g = 1.0;
-    let h2 = 12.0;
-    let p = 4.0;
+    let h = 4.0;    // gap open
+    let g = 2.0;    // gap entension
+    let h2 = 10.0;  // intron penalty
+    let p = 1.0;    //
 
     let q_len = query.len();
     let t_len = profile.len();
