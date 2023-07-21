@@ -250,22 +250,7 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
         let qbase = query[j - 1];
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
-        if trace_back_stat == TraceBack::M {
-            if mat[i][j].m_prev_m {
-                aligned_query.push(qbase);
-                ref_target.push(ref_base);
-                major_target.push(major_base);
-                i -= 1;
-                j -= 1;
-                trace_back_stat = TraceBack::M;
-            } else if mat[i][j].m_prev_ix {
-                trace_back_stat = TraceBack::IX;
-            } else if mat[i][j].m_prev_iy {
-                trace_back_stat = TraceBack::IY;
-            } else if mat[i][j].m_prev_ix2 {
-                trace_back_stat = TraceBack::IX2;
-            }
-        } else if trace_back_stat == TraceBack::IX {
+        if trace_back_stat == TraceBack::IX {
             if mat[i][j].ix_prev_m {
                 aligned_query.push(b'-');
                 ref_target.push(ref_base);
@@ -307,6 +292,21 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
+                trace_back_stat = TraceBack::IX2;
+            }
+        } else if trace_back_stat == TraceBack::M {
+            if mat[i][j].m_prev_m {
+                aligned_query.push(qbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                j -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][j].m_prev_ix {
+                trace_back_stat = TraceBack::IX;
+            } else if mat[i][j].m_prev_iy {
+                trace_back_stat = TraceBack::IY;
+            } else if mat[i][j].m_prev_ix2 {
                 trace_back_stat = TraceBack::IX2;
             }
         }
