@@ -77,10 +77,10 @@ enum TraceBack {
 pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
     // let now = Instant::now();
     // let declare_now = Instant::now();
-    let h = 4.0;    // gap open
-    let g = 2.0;    // gap entension
-    let h2 = 10.0;  // intron penalty
-    let p = 1.0;    //
+    let h = 2.0;    // gap open
+    let g = 1.0;    // gap entension
+    let h2 = 18.0;  // intron penalty
+    let p = 4.0;    //
 
     let q_len = query.len();
     let t_len = profile.len();
@@ -136,7 +136,7 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
             let sij = 2.0 - 4.0 * col.get_score(&qbase);
 
             // if target is dash, the cost of gap open and gap extension is 0
-            if col.get_major_base() == b'-' {
+            if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
                 mat[i][j].ix = mat[i - 1][j].m.max(mat[i - 1][j].ix);
                 if mat[i][j].ix == mat[i - 1][j].m {
                     mat[i][j].ix_prev_m = true;
@@ -159,20 +159,12 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
                 mat[i][j].iy_prev_iy = true;
             }
 
-            if col.get_major_base() == b'-' {
-                mat[i][j].ix2 = mat[i - 1][j].m.max(mat[i - 1][j].ix2);
-                if mat[i][j].ix2 == mat[i - 1][j].m {
-                    mat[i][j].ix2_prev_m = true;
-                } else if mat[i][j].ix2 == mat[i - 1][j].ix2 {
-                    mat[i][j].ix2_prev_ix2 = true;
-                }
-            } else {
-                mat[i][j].ix2 = (mat[i - 1][j].m - p - h2).max(mat[i - 1][j].ix2);
-                if mat[i][j].ix2 == mat[i - 1][j].m - p - h2 {
-                    mat[i][j].ix2_prev_m = true;
-                } else if mat[i][j].ix2 == mat[i - 1][j].ix2 {
-                    mat[i][j].ix2_prev_ix2 = true;
-                }
+
+            mat[i][j].ix2 = (mat[i - 1][j].m - p - h2).max(mat[i - 1][j].ix2);
+            if mat[i][j].ix2 == mat[i - 1][j].m - p - h2 {
+                mat[i][j].ix2_prev_m = true;
+            } else if mat[i][j].ix2 == mat[i - 1][j].ix2 {
+                mat[i][j].ix2_prev_ix2 = true;
             }
 
             mat[i][j].m = (mat[i - 1][j - 1].m + sij).max(mat[i][j].ix.max(mat[i][j].iy.max(mat[i][j].ix2 - p)));
@@ -251,63 +243,63 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == TraceBack::IX {
-            if mat[i][j].ix_prev_m {
-                aligned_query.push(b'-');
-                ref_target.push(ref_base);
-                major_target.push(major_base);
-                i -= 1;
-                trace_back_stat = TraceBack::M;
-            } else if (mat[i][j].ix_prev_ix) {
+            if (mat[i][j].ix_prev_ix) {
                 aligned_query.push(b'-');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::IX;
+            } else if mat[i][j].ix_prev_m {
+                aligned_query.push(b'-');
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
             }
         } else if trace_back_stat == TraceBack::IY {
             println!("Error: dash can not appear on target. gap cost on target is infinity.");
             process::exit(1);
-            if mat[i][j].iy_prev_m {
-                aligned_query.push(qbase);
-                ref_target.push(b'-');
-                major_target.push(b'-');
-                j -= 1;
-                trace_back_stat = TraceBack::M;
-            } else if mat[i][j].iy_prev_iy {
+            if mat[i][j].iy_prev_iy {
                 aligned_query.push(qbase);
                 ref_target.push(b'-');
                 major_target.push(b'-');
                 j -= 1;
                 trace_back_stat = TraceBack::IY;
+            } else if mat[i][j].iy_prev_m {
+                aligned_query.push(qbase);
+                ref_target.push(b'-');
+                major_target.push(b'-');
+                j -= 1;
+                trace_back_stat = TraceBack::M;
             }
         } else if trace_back_stat == TraceBack::IX2 {
-            if mat[i][j].ix2_prev_m {
-                aligned_query.push(b'N');
-                ref_target.push(ref_base);
-                major_target.push(major_base);
-                i -= 1;
-                trace_back_stat = TraceBack::M;
-            } else if mat[i][j].ix2_prev_ix2 {
+            if mat[i][j].ix2_prev_ix2 {
                 aligned_query.push(b'N');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::IX2;
-            }
-        } else if trace_back_stat == TraceBack::M {
-            if mat[i][j].m_prev_m {
-                aligned_query.push(qbase);
+            } else if mat[i][j].ix2_prev_m {
+                aligned_query.push(b'N');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
-                j -= 1;
                 trace_back_stat = TraceBack::M;
-            } else if mat[i][j].m_prev_ix {
+            }
+        } else if trace_back_stat == TraceBack::M {
+            if mat[i][j].m_prev_ix {
                 trace_back_stat = TraceBack::IX;
             } else if mat[i][j].m_prev_iy {
                 trace_back_stat = TraceBack::IY;
             } else if mat[i][j].m_prev_ix2 {
                 trace_back_stat = TraceBack::IX2;
+            } else if mat[i][j].m_prev_m {
+                aligned_query.push(qbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                j -= 1;
+                trace_back_stat = TraceBack::M;
             }
         }
     }
