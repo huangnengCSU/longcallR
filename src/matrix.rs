@@ -232,7 +232,9 @@ impl PileupMatrix {
             assert!(base_vec.len() == column_indexes.len());
             for i in 0..column_indexes.len() {
                 if self.base_matrix.get(readname).unwrap()[column_indexes[i]] != base_vec[i] {
-                    println!("Modified: readname: {}, column index: {}, old base: {}, new base: {}", readname, column_indexes[i], self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char, base_vec[i] as char);
+                    if self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char != ' ' && base_vec[i] as char != 'N' {
+                        println!("Modified: readname: {}, column index: {}, old base: {}, new base: {}", readname, column_indexes[i], self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char, base_vec[i] as char);
+                    }
                 }
                 self.base_matrix.get_mut(readname).unwrap()[column_indexes[i]] = base_vec[i];
             }
