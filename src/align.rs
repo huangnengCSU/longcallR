@@ -79,8 +79,8 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
     // let declare_now = Instant::now();
     let h = 2.0;    // gap open
     let g = 1.0;    // gap entension
-    let h2 = 18.0;  // intron penalty
-    let p = 4.0;    //
+    let h2 = 32.0;  // intron penalty
+    let p = 9.0;    //
 
     let q_len = query.len();
     let t_len = profile.len();
@@ -133,7 +133,7 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
         for j in 1..q_len + 1 {
             let qbase = query[j - 1];
             let col = &profile[i - 1];
-            let sij = 2.0 - 4.0 * col.get_score(&qbase);
+            let sij = 2.0 - 3.0 * col.get_score(&qbase);
 
             // if target is dash, the cost of gap open and gap extension is 0
             if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
