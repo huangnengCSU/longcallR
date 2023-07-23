@@ -196,6 +196,9 @@ impl PileupMatrix {
                 // println!("align begin, profile length: {}", &profile.len());
                 let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // println!("align end");
+                println!("iter: {}, qname: {}", iteration, readname);
+                println!("major target: \n{}", std::str::from_utf8(&major_target).unwrap());
+                println!("aligned query: \n{}", std::str::from_utf8(&aligned_query).unwrap());
                 assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
                 reduced_base_matrix.insert(readname.clone(), aligned_query);
                 profile.clear();
@@ -228,6 +231,9 @@ impl PileupMatrix {
             // println!("readname: {}, base_vec length: {}, column_indexes length: {}", readname, base_vec.len(), column_indexes.len());
             assert!(base_vec.len() == column_indexes.len());
             for i in 0..column_indexes.len() {
+                if self.base_matrix.get(readname).unwrap()[column_indexes[i]] != base_vec[i] {
+                    println!("Modified: readname: {}, column index: {}, old base: {}, new base: {}", readname, column_indexes[i], self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char, base_vec[i] as char);
+                }
                 self.base_matrix.get_mut(readname).unwrap()[column_indexes[i]] = base_vec[i];
             }
         }
