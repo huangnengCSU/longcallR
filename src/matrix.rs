@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs::read;
 use rust_htslib::{bam, bam::Read};
 use crate::bam_reader::Region;
-use crate::align::nw_splice_aware;
+use crate::align::{nw_splice_aware, semi_nw_splice_aware};
 use rust_htslib::bam::Format;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::record::CigarString;
@@ -194,9 +194,11 @@ impl PileupMatrix {
 
                 let query = String::from_utf8(base_vec.clone()).unwrap().replace(" ", "").replace("-", "").replace("N", "");
                 // println!("align begin, profile length: {}", &profile.len());
-                let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query.as_bytes().to_vec(), &profile);
+                // let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query.as_bytes().to_vec(), &profile);
+                let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // println!("align end");
                 println!("iter: {}, qname: {}", iteration, readname);
+                println!("ref target: \n{}", std::str::from_utf8(&ref_target).unwrap());
                 println!("major target: \n{}", std::str::from_utf8(&major_target).unwrap());
                 println!("aligned query: \n{}", std::str::from_utf8(&aligned_query).unwrap());
                 assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
@@ -277,26 +279,28 @@ impl PileupMatrix {
             let mut first_base_pair_index = 0;
             let mut last_base_pair_index = 0;
             for i in 0..base_vec.len() {
-                if base_vec[i] != b' ' && base_vec[i] != b'N' {
+                if base_vec[i] != b' ' && base_vec[i] != b'N' && base_vec[i] != b'-' {
                     first_base_pair_index = i;
                     break;
                 }
             }
             for i in (0..base_vec.len()).rev() {
-                if base_vec[i] != b' ' && base_vec[i] != b'N' {
+                if base_vec[i] != b' ' && base_vec[i] != b'N' && base_vec[i] != b'-' {
                     last_base_pair_index = i;
                     break;
                 }
             }
             // begin:       NNNNNNNACGT
+            // begin:--NNNNNNNNNNNNACGT
             for i in 0..first_base_pair_index {
-                if base_vec[i] == b'N' {
+                if base_vec[i] == b'N' || base_vec[i] == b'-' {
                     base_vec[i] = b' ';
                 }
             }
             // ACGTNNNNNNNNN          :end
+            // ACGTNNNNNNNNN----------:end
             for i in last_base_pair_index..base_vec.len() {
-                if base_vec[i] == b'N' {
+                if base_vec[i] == b'N' || base_vec[i] == b'-' {
                     base_vec[i] = b' ';
                 }
             }
@@ -517,7 +521,10 @@ impl ColumnBaseCount {
     }
 
     pub fn get_major_base(&self) -> u8 {
-        if self.n_a == self.max_count {
+        if self.max_count <= 5 {
+            // A,C,G,T,- each has one support, then return the ref base.
+            return self.get_ref_base();
+        } else if self.n_a == self.max_count {
             return b'A';
         } else if self.n_c == self.max_count {
             return b'C';
@@ -593,5 +600,9 @@ impl ColumnBaseCount {
         let s1 = self.get_score1(x) as f64;
         let s2 = self.get_score2(x);
         (s1 + s2) / 2.0
+    }
+
+    pub fn get_depth(&self) -> u16 {
+        self.n_a + self.n_c + self.n_g + self.n_t + self.n_dash
     }
 }
