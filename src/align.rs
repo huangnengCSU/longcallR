@@ -133,7 +133,15 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
         for j in 1..q_len + 1 {
             let qbase = query[j - 1];
             let col = &profile[i - 1];
-            let sij = 2.0 - 3.0 * col.get_score(&qbase);
+            let sij: f64;
+            if col.get_depth() <= 5 {
+                // A,C,G,T,- each has one support, then return the ref base.
+                let tbase = col.get_ref_base();
+                sij = if qbase == tbase { 2.0 } else { -1.0 };  // match score:2.0, mismatch score:-1.0
+            } else {
+                sij = 2.0 - 3.0 * col.get_score(&qbase);
+            }
+
 
             // if target is dash, the cost of gap open and gap extension is 0
             if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
@@ -223,6 +231,308 @@ pub fn nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64,
     let mut i = t_len;
     let mut j = q_len;
     let alignment_score = mat[i][j].m.max(mat[i][j].ix.max(mat[i][j].iy.max(mat[i][j].ix2)));
+
+    let mut trace_back_stat;
+
+    if mat[i][j].m_prev_m {
+        trace_back_stat = TraceBack::M;
+    } else if mat[i][j].m_prev_ix {
+        trace_back_stat = TraceBack::IX;
+    } else if mat[i][j].m_prev_iy {
+        trace_back_stat = TraceBack::IY;
+    } else if mat[i][j].m_prev_ix2 {
+        trace_back_stat = TraceBack::IX2;
+    } else {
+        panic!("Error: traceback");
+    }
+
+    while i > 0 && j > 0 {
+        let qbase = query[j - 1];
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        if trace_back_stat == TraceBack::IX {
+            if (mat[i][j].ix_prev_ix) {
+                aligned_query.push(b'-');
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::IX;
+            } else if mat[i][j].ix_prev_m {
+                aligned_query.push(b'-');
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
+            }
+        } else if trace_back_stat == TraceBack::IY {
+            println!("Error: dash can not appear on target. gap cost on target is infinity.");
+            process::exit(1);
+            if mat[i][j].iy_prev_iy {
+                aligned_query.push(qbase);
+                ref_target.push(b'-');
+                major_target.push(b'-');
+                j -= 1;
+                trace_back_stat = TraceBack::IY;
+            } else if mat[i][j].iy_prev_m {
+                aligned_query.push(qbase);
+                ref_target.push(b'-');
+                major_target.push(b'-');
+                j -= 1;
+                trace_back_stat = TraceBack::M;
+            }
+        } else if trace_back_stat == TraceBack::IX2 {
+            if mat[i][j].ix2_prev_ix2 {
+                aligned_query.push(b'N');
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::IX2;
+            } else if mat[i][j].ix2_prev_m {
+                aligned_query.push(b'N');
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
+            }
+        } else if trace_back_stat == TraceBack::M {
+            if mat[i][j].m_prev_ix {
+                trace_back_stat = TraceBack::IX;
+            } else if mat[i][j].m_prev_iy {
+                trace_back_stat = TraceBack::IY;
+            } else if mat[i][j].m_prev_ix2 {
+                trace_back_stat = TraceBack::IX2;
+            } else if mat[i][j].m_prev_m {
+                aligned_query.push(qbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                j -= 1;
+                trace_back_stat = TraceBack::M;
+            }
+        }
+    }
+
+    while i > 0 {
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        aligned_query.push(b' ');
+        ref_target.push(ref_base);
+        major_target.push(major_base);
+        i -= 1;
+    }
+    while j > 0 {
+        let qbase = query[j - 1];
+        aligned_query.push(qbase);
+        ref_target.push(b' ');
+        major_target.push(b' ');
+        j -= 1;
+    }
+    // let trace_end = trace_now.elapsed().as_millis();
+    // println!("Trace Elapsed: {} millisecond", trace_end);
+
+    // let rev_now = Instant::now();
+    aligned_query.reverse();
+    ref_target.reverse();
+    major_target.reverse();
+    // let rev_end = rev_now.elapsed().as_millis();
+    // println!("Reverse Elapsed: {} millisecond", rev_end);
+
+    // let end = now.elapsed().as_millis();
+    // println!("Elapsed: {} millisecond", end);
+    (alignment_score, aligned_query, ref_target, major_target)
+}
+
+fn find_max_value_and_index(vector: &Vec<f64>) -> (f64, usize) {
+    let mut max_value = vector[0];
+    let mut max_index = 0;
+
+    for (index, &value) in vector.iter().enumerate() {
+        if value > max_value {
+            max_value = value;
+            max_index = index;
+        }
+    }
+
+    (max_value, max_index)
+}
+
+pub fn semi_nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    // let now = Instant::now();
+    // let declare_now = Instant::now();
+    let h = 2.0;    // gap open
+    let g = 1.0;    // gap entension
+    let h2 = 32.0;  // intron penalty
+    let p = 9.0;    //
+
+    let q_len = query.len();
+    let t_len = profile.len();
+
+
+    // let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
+    // for _ in 0..t_len + 1 {
+    //     let mut row: Vec<SpliceMatrixElement> = Vec::new();
+    //     for _ in 0..q_len + 1 {
+    //         row.push(SpliceMatrixElement { ..Default::default() });
+    //     }
+    //     mat.push(row);
+    // }
+
+    let mut mat = vec![vec![SpliceMatrixElement { ..Default::default() }; q_len + 1]; t_len + 1];
+
+
+    // let declare_end = declare_now.elapsed().as_millis();
+    // println!("Declare Elapsed: {} millisecond", declare_end);
+
+    // Initialize first row and column
+    // let init_now = Instant::now();
+    mat[0][0].ix = 0.0;
+    mat[0][0].iy = -h - g - f64::INFINITY;  // no gap in target
+    mat[0][0].ix2 = 0.0;
+    mat[0][0].m = mat[0][0].ix.max(mat[0][0].iy).max(mat[0][0].ix2 - p);
+
+    // initialize first row and column are also follow the formula
+    for j in 1..q_len + 1 {
+        mat[0][j].ix = -f64::INFINITY;
+        mat[0][j].iy = (mat[0][j - 1].m - h - g - f64::INFINITY).max(mat[0][j - 1].iy - g - f64::INFINITY);
+        mat[0][j].ix2 = -f64::INFINITY;
+        mat[0][j].m = mat[0][j].ix.max(mat[0][j].iy).max(mat[0][j].ix2 - p);
+    }
+
+    for i in 1..t_len + 1 {
+        mat[i][0].ix = 0.0;
+        mat[i][0].iy = -f64::INFINITY;
+        mat[i][0].ix2 = 0.0;
+        mat[i][0].m = mat[i][0].ix.max(mat[i][0].iy).max(mat[i][0].ix2 - p);
+    }
+
+    // let init_end = init_now.elapsed().as_millis();
+    // println!("Init Elapsed: {} millisecond", init_end);
+
+
+    // Fill in matrices
+    // let fill_now = Instant::now();
+    for i in 1..t_len + 1 {
+        for j in 1..q_len + 1 {
+            let qbase = query[j - 1];
+            let col = &profile[i - 1];
+            let sij: f64;
+            if col.get_depth() <= 5 {
+                // A,C,G,T,- each has one support, then return the ref base.
+                let tbase = col.get_ref_base();
+                sij = if qbase == tbase { 2.0 } else { -1.0 };  // match score:2.0, mismatch score:-1.0
+            } else {
+                sij = 2.0 - 3.0 * col.get_score(&qbase);
+            }
+
+
+            // if target is dash, the cost of gap open and gap extension is 0
+            if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
+                mat[i][j].ix = mat[i - 1][j].m.max(mat[i - 1][j].ix);
+                if mat[i][j].ix == mat[i - 1][j].m {
+                    mat[i][j].ix_prev_m = true;
+                } else if mat[i][j].ix == mat[i - 1][j].ix {
+                    mat[i][j].ix_prev_ix = true;
+                }
+            } else {
+                mat[i][j].ix = (mat[i - 1][j].m - h - g).max(mat[i - 1][j].ix - g);
+                if mat[i][j].ix == mat[i - 1][j].m - h - g {
+                    mat[i][j].ix_prev_m = true;
+                } else if mat[i][j].ix == mat[i - 1][j].ix - g {
+                    mat[i][j].ix_prev_ix = true;
+                }
+            }
+
+            mat[i][j].iy = (mat[i][j - 1].m - h - g - f64::INFINITY).max(mat[i][j - 1].iy - g - f64::INFINITY);
+            if mat[i][j].iy == mat[i][j - 1].m - h - g - f64::INFINITY {
+                mat[i][j].iy_prev_m = true;
+            } else if mat[i][j].iy == mat[i][j - 1].iy - g - f64::INFINITY {
+                mat[i][j].iy_prev_iy = true;
+            }
+
+
+            mat[i][j].ix2 = (mat[i - 1][j].m - p - h2).max(mat[i - 1][j].ix2);
+            if mat[i][j].ix2 == mat[i - 1][j].m - p - h2 {
+                mat[i][j].ix2_prev_m = true;
+            } else if mat[i][j].ix2 == mat[i - 1][j].ix2 {
+                mat[i][j].ix2_prev_ix2 = true;
+            }
+
+            mat[i][j].m = (mat[i - 1][j - 1].m + sij).max(mat[i][j].ix.max(mat[i][j].iy.max(mat[i][j].ix2 - p)));
+            if mat[i][j].m == mat[i - 1][j - 1].m + sij {
+                mat[i][j].m_prev_m = true;
+            } else if mat[i][j].m == mat[i][j].ix {
+                mat[i][j].m_prev_ix = true;
+            } else if mat[i][j].m == mat[i][j].iy {
+                mat[i][j].m_prev_iy = true;
+            } else if mat[i][j].m == mat[i][j].ix2 - p {
+                mat[i][j].m_prev_ix2 = true;
+            }
+        }
+    }
+
+    // let fill_end = fill_now.elapsed().as_millis();
+    // println!("Fill Elapsed: {} millisecond", fill_end);
+
+    // // print matrix
+    // // println!("m matrix:");
+    // for i in 0..t_len + 1 {
+    //     print!("M  :\t");
+    //     for j in 0..q_len + 1 {
+    //         print!("{}  ", mat[i][j].m);
+    //     }
+    //     println!();
+    //     print!("Ix :\t");
+    //     for j in 0..q_len + 1 {
+    //         print!("{}  ", mat[i][j].ix);
+    //     }
+    //     println!();
+    //     print!("Iy :\t");
+    //     for j in 0..q_len + 1 {
+    //         print!("{}  ", mat[i][j].iy);
+    //     }
+    //     println!();
+    //     print!("Ix2:\t");
+    //     for j in 0..q_len + 1 {
+    //         print!("{}  ", mat[i][j].ix2);
+    //     }
+    //     println!();
+    //     println!();
+    //     // for _ in 0..q_len + 1 {
+    //     //     print!("--------");
+    //     // }
+    //     // println!();
+    // }
+
+
+    // Trace back
+    // let trace_now = Instant::now();
+    let mut aligned_query: Vec<u8> = Vec::new();
+    let mut ref_target: Vec<u8> = Vec::new();
+    let mut major_target: Vec<u8> = Vec::new();
+
+    let mut i = t_len;
+    let mut j = q_len;
+
+
+    let mut score_vec = Vec::new();
+    for ii in 0..t_len + 1 {
+        score_vec.push(mat[ii][q_len].m);
+    }
+
+    // find max value and index in score_vec
+    let (max_score, max_index) = find_max_value_and_index(&score_vec);
+    let alignment_score = max_score;
+    i = max_index;
+
+    if max_index < t_len {
+        for ii in (max_index + 1..t_len + 1).rev() {
+            let ref_base = profile[ii - 1].get_ref_base();
+            let major_base = profile[ii - 1].get_major_base();
+            ref_target.push(ref_base);
+            major_target.push(major_base);
+            aligned_query.push(b' ');
+        }
+    }
 
     let mut trace_back_stat;
 
