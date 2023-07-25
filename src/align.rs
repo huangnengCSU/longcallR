@@ -361,8 +361,8 @@ pub fn semi_nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> 
     // let declare_now = Instant::now();
     let h = 2.0;    // gap open
     let g = 1.0;    // gap entension
-    let h2 = 32.0;  // intron penalty
-    let p = 9.0;    //
+    let h2 = 14.0;  // intron penalty
+    let p = 2.0;    //
 
     let q_len = query.len();
     let t_len = profile.len();
