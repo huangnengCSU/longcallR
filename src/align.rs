@@ -643,3 +643,356 @@ pub fn semi_nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>) -> 
     // println!("Elapsed: {} millisecond", end);
     (alignment_score, aligned_query, ref_target, major_target)
 }
+
+// calculate the index of different coordinates
+// the full matrix has the shape of (t_len + 1)*(q_len+1)
+// the banded matrix has the shape of (t_len + 1)*(2*width + 3), the first column and the last column are extra columns.
+// i is on the target sequence, j is on the query sequence.
+// (i,k) are on the banded matrix, (i,j) are on the full matrix.
+fn get_k_j_from_i(i: usize, width: usize, q_len: usize) -> (usize, usize) {
+    let left_bound_idx: usize;
+    let right_bound_idx: usize;
+    if width as i32 - i as i32 + 2 < 1 {
+        left_bound_idx = 1;
+    } else {
+        left_bound_idx = (width as i32 - i as i32 + 2) as usize;
+    }
+    if width as i32 - i as i32 + q_len as i32 + 2 > 2 * width as i32 + 2 {
+        right_bound_idx = 2 * width + 2;
+    } else {
+        right_bound_idx = (width as i32 - i as i32 + q_len as i32 + 2) as usize;
+    }
+    let k = right_bound_idx - 1;
+    let j = k + i - width - 1;
+    (k, j)
+}
+
+
+pub fn banded_nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    let h = 2.0;
+    let g = 1.0;
+    let h2 = 32.0;
+    let p = 9.0;
+    let match_score = 2.0;
+    let mismatch_score = -1.0;
+
+    let q_len = query.len();
+    let t_len = profile.len();
+
+    let mut left_bound_idx: usize = 0;
+    let mut right_bound_idx: usize = 0;
+    let mut i: usize = 0;
+    let mut j: usize = 0;
+    let mut k: usize = 0;
+
+    // banded matrix size: (t_len + 1) * (2 * width + 3)
+
+    let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
+    for _ in 0..t_len + 1 {
+        let mut row: Vec<SpliceMatrixElement> = Vec::new();
+        for _ in 0..2 * width + 3 {
+            row.push(SpliceMatrixElement {
+                m: -f64::INFINITY,
+                ix: -f64::INFINITY,
+                iy: -f64::INFINITY,
+                ix2: -f64::INFINITY,
+                m_prev_m: false,
+                m_prev_ix: false,
+                m_prev_iy: false,
+                m_prev_ix2: false,
+                ix_prev_m: false,
+                ix_prev_ix: false,
+                iy_prev_m: false,
+                iy_prev_iy: false,
+                ix2_prev_m: false,
+                ix2_prev_ix2: false,
+            });
+        }
+        mat.push(row);
+    }
+
+    // Initialize
+    left_bound_idx = width - i + 2;
+    right_bound_idx = 2 * width + 3;
+    mat[0][left_bound_idx - 1].ix = -h - g;
+    mat[0][left_bound_idx - 1].ix = -h - g;
+    mat[0][left_bound_idx - 1].iy = -h - g - f64::INFINITY; // no gap allowed in the target
+    mat[0][left_bound_idx - 1].ix2 = -h2;
+    mat[0][left_bound_idx - 1].m = mat[0][left_bound_idx - 1]
+        .ix
+        .max(mat[0][left_bound_idx - 1].iy)
+        .max(mat[0][left_bound_idx - 1].ix2 - p);
+
+    for k in left_bound_idx..right_bound_idx {
+        mat[0][k].ix = -f64::INFINITY;
+        mat[0][k].iy = (mat[0][k - 1].m - h - g - f64::INFINITY).max(mat[0][k - 1].iy - g - f64::INFINITY);
+        mat[0][k].ix2 = -f64::INFINITY;
+        mat[0][k].m = mat[0][k].ix.max(mat[0][k].iy).max(mat[0][k].ix2 - p);
+    }
+
+    for k in 0..width {
+        i = k + 1;
+        left_bound_idx = (width as i32 - i as i32 + 2) as usize;
+        mat[i][left_bound_idx - 1].ix = -f64::INFINITY;
+        mat[i][left_bound_idx - 1].iy = (mat[i - 1][left_bound_idx].m - h - g - f64::INFINITY).max(mat[i - 1][left_bound_idx].iy - g - f64::INFINITY);
+        mat[i][left_bound_idx - 1].ix2 = -f64::INFINITY;
+        mat[i][left_bound_idx - 1].m = mat[i][left_bound_idx - 1].ix
+            .max(mat[i][left_bound_idx - 1].iy)
+            .max(mat[i][left_bound_idx - 1].ix2 - p);
+    }
+
+    // Fill in matrices
+    for i in 1..t_len + 1 {
+        if width as i32 - i as i32 + 2 < 1 {
+            left_bound_idx = 1;
+        } else {
+            left_bound_idx = (width as i32 - i as i32 + 2) as usize;
+        }
+        if width as i32 - i as i32 + q_len as i32 + 2 > 2 * width as i32 + 2 {
+            right_bound_idx = 2 * width + 2;
+        } else {
+            // TODO： if query length is greatly less than target length, (right_bound_idx = width - i + t_len + 2) will be negative.
+            if width as i32 - i as i32 + q_len as i32 + 2 < 0 {
+                println!("Error: the query length is too short compared to target length, please check it.");
+                process::exit(1);
+            }
+            right_bound_idx = (width as i32 - i as i32 + q_len as i32 + 2) as usize;
+        }
+        for k in left_bound_idx..right_bound_idx {
+            // println!(
+            //     "i: {}, k: {}, j:{}, left:{}, right:{}",
+            //     i,
+            //     k,
+            //     k + i - width - 1,
+            //     left_bound_idx,
+            //     right_bound_idx
+            // );
+            j = k + i - width - 1;
+            let qbase = query[j - 1];
+            let col = &profile[i - 1];
+            // let tbase: char = target.chars().nth(i - 1).unwrap();
+            // let qbase = query.chars().nth(k + i - width - 2).unwrap(); // j = k+i-width-1
+            let sij: f64;
+            if qbase == b' ' {
+                sij = 0.0;
+            } else {
+                if col.get_depth() <= 5 {
+                    let tbase = col.get_ref_base();
+                    sij = if qbase == tbase { match_score } else { mismatch_score };
+                } else {
+                    sij = 2.0 - 3.0 * col.get_score(&qbase);
+                }
+            }
+
+            if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
+                mat[i][k].ix = (mat[i - 1][k + 1].m).max(mat[i - 1][k + 1].ix);
+                if mat[i][k].ix == mat[i - 1][k + 1].m {
+                    mat[i][k].ix_prev_m = true;
+                } else if mat[i][k].ix == mat[i - 1][k + 1].ix {
+                    mat[i][k].ix_prev_ix = true;
+                }
+            } else {
+                mat[i][k].ix = (mat[i - 1][k + 1].m - h - g).max(mat[i - 1][k + 1].ix - g);
+                if mat[i][k].ix == mat[i - 1][k + 1].m - h - g {
+                    mat[i][k].ix_prev_m = true;
+                } else if mat[i][k].ix == mat[i - 1][k + 1].ix - g {
+                    mat[i][k].ix_prev_ix = true;
+                }
+            }
+
+            mat[i][k].iy = (mat[i][k - 1].m - h - g - f64::INFINITY).max(mat[i][k - 1].iy - g - f64::INFINITY);
+            if mat[i][k].iy == mat[i][k - 1].m - h - g - f64::INFINITY {
+                mat[i][k].iy_prev_m = true;
+            } else if mat[i][k].iy == mat[i][k - 1].iy - g - f64::INFINITY {
+                mat[i][k].iy_prev_iy = true;
+            }
+
+            mat[i][k].ix2 = (mat[i - 1][k + 1].m - h2).max(mat[i - 1][k + 1].ix2);
+            if mat[i][k].ix2 == mat[i - 1][k + 1].m - h2 {
+                mat[i][k].ix2_prev_m = true;
+            } else if mat[i][k].ix2 == mat[i - 1][k + 1].ix2 {
+                mat[i][k].ix2_prev_ix2 = true;
+            }
+
+            mat[i][k].m = (mat[i - 1][k].m + sij).max(mat[i][k].ix).max(mat[i][k].iy).max(mat[i][k].ix2 - p);
+            if mat[i][k].m == mat[i - 1][k].m + sij {
+                mat[i][k].m_prev_m = true;
+            } else if mat[i][k].m == mat[i][k].ix {
+                mat[i][k].m_prev_ix = true;
+            } else if mat[i][k].m == mat[i][k].iy {
+                mat[i][k].m_prev_iy = true;
+            } else if mat[i][k].m == mat[i][k].ix2 - p {
+                mat[i][k].m_prev_ix2 = true;
+            }
+        }
+    }
+
+    // print matrix
+    // println!("m matrix:");
+    // for i in 0..t_len + 1 {
+    //     print!("i = {}, M  :,", i);
+    //     for j in 0..=2 * width + 2 {
+    //         print!("{},", mat[i][j].m);
+    //     }
+    //     println!();
+    //     print!("i = {}, Ix :,", i);
+    //     for j in 0..=2 * width + 2 {
+    //         print!("{},", mat[i][j].ix);
+    //     }
+    //     println!();
+    //     print!("i = {}, Iy :,", i);
+    //     for j in 0..=2 * width + 2 {
+    //         print!("{},", mat[i][j].iy);
+    //     }
+    //     println!();
+    //     print!("i = {}, Ix2:,", i);
+    //     for j in 0..=2 * width + 2 {
+    //         print!("{},", mat[i][j].ix2);
+    //     }
+    //     println!();
+    //     println!();
+    // }
+
+    // Trace back
+    let mut aligned_query: Vec<u8> = Vec::new();
+    let mut ref_target: Vec<u8> = Vec::new();
+    let mut major_target: Vec<u8> = Vec::new();
+    let alignment_score: f64;
+
+    i = t_len;
+    (k, j) = get_k_j_from_i(i, width, q_len);
+    // println!("{},{},{}", i, k, j);
+    alignment_score = mat[i][k].m;
+
+
+    let mut trace_back_stat;
+    if (mat[i][k].m_prev_m) {
+        trace_back_stat = TraceBack::M;
+    } else if (mat[i][k].m_prev_ix) {
+        trace_back_stat = TraceBack::IX;
+    } else if (mat[i][k].m_prev_iy) {
+        trace_back_stat = TraceBack::IY;
+    } else if (mat[i][k].m_prev_ix2) {
+        trace_back_stat = TraceBack::IX2;
+    } else {
+        panic!("Error: no traceback");
+    }
+
+    while i > 0 && j > 0 {
+        let qbase = query[j - 1];
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+
+        if (trace_back_stat == TraceBack::M) {
+            if (mat[i][k].m_prev_m) {
+                aligned_query.push(qbase);
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                j -= 1;
+                k = k;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::M;
+            } else if (mat[i][k].m_prev_ix) {
+                trace_back_stat = TraceBack::IX;
+            } else if (mat[i][k].m_prev_iy) {
+                trace_back_stat = TraceBack::IY;
+            } else if (mat[i][k].m_prev_ix2) {
+                trace_back_stat = TraceBack::IX2;
+            }
+        } else if (trace_back_stat == TraceBack::IX) {
+            if (mat[i][k].ix_prev_m) {
+                aligned_query.push(b'-');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                k += 1;
+                j = j;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::M;
+            } else if (mat[i][k].ix_prev_ix) {
+                aligned_query.push(b'-');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                k += 1;
+                j = j;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::IX;
+            }
+        } else if (trace_back_stat == TraceBack::IY) {
+            if (mat[i][k].iy_prev_m) {
+                aligned_query.push(qbase);
+                // aligned_target.push('-');
+                ref_target.push(b'-');
+                major_target.push(b'-');
+                j -= 1;
+                k -= 1;
+                i = i;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::M;
+            } else if (mat[i][k].iy_prev_iy) {
+                aligned_query.push(qbase);
+                // aligned_target.push('-');
+                ref_target.push(b'-');
+                major_target.push(b'-');
+                j -= 1;
+                k -= 1;
+                i = i;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::IY;
+            }
+        } else if (trace_back_stat == TraceBack::IX2) {
+            if (mat[i][k].ix2_prev_m) {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                k += 1;
+                j = j;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::M;
+            } else if (mat[i][j].ix2_prev_ix2) {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                k += 1;
+                j = j;
+                assert!(j == k + i - width - 1);
+                trace_back_stat = TraceBack::IX2;
+            }
+        }
+    }
+
+    while i > 0 {
+        // let tbase = target.chars().nth(i - 1).unwrap();
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        aligned_query.push(b' ');
+        // aligned_target.push(tbase);
+        ref_target.push(ref_base);
+        major_target.push(major_base);
+        i -= 1;
+    }
+    while j > 0 {
+        let qbase = query[j - 1];
+        aligned_query.push(qbase);
+        // aligned_target.push('-');
+        ref_target.push(b' ');
+        major_target.push(b' ');
+        j -= 1;
+    }
+    aligned_query.reverse();
+    ref_target.reverse();
+    major_target.reverse();
+
+    (alignment_score, aligned_query, ref_target, major_target)
+}
+
+
