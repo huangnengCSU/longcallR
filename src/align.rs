@@ -995,4 +995,290 @@ pub fn banded_nw_splice_aware(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, w
     (alignment_score, aligned_query, ref_target, major_target)
 }
 
+pub fn banded_nw_splice_aware2(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    let h = 2.0;
+    let g = 1.0;
+    let h2 = 32.0;
+    let p = 9.0;
+    let match_score = 2.0;
+    let mismatch_score = -1.0;
+
+    let query_t = std::str::from_utf8(query.clone().as_slice()).unwrap().replace("-", "").replace("N", "");
+    let query_without_gap = query_t.as_bytes();
+
+    let q_len = query_without_gap.len();
+    let t_len = profile.len();
+    println!("q_len: {}, t_len: {}", q_len, t_len);
+
+    let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
+    for _ in 0..t_len + 1 {
+        let mut row: Vec<SpliceMatrixElement> = Vec::new();
+        for _ in 0..q_len + 1 {
+            row.push(SpliceMatrixElement {
+                m: -f64::INFINITY,
+                ix: -f64::INFINITY,
+                iy: -f64::INFINITY,
+                ix2: -f64::INFINITY,
+                m_prev_m: false,
+                m_prev_ix: false,
+                m_prev_iy: false,
+                m_prev_ix2: false,
+                ix_prev_m: false,
+                ix_prev_ix: false,
+                iy_prev_m: false,
+                iy_prev_iy: false,
+                ix2_prev_m: false,
+                ix2_prev_ix2: false,
+            });
+        }
+        mat.push(row);
+    }
+
+    // Initialize first row
+
+    mat[0][0].ix = -h - g;
+    mat[0][0].iy = -h - g - f64::INFINITY;
+    mat[0][0].ix2 = -h2;
+    mat[0][0].m = mat[0][0].ix.max(mat[0][0].iy).max(mat[0][0].ix2 - p);
+
+    // for j in 0..width {
+    //     mat[0][j].ix = -f64::INFINITY;
+    //     mat[0][j].iy = -h - g * (j + 1) as f64 - f64::INFINITY;
+    //     mat[0][j].ix2 = -f64::INFINITY;
+    //     mat[0][j].m = mat[0][j].iy;
+    // }
+
+    let mut i = 1;  // index on target
+    let mut j = 1;  // index on query
+    let mut k = 0;  // index on query_without_gap
+
+    let mut left_bound: usize;  // include this index
+    let mut right_bound: usize; // exclude this index
+    while i < t_len + 1 && k < q_len + 1 {
+        if query[j - 1] != b'-' && query[j - 1] != b'N' {
+            k += 1;
+        }
+
+        if k as i32 - width as i32 > 0 {
+            left_bound = (k as i32 - width as i32) as usize;
+        } else {
+            left_bound = 1;
+        }
+        right_bound = if k + width < q_len + 1 { k + width } else { q_len + 1 };
+        // println!("i: {}, j: {}, k: {}, left_bound: {}, right_bound: {}", i, j, k, left_bound, right_bound);
+        for u in left_bound..right_bound {
+            let col = &profile[i - 1];
+            let qbase = query_without_gap[u - 1];
+            // println!("q: {}, t:{}, i: {}, j: {}, k: {}", qbase, tbase, i, j, k);
+            let sij: f64;
+            if qbase == b' ' {
+                sij = 0.0;
+            } else {
+                if col.get_depth() <= 5 {
+                    let tbase = col.get_ref_base();
+                    sij = if qbase == tbase { match_score } else { mismatch_score };
+                } else {
+                    sij = 2.0 - 3.0 * col.get_score(&qbase);
+                }
+            }
+
+            if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
+                mat[i][u].ix = (mat[i - 1][u].m).max(mat[i - 1][u].ix);
+                if mat[i][u].ix == mat[i - 1][u].m {
+                    mat[i][u].ix_prev_m = true;
+                } else if mat[i][u].ix == mat[i - 1][u].ix {
+                    mat[i][u].ix_prev_ix = true;
+                }
+            } else {
+                mat[i][u].ix = (mat[i - 1][u].m - h - g).max(mat[i - 1][u].ix - g);
+                if mat[i][u].ix == mat[i - 1][u].m - h - g {
+                    mat[i][u].ix_prev_m = true;
+                } else if mat[i][u].ix == mat[i - 1][u].ix - g {
+                    mat[i][u].ix_prev_ix = true;
+                }
+            }
+
+            mat[i][u].iy = -f64::INFINITY;
+
+            mat[i][u].ix2 = (mat[i - 1][u].m - h2).max(mat[i - 1][u].ix2);
+            if mat[i][u].ix2 == mat[i - 1][u].m - h2 {
+                mat[i][u].ix2_prev_m = true;
+            } else if mat[i][u].ix2 == mat[i - 1][u].ix2 {
+                mat[i][u].ix2_prev_ix2 = true;
+            }
+
+            mat[i][u].m = (mat[i - 1][u - 1].m + sij).max(mat[i][u].ix).max(mat[i][u].ix2 - p);
+            if mat[i][u].m == mat[i - 1][u - 1].m + sij {
+                mat[i][u].m_prev_m = true;
+            } else if mat[i][u].m == mat[i][u].ix {
+                mat[i][u].m_prev_ix = true;
+            } else if mat[i][u].m == mat[i][u].ix2 - p {
+                mat[i][u].m_prev_ix2 = true;
+            }
+        }
+
+        // Only increment k if the query base is not a gap and not an N.
+        // The path will go vertically if the query base is a gap or an N./
+        // if query.chars().nth(j - 1).unwrap() != '-' && query.chars().nth(j - 1).unwrap() != 'N' {
+        //     k += 1;
+        // }
+
+
+        i += 1;
+        j += 1;
+    }
+
+    j = 1;
+    k = 0;
+    for i in 1..t_len + 1 {
+        if query[j - 1] != b'-' && query[j - 1] != b'N' {
+            k += 1;
+        }
+        if k as i32 - width as i32 > 0 {
+            left_bound = (k as i32 - width as i32) as usize;
+        } else {
+            left_bound = 1;
+        }
+        right_bound = if k + width < q_len + 1 { k + width } else { q_len + 1 };
+        println!("left_bound: {}, right_bound: {}", left_bound, right_bound);
+        print!("i = {}, M  :\t", i);
+        for u in left_bound..right_bound {
+            print!("{}  ", mat[i][u].m);
+        }
+        println!();
+        print!("i = {}, Ix :\t", i);
+        for u in left_bound..right_bound {
+            print!("{}  ", mat[i][u].ix);
+        }
+        println!();
+        print!("i = {}, Iy :\t", i);
+        for u in left_bound..right_bound {
+            print!("{}  ", mat[i][u].iy);
+        }
+        println!();
+        print!("i = {}, Ix2:\t", i);
+        for u in left_bound..right_bound {
+            print!("{}  ", mat[i][u].ix2);
+        }
+        println!();
+        println!();
+        // for _ in 0..q_len + 1 {
+        //     print!("--------");
+        // }
+        // println!();
+        j += 1;
+    }
+
+
+    // trace back
+    let mut aligned_query: Vec<u8> = Vec::new();
+    let mut ref_target: Vec<u8> = Vec::new();
+    let mut major_target: Vec<u8> = Vec::new();
+
+    i = t_len;
+    k = q_len;
+
+    let alignment_score = mat[i][k].m;
+    let mut trace_back_stat;
+    if mat[i][k].m_prev_m {
+        trace_back_stat = TraceBack::M;
+    } else if mat[i][k].m_prev_ix {
+        trace_back_stat = TraceBack::IX;
+    } else if mat[i][k].m_prev_ix2 {
+        trace_back_stat = TraceBack::IX2;
+    } else {
+        panic!("Error: no traceback");
+    }
+
+
+    while i > 0 && k > 0 {
+        // println!("i: {}, k: {}, m:{}, ix: {}, iy:{}, ix2:{}", i, k, mat[i][k].m, mat[i][k].ix, mat[i][k].iy, mat[i][k].ix2);
+        let qbase = query_without_gap[k - 1];
+        // let tbase = target.chars().nth(i - 1).unwrap();
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+
+        if trace_back_stat == TraceBack::M {
+            if mat[i][k].m_prev_m {
+                aligned_query.push(qbase);
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                k -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][k].m_prev_ix {
+                trace_back_stat = TraceBack::IX;
+            } else if mat[i][k].m_prev_ix2 {
+                trace_back_stat = TraceBack::IX2;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == TraceBack::IX {
+            if mat[i][k].ix_prev_m {
+                aligned_query.push(b'-');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][k].ix_prev_ix {
+                aligned_query.push(b'-');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::IX;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == TraceBack::IX2 {
+            if mat[i][k].ix2_prev_m {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][k].ix2_prev_ix2 {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::IX2;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else {
+            panic!("Error: no traceback");
+        }
+    }
+
+    while i > 0 {
+        // let tbase = target.chars().nth(i - 1).unwrap();
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        aligned_query.push(b'-');
+        // aligned_target.push(tbase);
+        ref_target.push(ref_base);
+        major_target.push(major_base);
+        i -= 1;
+    }
+    while k > 0 {
+        let qbase = query_without_gap[k - 1];
+        aligned_query.push(qbase);
+        // aligned_target.push('-');
+        ref_target.push(b'-');
+        major_target.push(b'-');
+        k -= 1;
+    }
+
+    aligned_query.reverse();
+    ref_target.reverse();
+    major_target.reverse();
+
+    (alignment_score, aligned_query, ref_target, major_target)
+}
+
 
