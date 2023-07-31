@@ -1282,3 +1282,308 @@ pub fn banded_nw_splice_aware2(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
 }
 
 
+pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    let h = 2.0;
+    let g = 1.0;
+    let h2 = 32.0;
+    let p = 9.0;
+    let match_score = 2.0;
+    let mismatch_score = -1.0;
+
+    // let query_without_gap = query.replace("-", "").replace("N", "");
+    let query_t = std::str::from_utf8(query.clone().as_slice()).unwrap().replace("-", "").replace("N", "");
+    let query_without_gap = query_t.as_bytes();
+
+    let q_len = query_without_gap.len();
+    let t_len = profile.len();
+
+    let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
+    for _ in 0..t_len + 1 {
+        let mut row: Vec<SpliceMatrixElement> = Vec::new();
+        for _ in 0..(2 * width) + 3 {
+            row.push(SpliceMatrixElement {
+                m: -f64::INFINITY,
+                ix: -f64::INFINITY,
+                iy: -f64::INFINITY,
+                ix2: -f64::INFINITY,
+                m_prev_m: false,
+                m_prev_ix: false,
+                m_prev_iy: false,
+                m_prev_ix2: false,
+                ix_prev_m: false,
+                ix_prev_ix: false,
+                iy_prev_m: false,
+                iy_prev_iy: false,
+                ix2_prev_m: false,
+                ix2_prev_ix2: false,
+            });
+        }
+        mat.push(row);
+    }
+    let mut offset_vec: Vec<usize> = vec![0; t_len + 1];
+    let mut k_vec: Vec<usize> = vec![0; t_len + 1];
+
+    // Initialize first row
+    mat[0][width + 1].ix = -h - g;
+    mat[0][width + 1].iy = -h - g - f64::INFINITY;
+    mat[0][width + 1].ix2 = -h2;
+    mat[0][width + 1].m = mat[0][width + 1].ix.max(mat[0][width + 1].iy).max(mat[0][width + 1].ix2 - p);
+
+    // for j in width + 2..2 * width + 3 {
+    //     mat[0][j].ix = -f64::INFINITY;
+    //     mat[0][j].iy = -h - g * (j - (width + 1) + 1) as f64 - f64::INFINITY;
+    //     mat[0][j].ix2 = -f64::INFINITY;
+    //     mat[0][j].m = mat[0][j].iy;
+    // }
+
+    let mut i = 1;  // index on target
+    let mut j = 1;  // index on query
+    let mut k = 0;  // index on query_without_gap
+
+    let mut left_bound: usize;  // include this index
+    let mut right_bound: usize; // exclude this index
+    while i < t_len + 1 && k < q_len + 1 {
+        let mut offset: usize;
+        if query[j - 1] != b'-' && query[j - 1] != b'N' {
+            k += 1;
+            offset_vec[i] = 0; // m is upper, gap is right_upper
+            offset = 0;
+        } else {
+            offset_vec[i] = 1; // m is left_upper, gap is upper
+            offset = 1;
+        }
+        k_vec[i] = k;   // store k index of each row
+
+        if k as i32 - width as i32 > 0 {
+            left_bound = (k as i32 - width as i32) as usize;
+        } else {
+            left_bound = 1;
+        }
+        right_bound = if k + width + 1 <= q_len + 1 { k + width + 1 } else { q_len + 1 };
+        for u in left_bound..right_bound {
+            // index on alignment matrix: (i,v), v = (w+1)+(u-k), u in [left_bound, right_bound)
+            let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+            // let tbase = target[i - 1];
+            let col = &profile[i - 1];
+            let qbase = query_without_gap[u - 1];
+            // println!("i: {}, j: {}, k: {}, u: {}, v: {}, left_bound: {}, right_bound: {}, qbase: {}, tbase: {}", i, j, k, u, v, left_bound, right_bound, qbase as char, tbase as char);
+            let sij: f64;
+            if qbase == b' ' {
+                sij = 0.0;
+            } else {
+                if col.get_depth() <= 5 {
+                    let tbase = col.get_ref_base();
+                    sij = if qbase == tbase { match_score } else { mismatch_score };
+                } else {
+                    sij = 2.0 - 3.0 * col.get_score(&qbase);
+                }
+            }
+
+            if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
+                mat[i][v].ix = (mat[i - 1][v + 1 - offset].m).max(mat[i - 1][v + 1 - offset].ix);
+                if mat[i][v].ix == mat[i - 1][v + 1 - offset].m {
+                    mat[i][v].ix_prev_m = true;
+                } else if mat[i][v].ix == mat[i - 1][v + 1 - offset].ix {
+                    mat[i][v].ix_prev_ix = true;
+                }
+            } else {
+                mat[i][v].ix = (mat[i - 1][v + 1 - offset].m - h - g).max(mat[i - 1][v + 1 - offset].ix - g);
+                if mat[i][v].ix == mat[i - 1][v + 1 - offset].m - h - g {
+                    mat[i][v].ix_prev_m = true;
+                } else if mat[i][v].ix == mat[i - 1][v + 1 - offset].ix - g {
+                    mat[i][v].ix_prev_ix = true;
+                }
+            }
+
+            mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - h2).max(mat[i - 1][v + 1 - offset].ix2);
+            if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - h2 {
+                mat[i][v].ix2_prev_m = true;
+            } else if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].ix2 {
+                mat[i][v].ix2_prev_ix2 = true;
+            }
+
+            mat[i][v].m = (mat[i - 1][v - offset].m + sij).max(mat[i][v].ix).max(mat[i][v].iy).max(mat[i][v].ix2 - p);
+            if mat[i][v].m == mat[i - 1][v - offset].m + sij {
+                mat[i][v].m_prev_m = true;
+            } else if mat[i][v].m == mat[i][v].ix {
+                mat[i][v].m_prev_ix = true;
+            } else if mat[i][v].m == mat[i][v].ix2 - p {
+                mat[i][v].m_prev_ix2 = true;
+            }
+        }
+        i += 1;
+        j += 1;
+    }
+
+
+    // j = 1;
+    // k = 0;
+    // for i in 1..t_len + 1 {
+    //     if query[j - 1] != b'-' && query[j - 1] != b'N' {
+    //         k += 1;
+    //     }
+    //     if k as i32 - width as i32 > 0 {
+    //         left_bound = (k as i32 - width as i32) as usize;
+    //     } else {
+    //         left_bound = 1;
+    //     }
+    //     right_bound = if k + width + 1 <= q_len + 1 { k + width + 1 } else { q_len + 1 };
+    //     println!("left_bound: {}, right_bound: {}", left_bound, right_bound);
+    //     print!("i = {}, M  :\t", i);
+    //     for u in left_bound..right_bound {
+    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+    //         print!("{}  ", mat[i][v].m);
+    //     }
+    //     println!();
+    //     print!("i = {}, Ix :\t", i);
+    //     for u in left_bound..right_bound {
+    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+    //         print!("{}  ", mat[i][v].ix);
+    //     }
+    //     println!();
+    //     print!("i = {}, Iy :\t", i);
+    //     for u in left_bound..right_bound {
+    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+    //         print!("{}  ", mat[i][v].iy);
+    //     }
+    //     println!();
+    //     print!("i = {}, Ix2:\t", i);
+    //     for u in left_bound..right_bound {
+    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+    //         print!("{}  ", mat[i][v].ix2);
+    //     }
+    //     println!();
+    //     println!();
+    //     // for _ in 0..q_len + 1 {
+    //     //     print!("--------");
+    //     // }
+    //     // println!();
+    //     j += 1;
+    // }
+
+
+    // trace back
+    let mut aligned_query: Vec<u8> = Vec::new();
+    let mut ref_target: Vec<u8> = Vec::new();
+    let mut major_target: Vec<u8> = Vec::new();
+    let mut alignment_score = 0.0;
+
+    let mut u: usize;
+    let mut v: usize;
+
+    i = t_len;
+
+    let mut score_vec = Vec::new();
+    for vv in 0..2 * width + 3 {
+        score_vec.push(mat[i][vv].m);
+    }
+    // find max value and index in score_vec
+    let (max_score, max_index) = find_max_value_and_index(&score_vec);
+    alignment_score = max_score;
+    v = max_index;
+    k = k_vec[i];
+    u = (v as i32 - (width as i32 + 1) + k as i32) as usize;    // index on query_without_gap
+
+    let mut trace_back_stat;
+    if mat[i][v].m_prev_m {
+        trace_back_stat = TraceBack::M;
+    } else if mat[i][v].m_prev_ix {
+        trace_back_stat = TraceBack::IX;
+    } else if mat[i][v].m_prev_ix2 {
+        trace_back_stat = TraceBack::IX2;
+    } else {
+        panic!("Error: no traceback");
+    }
+
+    while i > 0 && u > 0 {
+        // println!("i: {}, k: {}, m:{}, ix: {}, iy:{}, ix2:{}", i, k, mat[i][k].m, mat[i][k].ix, mat[i][k].iy, mat[i][k].ix2);
+        k = k_vec[i];
+        v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+        let qbase = query_without_gap[u - 1];
+        // let tbase = target[i - 1];
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        if trace_back_stat == TraceBack::M {
+            if mat[i][v].m_prev_m {
+                aligned_query.push(qbase);
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                u -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][v].m_prev_ix {
+                trace_back_stat = TraceBack::IX;
+            } else if mat[i][v].m_prev_ix2 {
+                trace_back_stat = TraceBack::IX2;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == TraceBack::IX {
+            if mat[i][v].ix_prev_m {
+                aligned_query.push(b'-');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][v].ix_prev_ix {
+                aligned_query.push(b'-');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::IX;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == TraceBack::IX2 {
+            if mat[i][v].ix2_prev_m {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
+            } else if mat[i][v].ix2_prev_ix2 {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::IX2;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else {
+            panic!("Error: no traceback");
+        }
+    }
+
+    while i > 0 {
+        // let tbase = target[i - 1];
+        let ref_base = profile[i - 1].get_ref_base();
+        let major_base = profile[i - 1].get_major_base();
+        aligned_query.push(b'-');
+        // aligned_target.push(tbase);
+        ref_target.push(ref_base);
+        major_target.push(major_base);
+        i -= 1;
+    }
+    while u > 0 {
+        let qbase = query_without_gap[u - 1];
+        aligned_query.push(qbase);
+        // aligned_target.push(b'-');
+        ref_target.push(b'-');
+        major_target.push(b'-');
+        u -= 1;
+    }
+
+    aligned_query.reverse();
+    // aligned_target.reverse();
+    ref_target.reverse();
+    major_target.reverse();
+    (alignment_score, aligned_query, ref_target, major_target)
+}
+
+

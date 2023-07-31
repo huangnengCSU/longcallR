@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs::read;
 use rust_htslib::{bam, bam::Read};
 use crate::bam_reader::Region;
-use crate::align::{nw_splice_aware, semi_nw_splice_aware, banded_nw_splice_aware, banded_nw_splice_aware2};
+use crate::align::{nw_splice_aware, semi_nw_splice_aware, banded_nw_splice_aware, banded_nw_splice_aware2, banded_nw_splice_aware3};
 use rust_htslib::bam::Format;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::record::CigarString;
@@ -200,7 +200,8 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
-                let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
+                // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
+                let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, 20);
                 // println!("align end");
                 println!("iter: {}, qname: {}", iteration, readname);
                 println!("ref target: \n{}", std::str::from_utf8(&ref_target).unwrap());
