@@ -118,17 +118,23 @@ impl PileupMatrix {
     }
 
     pub fn generate_reduced_profile(base_matrix: &HashMap<String, Vec<u8>>,
-                                    donor_penalty: &Vec<f64>,
-                                    acceptor_penalty: &Vec<f64>,
+                                    forward_donor_penalty: &Vec<f64>,
+                                    forward_acceptor_penalty: &Vec<f64>,
+                                    reverse_donor_penalty: &Vec<f64>,
+                                    reverse_acceptor_penalty: &Vec<f64>,
                                     column_base_counts: &mut Vec<ColumnBaseCount>,
                                     column_indexes: &mut Vec<usize>,
                                     reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
-                                    reduced_donor_penalty: &mut Vec<f64>,
-                                    reduced_acceptor_penalty: &mut Vec<f64>) {
+                                    forward_reduced_donor_penalty: &mut Vec<f64>,
+                                    forward_reduced_acceptor_penalty: &mut Vec<f64>,
+                                    reverse_reduced_donor_penalty: &mut Vec<f64>,
+                                    reverse_reduced_acceptor_penalty: &mut Vec<f64>) {
         assert!(base_matrix.len() > 0);
         let ncols = base_matrix.iter().next().unwrap().1.len();
-        assert!(donor_penalty.len() == ncols);
-        assert!(acceptor_penalty.len() == ncols);
+        assert!(forward_donor_penalty.len() == ncols);
+        assert!(forward_acceptor_penalty.len() == ncols);
+        assert!(reverse_donor_penalty.len() == ncols);
+        assert!(reverse_acceptor_penalty.len() == ncols);
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
         for i in 0..ncols {
@@ -147,8 +153,10 @@ impl PileupMatrix {
             column_base_counts.push(cbc);
             column_indexes.push(i);
             column_bases.clear();
-            reduced_donor_penalty.push(donor_penalty[i]);
-            reduced_acceptor_penalty.push(acceptor_penalty[i]);
+            forward_reduced_donor_penalty.push(forward_donor_penalty[i]);
+            forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
+            reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
+            reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
         }
         reduced_base_matrix.clear();
         for i in column_indexes.iter() {
@@ -258,7 +266,8 @@ impl PileupMatrix {
         (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty)
     }
 
-    pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>, donor_penalty: &Vec<f64>, acceptor_penalty: &Vec<f64>,
+    pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>, forward_donor_penalty: &Vec<f64>, forward_acceptor_penalty: &Vec<f64>,
+                           reverse_donor_penalty: &Vec<f64>, reverse_acceptor_penalty: &Vec<f64>,
                            best_reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
                            best_column_indexes: &mut Vec<usize>) {
         let mut old_score = -f64::INFINITY;
@@ -266,17 +275,23 @@ impl PileupMatrix {
         let mut profile: Vec<ColumnBaseCount> = Vec::new();
         let mut column_indexes: Vec<usize> = Vec::new();
         let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
-        let mut reduced_donor_penalty: Vec<f64> = Vec::new();
-        let mut reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let mut forward_reduced_donor_penalty: Vec<f64> = Vec::new();
+        let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_reduced_donor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut prev_aligned_seq: Vec<u8> = Vec::new();
         PileupMatrix::generate_reduced_profile(base_matrix,
-                                               donor_penalty,
-                                               acceptor_penalty,
+                                               forward_donor_penalty,
+                                               forward_acceptor_penalty,
+                                               reverse_donor_penalty,
+                                               reverse_acceptor_penalty,
                                                &mut profile,
                                                &mut column_indexes,
                                                &mut reduced_base_matrix,
-                                               &mut reduced_donor_penalty,
-                                               &mut reduced_acceptor_penalty);
+                                               &mut forward_reduced_donor_penalty,
+                                               &mut forward_reduced_acceptor_penalty,
+                                               &mut reverse_reduced_donor_penalty,
+                                               &mut reverse_reduced_acceptor_penalty);
         best_column_indexes.clear();
         *best_column_indexes = column_indexes.clone();
         for i in 0..profile.len() {
@@ -314,7 +329,10 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
-                let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reduced_donor_penalty, &reduced_acceptor_penalty, 20);
+                let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, 20);
+                // TODO: do the alignment with the forward strand donor and acceptor penalty, then compare the score to determine the better alignment.
+                // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, 20);
+
                 // println!("align end");
                 println!("iter: {}, qname: {}", iteration, readname);
                 println!("ref target: \n{}", std::str::from_utf8(&ref_target).unwrap());
