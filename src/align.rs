@@ -1282,11 +1282,11 @@ pub fn banded_nw_splice_aware2(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
 }
 
 
-pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
-    let h = 2.0;
-    let g = 1.0;
-    let h2 = 32.0;
-    let p = 9.0;
+pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, reduced_donor_penalty: &Vec<f64>, reduced_acceptor_penalty: &Vec<f64>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    let h = 2.0;    // short gap open, q in minimap2
+    let g = 1.0;    // short gap extend, e in minimap2
+    let h2 = 32.0;  // long gap open, q hat in minimap2
+    // let p = 9.0; // splice junction site penalty
     let match_score = 2.0;
     let mismatch_score = -1.0;
 
@@ -1326,8 +1326,8 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
     // Initialize first row
     mat[0][width + 1].ix = -h - g;
     mat[0][width + 1].iy = -h - g - f64::INFINITY;
-    mat[0][width + 1].ix2 = -h2;
-    mat[0][width + 1].m = mat[0][width + 1].ix.max(mat[0][width + 1].iy).max(mat[0][width + 1].ix2 - p);
+    mat[0][width + 1].ix2 = -f64::INFINITY;
+    mat[0][width + 1].m = mat[0][width + 1].ix.max(mat[0][width + 1].iy).max(mat[0][width + 1].ix2);
 
     // for j in width + 2..2 * width + 3 {
     //     mat[0][j].ix = -f64::INFINITY;
@@ -1395,19 +1395,19 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
                 }
             }
 
-            mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - h2).max(mat[i - 1][v + 1 - offset].ix2);
-            if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - h2 {
+            mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 2] - h2).max(mat[i - 1][v + 1 - offset].ix2); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+            if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 2] - h2 {
                 mat[i][v].ix2_prev_m = true;
             } else if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].ix2 {
                 mat[i][v].ix2_prev_ix2 = true;
             }
 
-            mat[i][v].m = (mat[i - 1][v - offset].m + sij).max(mat[i][v].ix).max(mat[i][v].iy).max(mat[i][v].ix2 - p);
+            mat[i][v].m = (mat[i - 1][v - offset].m + sij).max(mat[i][v].ix).max(mat[i][v].iy).max(mat[i][v].ix2 - reduced_acceptor_penalty[i - 1]); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[i][v].m == mat[i - 1][v - offset].m + sij {
                 mat[i][v].m_prev_m = true;
             } else if mat[i][v].m == mat[i][v].ix {
                 mat[i][v].m_prev_ix = true;
-            } else if mat[i][v].m == mat[i][v].ix2 - p {
+            } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i - 1] {
                 mat[i][v].m_prev_ix2 = true;
             }
         }
