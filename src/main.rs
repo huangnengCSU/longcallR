@@ -128,10 +128,10 @@ fn main() {
     // println!("ref_target:\n {:?}", ref_target);
     // println!("major_target:\n {:?}", major_target);
     for i in 0..matrices_vec.len() {
-        let (donor_penalty, acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(4.0);
+        let (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(9.0);
         let mut best_reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut best_column_indexes: Vec<usize> = Vec::new();
-        PileupMatrix::profile_realign(&matrices_vec[i].base_matrix, &donor_penalty, &acceptor_penalty, &mut best_reduced_base_matrix, &mut best_column_indexes);
+        PileupMatrix::profile_realign(&matrices_vec[i].base_matrix, &reverse_donor_penalty, &reverse_acceptor_penalty, &mut best_reduced_base_matrix, &mut best_column_indexes);
         // let seq = std::str::from_utf8(matrices_vec[i].base_matrix.iter().next().unwrap().1).unwrap().to_string();
         // println!("seq: \n{:?}", seq);
         matrices_vec[i].update_base_matrix_from_realign(&best_reduced_base_matrix, &best_column_indexes);

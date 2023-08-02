@@ -162,20 +162,25 @@ impl PileupMatrix {
         }
     }
 
-    pub fn get_donor_acceptor_penalty(&self, standed_penalty: f64) -> (Vec<f64>, Vec<f64>) {
-        let mut donor_penalty: Vec<f64> = Vec::new();
-        let mut acceptor_penalty: Vec<f64> = Vec::new();
+    pub fn get_donor_acceptor_penalty(&self, standed_penalty: f64) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+        let mut forward_donor_penalty: Vec<f64> = Vec::new();
+        let mut forward_acceptor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_donor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_acceptor_penalty: Vec<f64> = Vec::new();
         let mut ref_sliding_window: Vec<u8> = Vec::new();
         let ref_base_vec = self.base_matrix.get("ref").unwrap();
         for i in 0..ref_base_vec.len() {
             if ref_base_vec[i] == b'-' {
-                donor_penalty.push(standed_penalty);
-                acceptor_penalty.push(standed_penalty);
+                forward_donor_penalty.push(standed_penalty);
+                forward_acceptor_penalty.push(standed_penalty);
+                reverse_donor_penalty.push(standed_penalty);
+                reverse_acceptor_penalty.push(standed_penalty);
                 continue;
             }
 
             if i - 2 < 0 {
-                acceptor_penalty.push(standed_penalty);
+                forward_acceptor_penalty.push(standed_penalty);
+                reverse_acceptor_penalty.push(standed_penalty);
             } else {
                 let mut j = i as i32;
                 ref_sliding_window.clear();
@@ -191,20 +196,30 @@ impl PileupMatrix {
                 }
 
                 if tstr.len() < 3 {
-                    acceptor_penalty.push(standed_penalty);
+                    forward_acceptor_penalty.push(standed_penalty);
+                    reverse_acceptor_penalty.push(standed_penalty);
                 } else {
                     if tstr[1..3] == "AC".to_string() {
-                        acceptor_penalty.push(standed_penalty / 2.0);
+                        forward_acceptor_penalty.push(standed_penalty / 2.0);
                     } else if tstr == "CAG".to_string() || tstr == "TAG".to_string() || tstr == "AAG".to_string() || tstr == "GAG".to_string() {
-                        acceptor_penalty.push(0.0);
+                        forward_acceptor_penalty.push(0.0);
                     } else {
-                        acceptor_penalty.push(standed_penalty);
+                        forward_acceptor_penalty.push(standed_penalty);
+                    }
+
+                    if tstr[1..3] == "GC".to_string() || tstr[1..3] == "AT".to_string() {
+                        reverse_acceptor_penalty.push(standed_penalty / 2.0);
+                    } else if tstr == "TAC".to_string() || tstr == "CAC".to_string() || tstr == "GAC".to_string() || tstr == "AAC".to_string() {
+                        reverse_acceptor_penalty.push(0.0);
+                    } else {
+                        reverse_acceptor_penalty.push(standed_penalty);
                     }
                 }
             }
 
             if i + 2 >= ref_base_vec.len() {
-                donor_penalty.push(standed_penalty);
+                forward_donor_penalty.push(standed_penalty);
+                reverse_donor_penalty.push(standed_penalty);
             } else {
                 let mut j = i;
                 ref_sliding_window.clear();
@@ -219,19 +234,28 @@ impl PileupMatrix {
                     tstr.push(*c as char);
                 }
                 if tstr.len() < 3 {
-                    donor_penalty.push(standed_penalty);
+                    forward_donor_penalty.push(standed_penalty);
+                    reverse_donor_penalty.push(standed_penalty);
                 } else {
                     if tstr[0..2] == "GC".to_string() || tstr[0..2] == "AT".to_string() {
-                        donor_penalty.push(standed_penalty / 2.0);
+                        forward_donor_penalty.push(standed_penalty / 2.0);
                     } else if tstr == "GTA".to_string() || tstr == "GTG".to_string() || tstr == "GTC".to_string() || tstr == "GTT".to_string() {
-                        donor_penalty.push(0.0);
+                        forward_donor_penalty.push(0.0);
                     } else {
-                        donor_penalty.push(standed_penalty);
+                        forward_donor_penalty.push(standed_penalty);
+                    }
+
+                    if tstr[0..2] == "GT".to_string() {
+                        reverse_donor_penalty.push(standed_penalty / 2.0);
+                    } else if tstr == "CTG".to_string() || tstr == "CTA".to_string() || tstr == "CTT".to_string() || tstr == "CTC".to_string() {
+                        reverse_donor_penalty.push(0.0);
+                    } else {
+                        reverse_donor_penalty.push(standed_penalty);
                     }
                 }
             }
         }
-        (donor_penalty, acceptor_penalty)
+        (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty)
     }
 
     pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>, donor_penalty: &Vec<f64>, acceptor_penalty: &Vec<f64>,
