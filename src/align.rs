@@ -1394,9 +1394,9 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
                     mat[i][v].ix_prev_ix = true;
                 }
             }
-
-            mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 2] - h2).max(mat[i - 1][v + 1 - offset].ix2); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
-            if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 2] - h2 {
+            // println!("i:{}", i);
+            mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2).max(mat[i - 1][v + 1 - offset].ix2); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+            if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 {
                 mat[i][v].ix2_prev_m = true;
             } else if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].ix2 {
                 mat[i][v].ix2_prev_ix2 = true;

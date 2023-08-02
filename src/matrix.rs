@@ -203,10 +203,10 @@ impl PileupMatrix {
                 }
             }
 
-            if i + 3 >= ref_base_vec.len() {
+            if i + 2 >= ref_base_vec.len() {
                 donor_penalty.push(standed_penalty);
             } else {
-                let mut j = i + 1;
+                let mut j = i;
                 ref_sliding_window.clear();
                 while ref_sliding_window.len() < 3 && j < ref_base_vec.len() {
                     if ref_base_vec[j] != b'-' {
