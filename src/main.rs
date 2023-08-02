@@ -112,14 +112,14 @@ fn main() {
     let mut column_indexes: Vec<usize> = Vec::new();
     let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
 
-    PileupMatrix::generate_reduced_profile(&matrices_vec[0].base_matrix, &mut column_base_counts, &mut column_indexes, &mut reduced_base_matrix);
+    // PileupMatrix::generate_reduced_profile(&matrices_vec[0].base_matrix, &mut column_base_counts, &mut column_indexes, &mut reduced_base_matrix);
     // for cbc in column_base_counts.iter() {
     //     println!("A:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
     // }
-    for i in 0..column_base_counts.len() {
-        let cbc = &column_base_counts[i];
-        println!("idx:{}\tA:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", &column_indexes[i], cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
-    }
+    // for i in 0..column_base_counts.len() {
+    //     let cbc = &column_base_counts[i];
+    //     println!("idx:{}\tA:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", &column_indexes[i], cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
+    // }
 
     // let query = String::from_utf8(matrices_vec[0].base_matrix.iter().next().unwrap().1.to_vec()).unwrap().replace("N", "").replace(" ", "");
     // let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query, &column_base_counts);
@@ -128,9 +128,10 @@ fn main() {
     // println!("ref_target:\n {:?}", ref_target);
     // println!("major_target:\n {:?}", major_target);
     for i in 0..matrices_vec.len() {
+        let (donor_penalty, acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(9.0);
         let mut best_reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut best_column_indexes: Vec<usize> = Vec::new();
-        PileupMatrix::profile_realign(&matrices_vec[i].base_matrix, &mut best_reduced_base_matrix, &mut best_column_indexes);
+        PileupMatrix::profile_realign(&matrices_vec[i].base_matrix, &donor_penalty, &acceptor_penalty, &mut best_reduced_base_matrix, &mut best_column_indexes);
         // let seq = std::str::from_utf8(matrices_vec[i].base_matrix.iter().next().unwrap().1).unwrap().to_string();
         // println!("seq: \n{:?}", seq);
         matrices_vec[i].update_base_matrix_from_realign(&best_reduced_base_matrix, &best_column_indexes);
@@ -144,3 +145,58 @@ fn main() {
         matrices_vec[i].write_bam_records("new4.bam", &header);
     }
 }
+
+/*fn main() {
+    let bam_path = "wtc11_ont_grch38.chr22.bam";
+    let region = "chr22:36961654-37042120";
+    let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
+    let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
+    generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
+
+    for i in 0..matrices_vec.len() {
+        let mut column_base_counts: Vec<ColumnBaseCount> = Vec::new();
+        let mut column_indexes: Vec<usize> = Vec::new();
+        let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut reduced_donor_penalty: Vec<f64> = Vec::new();
+        let mut reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let (donor_penalty, acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(30.0);
+        PileupMatrix::generate_reduced_profile(&matrices_vec[i].base_matrix,
+                                               &donor_penalty,
+                                               &acceptor_penalty,
+                                               &mut column_base_counts,
+                                               &mut column_indexes,
+                                               &mut reduced_base_matrix,
+                                               &mut reduced_donor_penalty,
+                                               &mut reduced_acceptor_penalty);
+        println!("reference:");
+        for d in matrices_vec[i].base_matrix.get("ref").unwrap().iter() {
+            print!("{}\t", *d as char);
+        }
+        println!();
+        println!("donor_penalty:");
+        for d in donor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("acceptor_penalty:");
+        for d in acceptor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("reduced reference:");
+        for d in reduced_base_matrix.get("ref").unwrap().iter() {
+            print!("{}\t", *d as char);
+        }
+        println!();
+        println!("reduced donor_penalty:");
+        for d in reduced_donor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("reduced acceptor_penalty:");
+        for d in reduced_acceptor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+    }
+}*/
