@@ -329,9 +329,25 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
-                let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, 20);
+                let (reverse_alignment_score, reverse_aligned_query, reverse_ref_target, reverse_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, 20);
                 // TODO: do the alignment with the forward strand donor and acceptor penalty, then compare the score to determine the better alignment.
-                // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, 20);
+                let (forward_alignment_score, forward_aligned_query, forward_ref_target, forward_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, 20);
+
+                let alignment_score: f64;
+                let aligned_query: Vec<u8>;
+                let ref_target: Vec<u8>;
+                let major_target: Vec<u8>;
+                if forward_alignment_score > reverse_alignment_score {
+                    alignment_score = forward_alignment_score;
+                    aligned_query = forward_aligned_query;
+                    ref_target = forward_ref_target;
+                    major_target = forward_major_target;
+                } else {
+                    alignment_score = reverse_alignment_score;
+                    aligned_query = reverse_aligned_query;
+                    ref_target = reverse_ref_target;
+                    major_target = reverse_major_target;
+                }
 
                 // println!("align end");
                 println!("iter: {}, qname: {}", iteration, readname);
