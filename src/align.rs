@@ -1283,6 +1283,8 @@ pub fn banded_nw_splice_aware2(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
 
 
 pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, reduced_donor_penalty: &Vec<f64>, reduced_acceptor_penalty: &Vec<f64>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+    // TODO: calculate penalty of passing a intron region, where the region is cut by the process of cutting all reads introns.
+    // Case: wtc11_ont_grch38: chr22:37024802-37025006
     let h = 2.0;    // short gap open, q in minimap2
     let g = 1.0;    // short gap extend, e in minimap2
     let h2 = 32.0;  // long gap open, q hat in minimap2
