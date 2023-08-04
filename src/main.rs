@@ -27,7 +27,9 @@ fn main() {
     // let region = "chr22:36651200-36651536";
     // let region = "chr22:34628310-34634051";
     // let region = "chr22:37051212-37073437";
-    let region = "chr22:36961654-37042120";
+    // let region = "chr22:36961654-37042120";
+    let region = "chr22:37009116-37030993";
+    // let region = "chr22:35231510-35374531";
     // let region = "chr22:46683664-46741231";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
@@ -152,9 +154,9 @@ fn main() {
     }
 }
 
-/*fn main() {
+fn main2() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
-    let region = "chr22:36961654-37042120";
+    let region = "chr22:37009116-37030993";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
     generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
@@ -163,29 +165,45 @@ fn main() {
         let mut column_base_counts: Vec<ColumnBaseCount> = Vec::new();
         let mut column_indexes: Vec<usize> = Vec::new();
         let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
-        let mut reduced_donor_penalty: Vec<f64> = Vec::new();
-        let mut reduced_acceptor_penalty: Vec<f64> = Vec::new();
-        let (donor_penalty, acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(30.0);
+        let mut forward_reduced_donor_penalty: Vec<f64> = Vec::new();
+        let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_redcued_donor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(9.0);
         PileupMatrix::generate_reduced_profile(&matrices_vec[i].base_matrix,
-                                               &donor_penalty,
-                                               &acceptor_penalty,
+                                               &forward_donor_penalty,
+                                               &forward_acceptor_penalty,
+                                               &reverse_donor_penalty,
+                                               &reverse_acceptor_penalty,
                                                &mut column_base_counts,
                                                &mut column_indexes,
                                                &mut reduced_base_matrix,
-                                               &mut reduced_donor_penalty,
-                                               &mut reduced_acceptor_penalty);
+                                               &mut forward_reduced_donor_penalty,
+                                               &mut forward_reduced_acceptor_penalty,
+                                               &mut reverse_redcued_donor_penalty,
+                                               &mut reverse_reduced_acceptor_penalty);
         println!("reference:");
         for d in matrices_vec[i].base_matrix.get("ref").unwrap().iter() {
             print!("{}\t", *d as char);
         }
         println!();
-        println!("donor_penalty:");
-        for d in donor_penalty.iter() {
+        println!("forward donor_penalty:");
+        for d in forward_donor_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
-        println!("acceptor_penalty:");
-        for d in acceptor_penalty.iter() {
+        println!("forward acceptor_penalty:");
+        for d in forward_acceptor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("reverse donor_penalty:");
+        for d in reverse_donor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("reverse acceptor_penalty:");
+        for d in reverse_acceptor_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
@@ -194,15 +212,25 @@ fn main() {
             print!("{}\t", *d as char);
         }
         println!();
-        println!("reduced donor_penalty:");
-        for d in reduced_donor_penalty.iter() {
+        println!("forward reduced donor_penalty:");
+        for d in forward_reduced_donor_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
-        println!("reduced acceptor_penalty:");
-        for d in reduced_acceptor_penalty.iter() {
+        println!("forward reduced acceptor_penalty:");
+        for d in forward_reduced_acceptor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("reverse reduced donor_penalty:");
+        for d in reverse_redcued_donor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        println!("reverse reduced acceptor_penalty:");
+        for d in reverse_reduced_acceptor_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
     }
-}*/
+}

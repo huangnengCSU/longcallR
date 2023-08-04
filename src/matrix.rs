@@ -131,10 +131,13 @@ impl PileupMatrix {
                                     reverse_reduced_acceptor_penalty: &mut Vec<f64>) {
         assert!(base_matrix.len() > 0);
         let ncols = base_matrix.iter().next().unwrap().1.len();
-        assert!(forward_donor_penalty.len() == ncols);
-        assert!(forward_acceptor_penalty.len() == ncols);
-        assert!(reverse_donor_penalty.len() == ncols);
-        assert!(reverse_acceptor_penalty.len() == ncols);
+        // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
+        // The size of donor and acceptor is ref_base_vec.len() + 1.
+        // The last element of donor is meaningless, but the last element of acceptor is meaningful.
+        assert!(forward_donor_penalty.len() == ncols + 1);
+        assert!(forward_acceptor_penalty.len() == ncols + 1);
+        assert!(reverse_donor_penalty.len() == ncols + 1);
+        assert!(reverse_acceptor_penalty.len() == ncols + 1);
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
         for i in 0..ncols {
@@ -158,6 +161,13 @@ impl PileupMatrix {
             reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
             reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
         }
+        // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
+        // The size of donor and acceptor is ref_base_vec.len() + 1.
+        // The last element of donor is meaningless, but the last element of acceptor is meaningful.
+        forward_reduced_donor_penalty.push(forward_donor_penalty[ncols]);
+        reverse_reduced_donor_penalty.push(reverse_donor_penalty[ncols]);
+        forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[ncols]);
+        reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[ncols]);
         reduced_base_matrix.clear();
         for i in column_indexes.iter() {
             for (readname, base_vec) in base_matrix.iter() {
@@ -177,8 +187,11 @@ impl PileupMatrix {
         let mut reverse_acceptor_penalty: Vec<f64> = Vec::new();
         let mut ref_sliding_window: Vec<u8> = Vec::new();
         let ref_base_vec = self.base_matrix.get("ref").unwrap();
-        for i in 0..ref_base_vec.len() {
-            if ref_base_vec[i] == b'-' {
+        for i in 0..ref_base_vec.len() + 1 {
+            // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
+            // The size of donor and acceptor is ref_base_vec.len() + 1.
+            // The last element of donor is meaningless, but the last element of acceptor is meaningful.
+            if i < ref_base_vec.len() && ref_base_vec[i] == b'-' {
                 forward_donor_penalty.push(standed_penalty);
                 forward_acceptor_penalty.push(standed_penalty);
                 reverse_donor_penalty.push(standed_penalty);
@@ -186,11 +199,12 @@ impl PileupMatrix {
                 continue;
             }
 
-            if i - 2 < 0 {
+            // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
+            if i - 3 < 0 {
                 forward_acceptor_penalty.push(standed_penalty);
                 reverse_acceptor_penalty.push(standed_penalty);
             } else {
-                let mut j = i as i32;
+                let mut j = i as i32 - 1;
                 ref_sliding_window.clear();
                 while ref_sliding_window.len() < 3 && j >= 0 {
                     if ref_base_vec[j as usize] != b'-' {

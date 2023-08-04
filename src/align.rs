@@ -1402,12 +1402,16 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
                 mat[i][v].ix2_prev_ix2 = true;
             }
 
-            mat[i][v].m = (mat[i - 1][v - offset].m + sij).max(mat[i][v].ix).max(mat[i][v].iy).max(mat[i][v].ix2 - reduced_acceptor_penalty[i - 1]); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+            // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
+            // The size of donor and acceptor is ref_base_vec.len() + 1.
+            // The last element of donor is meaningless, but the last element of acceptor is meaningful.
+            // This is for solving the problem of the acceptor was cut off by all introns, then the following base has no information the acceptor penalty.
+            mat[i][v].m = (mat[i - 1][v - offset].m + sij).max(mat[i][v].ix).max(mat[i][v].iy).max(mat[i][v].ix2 - reduced_acceptor_penalty[i]); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[i][v].m == mat[i - 1][v - offset].m + sij {
                 mat[i][v].m_prev_m = true;
             } else if mat[i][v].m == mat[i][v].ix {
                 mat[i][v].m_prev_ix = true;
-            } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i - 1] {
+            } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i] {
                 mat[i][v].m_prev_ix2 = true;
             }
         }
