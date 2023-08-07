@@ -128,7 +128,9 @@ impl PileupMatrix {
                                     forward_reduced_donor_penalty: &mut Vec<f64>,
                                     forward_reduced_acceptor_penalty: &mut Vec<f64>,
                                     reverse_reduced_donor_penalty: &mut Vec<f64>,
-                                    reverse_reduced_acceptor_penalty: &mut Vec<f64>) {
+                                    reverse_reduced_acceptor_penalty: &mut Vec<f64>,
+                                    hidden_splice_penalty: &mut Vec<f64>) {
+        // TODO: useless of hidden_splice_penalty, remove later.
         assert!(base_matrix.len() > 0);
         let ncols = base_matrix.iter().next().unwrap().1.len();
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
@@ -140,6 +142,7 @@ impl PileupMatrix {
         assert!(reverse_acceptor_penalty.len() == ncols + 1);
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
+        let mut extended = false;
         for i in 0..ncols {
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
@@ -150,6 +153,17 @@ impl PileupMatrix {
             }
             let cbc = ColumnBaseCount::new_from_column(&column_bases, ref_base);
             if (cbc.n_a + cbc.n_c + cbc.n_g + cbc.n_t + cbc.n_dash) == 0 && cbc.n_n > 0 {
+                if *column_indexes.last().unwrap() == i - 1 && !extended {
+                    // extend one base at the beginning of the reduced region
+                    column_base_counts.push(cbc);
+                    column_indexes.push(i);
+                    column_bases.clear();
+                    forward_reduced_donor_penalty.push(forward_donor_penalty[i]);
+                    forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
+                    reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
+                    reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
+                    extended = true;
+                }
                 column_bases.clear();
                 continue;
             }
@@ -160,6 +174,7 @@ impl PileupMatrix {
             forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
             reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
             reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
+            extended = false;
         }
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         // The size of donor and acceptor is ref_base_vec.len() + 1.
@@ -176,6 +191,15 @@ impl PileupMatrix {
                 } else {
                     reduced_base_matrix.get_mut(readname).unwrap().push(base_vec[*i]);
                 }
+            }
+        }
+
+        hidden_splice_penalty.push(0.0);
+        for i in 1..column_indexes.len() {
+            if column_indexes[i] - column_indexes[i - 1] != 1 {
+                hidden_splice_penalty.push(1.0);
+            } else {
+                hidden_splice_penalty.push(0.0);
             }
         }
     }
@@ -293,6 +317,7 @@ impl PileupMatrix {
         let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_donor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let mut hidden_splice_penalty: Vec<f64> = Vec::new();
         let mut prev_aligned_seq: Vec<u8> = Vec::new();
         PileupMatrix::generate_reduced_profile(base_matrix,
                                                forward_donor_penalty,
@@ -305,7 +330,8 @@ impl PileupMatrix {
                                                &mut forward_reduced_donor_penalty,
                                                &mut forward_reduced_acceptor_penalty,
                                                &mut reverse_reduced_donor_penalty,
-                                               &mut reverse_reduced_acceptor_penalty);
+                                               &mut reverse_reduced_acceptor_penalty,
+                                               &mut hidden_splice_penalty);
         best_column_indexes.clear();
         *best_column_indexes = column_indexes.clone();
         for i in 0..profile.len() {
@@ -343,9 +369,9 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
-                let (reverse_alignment_score, reverse_aligned_query, reverse_ref_target, reverse_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, 20);
+                let (reverse_alignment_score, reverse_aligned_query, reverse_ref_target, reverse_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, &hidden_splice_penalty, 20);
                 // TODO: do the alignment with the forward strand donor and acceptor penalty, then compare the score to determine the better alignment.
-                let (forward_alignment_score, forward_aligned_query, forward_ref_target, forward_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, 20);
+                let (forward_alignment_score, forward_aligned_query, forward_ref_target, forward_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, &hidden_splice_penalty, 20);
 
                 let alignment_score: f64;
                 let aligned_query: Vec<u8>;
