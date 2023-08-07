@@ -1282,8 +1282,9 @@ pub fn banded_nw_splice_aware2(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
 }
 
 
-pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, reduced_donor_penalty: &Vec<f64>, reduced_acceptor_penalty: &Vec<f64>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
+pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, reduced_donor_penalty: &Vec<f64>, reduced_acceptor_penalty: &Vec<f64>, hidden_splice_penalty: &Vec<f64>, width: usize) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
     // TODO: calculate penalty of passing a intron region, where the region is cut by the process of cutting all reads introns.
+    // TODO: useless of hidden_splice_penalty, remove later.
     // Case: wtc11_ont_grch38: chr22:37024802-37025006
     let h = 2.0;    // short gap open, q in minimap2
     let g = 1.0;    // short gap extend, e in minimap2
@@ -1491,12 +1492,12 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
     u = (v as i32 - (width as i32 + 1) + k as i32) as usize;    // index on query_without_gap
 
     let mut trace_back_stat;
-    if mat[i][v].m_prev_m {
-        trace_back_stat = TraceBack::M;
-    } else if mat[i][v].m_prev_ix {
+    if mat[i][v].m_prev_ix {
         trace_back_stat = TraceBack::IX;
     } else if mat[i][v].m_prev_ix2 {
         trace_back_stat = TraceBack::IX2;
+    } else if mat[i][v].m_prev_m {
+        trace_back_stat = TraceBack::M;
     } else {
         panic!("Error: no traceback");
     }
@@ -1510,7 +1511,11 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == TraceBack::M {
-            if mat[i][v].m_prev_m {
+            if mat[i][v].m_prev_ix {
+                trace_back_stat = TraceBack::IX;
+            } else if mat[i][v].m_prev_ix2 {
+                trace_back_stat = TraceBack::IX2;
+            } else if mat[i][v].m_prev_m {
                 aligned_query.push(qbase);
                 // aligned_target.push(tbase);
                 ref_target.push(ref_base);
@@ -1518,46 +1523,42 @@ pub fn banded_nw_splice_aware3(query: &Vec<u8>, profile: &Vec<ColumnBaseCount>, 
                 i -= 1;
                 u -= 1;
                 trace_back_stat = TraceBack::M;
-            } else if mat[i][v].m_prev_ix {
-                trace_back_stat = TraceBack::IX;
-            } else if mat[i][v].m_prev_ix2 {
-                trace_back_stat = TraceBack::IX2;
             } else {
                 panic!("Error: no traceback");
             }
         } else if trace_back_stat == TraceBack::IX {
-            if mat[i][v].ix_prev_m {
-                aligned_query.push(b'-');
-                // aligned_target.push(tbase);
-                ref_target.push(ref_base);
-                major_target.push(major_base);
-                i -= 1;
-                trace_back_stat = TraceBack::M;
-            } else if mat[i][v].ix_prev_ix {
+            if mat[i][v].ix_prev_ix {
                 aligned_query.push(b'-');
                 // aligned_target.push(tbase);
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::IX;
-            } else {
-                panic!("Error: no traceback");
-            }
-        } else if trace_back_stat == TraceBack::IX2 {
-            if mat[i][v].ix2_prev_m {
-                aligned_query.push(b'N');
+            } else if mat[i][v].ix_prev_m {
+                aligned_query.push(b'-');
                 // aligned_target.push(tbase);
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::M;
-            } else if mat[i][v].ix2_prev_ix2 {
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == TraceBack::IX2 {
+            if mat[i][v].ix2_prev_ix2 {
                 aligned_query.push(b'N');
                 // aligned_target.push(tbase);
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = TraceBack::IX2;
+            } else if mat[i][v].ix2_prev_m {
+                aligned_query.push(b'N');
+                // aligned_target.push(tbase);
+                ref_target.push(ref_base);
+                major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = TraceBack::M;
             } else {
                 panic!("Error: no traceback");
             }
