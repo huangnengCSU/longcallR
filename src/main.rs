@@ -169,6 +169,7 @@ fn main2() {
         let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut reverse_redcued_donor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
+        let mut hidden_splice_penalty: Vec<f64> = Vec::new();
         let (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(9.0);
         PileupMatrix::generate_reduced_profile(&matrices_vec[i].base_matrix,
                                                &forward_donor_penalty,
@@ -181,7 +182,8 @@ fn main2() {
                                                &mut forward_reduced_donor_penalty,
                                                &mut forward_reduced_acceptor_penalty,
                                                &mut reverse_redcued_donor_penalty,
-                                               &mut reverse_reduced_acceptor_penalty);
+                                               &mut reverse_reduced_acceptor_penalty,
+                                               &mut hidden_splice_penalty);
         println!("reference:");
         for d in matrices_vec[i].base_matrix.get("ref").unwrap().iter() {
             print!("{}\t", *d as char);
@@ -229,6 +231,10 @@ fn main2() {
         println!();
         println!("reverse reduced acceptor_penalty:");
         for d in reverse_reduced_acceptor_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        for d in hidden_splice_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
