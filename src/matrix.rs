@@ -366,6 +366,8 @@ impl PileupMatrix {
                 //       2. choose the sub_matrix from base_matrix between the banded start position and banded end position
                 //       3. calculate the alignment (reduce the size of target by ignoring the front padding and back padding)
                 //       4. update the base_matrix according the realignment and recorded related column index.
+
+                // TODO: update reduced_base_matrix after realigning a group of reads instead of realigning each read, reduce the times of generate new profile.
                 // println!("query: \n{}", query);
                 // println!("query len:{}, profile len:{}", query.len(), profile.len());
                 // println!("align begin, profile length: {}", &profile.len());
@@ -374,7 +376,6 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
                 let (reverse_alignment_score, reverse_aligned_query, reverse_ref_target, reverse_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, &hidden_splice_penalty, 20);
-                // TODO: do the alignment with the forward strand donor and acceptor penalty, then compare the score to determine the better alignment.
                 let (forward_alignment_score, forward_aligned_query, forward_ref_target, forward_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, &hidden_splice_penalty, 20);
 
                 let alignment_score: f64;
