@@ -362,6 +362,10 @@ impl PileupMatrix {
 
                 // let query = String::from_utf8(base_vec.clone()).unwrap().replace(" ", "").replace("-", "").replace("N", "");
                 let query = std::str::from_utf8(reduced_base_matrix.get(readname).unwrap()).unwrap();
+                // TODO: 1. get the banded start position and banded end position on the reference coordinate and record the related column index.
+                //       2. choose the sub_matrix from base_matrix between the banded start position and banded end position
+                //       3. calculate the alignment (reduce the size of target by ignoring the front padding and back padding)
+                //       4. update the base_matrix according the realignment and recorded related column index.
                 // println!("query: \n{}", query);
                 // println!("query len:{}, profile len:{}", query.len(), profile.len());
                 // println!("align begin, profile length: {}", &profile.len());
