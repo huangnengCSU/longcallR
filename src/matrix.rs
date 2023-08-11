@@ -142,7 +142,8 @@ impl PileupMatrix {
         assert!(reverse_acceptor_penalty.len() == ncols + 1);
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
-        let mut extended = false;
+        // let mut extended_size = false;
+        let mut extend_size = 41;   // donor site penalty (p) + splicing gap open (h2)
         for i in 0..ncols {
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
@@ -153,8 +154,8 @@ impl PileupMatrix {
             }
             let cbc = ColumnBaseCount::new_from_column(&column_bases, ref_base);
             if (cbc.n_a + cbc.n_c + cbc.n_g + cbc.n_t + cbc.n_dash) == 0 && cbc.n_n > 0 {
-                if *column_indexes.last().unwrap() == i - 1 && !extended {
-                    // extend one base at the beginning of the reduced region
+                if extend_size > 0 {
+                    // extend 32 base at the beginning of the reduced region
                     column_base_counts.push(cbc);
                     column_indexes.push(i);
                     column_bases.clear();
@@ -162,8 +163,19 @@ impl PileupMatrix {
                     forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
                     reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
                     reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
-                    extended = true;
+                    extend_size -= 1;
                 }
+                // if *column_indexes.last().unwrap() == i - 1 && !extended {
+                //     // extend one base at the beginning of the reduced region
+                //     column_base_counts.push(cbc);
+                //     column_indexes.push(i);
+                //     column_bases.clear();
+                //     forward_reduced_donor_penalty.push(forward_donor_penalty[i]);
+                //     forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
+                //     reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
+                //     reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
+                //     extended = true;
+                // }
                 column_bases.clear();
                 continue;
             }
@@ -174,13 +186,14 @@ impl PileupMatrix {
             forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
             reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
             reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
-            extended = false;
+            // extended = false;
+            extend_size = 41;
         }
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         // The size of donor and acceptor is ref_base_vec.len() + 1.
         // The last element of donor is meaningless, but the last element of acceptor is meaningful.
-        forward_reduced_donor_penalty.push(forward_donor_penalty[ncols]);
-        reverse_reduced_donor_penalty.push(reverse_donor_penalty[ncols]);
+        // forward_reduced_donor_penalty.push(forward_donor_penalty[ncols]);
+        // reverse_reduced_donor_penalty.push(reverse_donor_penalty[ncols]);
         forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[ncols]);
         reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[ncols]);
         reduced_base_matrix.clear();

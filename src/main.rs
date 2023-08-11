@@ -2,6 +2,7 @@ mod bam_reader;
 mod matrix;
 mod pileup2matrix;
 mod align;
+mod isolated_region;
 
 // extern crate bio;
 
@@ -17,6 +18,7 @@ use matrix::PileupMatrix;
 use pileup2matrix::generate_pileup_matrix;
 use crate::matrix::ColumnBaseCount;
 use align::nw_splice_aware;
+use isolated_region::find_isolated_regions;
 
 fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
@@ -28,9 +30,10 @@ fn main() {
     // let region = "chr22:34628310-34634051";
     // let region = "chr22:37051212-37073437";
     // let region = "chr22:36961654-37042120";
+    // let region = "chr22:26483883-26512499";
+    // let region = "chr22:20302014-20324303";
+    // let region = "chr22:26483883-26512499";
     let region = "chr22:37009116-37030993";
-    // let region = "chr22:35231510-35374531";
-    // let region = "chr22:46683664-46741231";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
@@ -130,7 +133,10 @@ fn main() {
     // println!("ref_target:\n {:?}", ref_target);
     // println!("major_target:\n {:?}", major_target);
     for i in 0..matrices_vec.len() {
-        let (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(9.0);
+        let (forward_donor_penalty,
+            forward_acceptor_penalty,
+            reverse_donor_penalty,
+            reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(9.0);
         let mut best_reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut best_column_indexes: Vec<usize> = Vec::new();
         PileupMatrix::profile_realign(&matrices_vec[i].base_matrix,
@@ -156,6 +162,7 @@ fn main() {
 
 fn main2() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
+    // let region = "chr22:37009116-37030993";
     let region = "chr22:37009116-37030993";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
@@ -238,5 +245,13 @@ fn main2() {
             print!("{}\t", d);
         }
         println!();
+    }
+}
+
+fn main3() {
+    let bam_path = "wtc11_ont_grch38.chr22.bam";
+    let regions = find_isolated_regions(bam_path, 200);
+    for region in regions.iter() {
+        println!("{}:{}-{}", region.chr, region.start, region.end);
     }
 }
