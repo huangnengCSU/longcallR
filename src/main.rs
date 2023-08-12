@@ -33,7 +33,9 @@ fn main() {
     // let region = "chr22:26483883-26512499";
     // let region = "chr22:20302014-20324303";
     // let region = "chr22:26483883-26512499";
-    let region = "chr22:37009116-37030993";
+    // let region = "chr22:37009116-37030993";
+    // let region = "chr22:20302014-20324303";
+    let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
