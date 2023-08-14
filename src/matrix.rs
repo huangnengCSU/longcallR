@@ -1,13 +1,13 @@
-use std::process;
+use crate::align::{banded_nw_splice_aware3, nw_splice_aware, semi_nw_splice_aware};
+use crate::bam_reader::Region;
+use rust_htslib::bam::record::Cigar;
+use rust_htslib::bam::record::CigarString;
+use rust_htslib::bam::Format;
+use rust_htslib::{bam, bam::Read};
 use std::cmp::max;
 use std::collections::{HashMap, VecDeque};
 use std::fs::read;
-use rust_htslib::{bam, bam::Read};
-use crate::bam_reader::Region;
-use crate::align::{nw_splice_aware, semi_nw_splice_aware, banded_nw_splice_aware, banded_nw_splice_aware2, banded_nw_splice_aware3};
-use rust_htslib::bam::Format;
-use rust_htslib::bam::record::Cigar;
-use rust_htslib::bam::record::CigarString;
+use std::process;
 
 #[derive(Clone)]
 pub struct PileupMatrix {
@@ -61,12 +61,20 @@ impl PileupMatrix {
             }
         } else {
             for i in 0..base_seq.len() {
-                self.base_matrix.get_mut(readname).unwrap().push(base_seq[i]);
+                self.base_matrix
+                    .get_mut(readname)
+                    .unwrap()
+                    .push(base_seq[i]);
             }
         }
     }
 
-    pub fn expand(&mut self, seq_lengths: &HashMap<String, u32>, pos: &u32, max_insertion_size: i32) {
+    pub fn expand(
+        &mut self,
+        seq_lengths: &HashMap<String, u32>,
+        pos: &u32,
+        max_insertion_size: i32,
+    ) {
         for (readname, seq_len) in seq_lengths.iter() {
             let expand_size = max_insertion_size - seq_len.clone() as i32;
             if expand_size > 0 {
@@ -98,7 +106,10 @@ impl PileupMatrix {
         self.region = Region::new("c:0-0".to_string());
     }
 
-    pub fn generate_column_profile(base_matrix: &HashMap<String, Vec<u8>>, column_base_counts: &mut Vec<ColumnBaseCount>) {
+    pub fn generate_column_profile(
+        base_matrix: &HashMap<String, Vec<u8>>,
+        column_base_counts: &mut Vec<ColumnBaseCount>,
+    ) {
         assert!(base_matrix.len() > 0);
         let ncols = base_matrix.iter().next().unwrap().1.len();
         let mut ref_base: u8 = 0;
@@ -117,19 +128,21 @@ impl PileupMatrix {
         }
     }
 
-    pub fn generate_reduced_profile(base_matrix: &HashMap<String, Vec<u8>>,
-                                    forward_donor_penalty: &Vec<f64>,
-                                    forward_acceptor_penalty: &Vec<f64>,
-                                    reverse_donor_penalty: &Vec<f64>,
-                                    reverse_acceptor_penalty: &Vec<f64>,
-                                    column_base_counts: &mut Vec<ColumnBaseCount>,
-                                    column_indexes: &mut Vec<usize>,
-                                    reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
-                                    forward_reduced_donor_penalty: &mut Vec<f64>,
-                                    forward_reduced_acceptor_penalty: &mut Vec<f64>,
-                                    reverse_reduced_donor_penalty: &mut Vec<f64>,
-                                    reverse_reduced_acceptor_penalty: &mut Vec<f64>,
-                                    hidden_splice_penalty: &mut Vec<f64>) {
+    pub fn generate_reduced_profile(
+        base_matrix: &HashMap<String, Vec<u8>>,
+        forward_donor_penalty: &Vec<f64>,
+        forward_acceptor_penalty: &Vec<f64>,
+        reverse_donor_penalty: &Vec<f64>,
+        reverse_acceptor_penalty: &Vec<f64>,
+        column_base_counts: &mut Vec<ColumnBaseCount>,
+        column_indexes: &mut Vec<usize>,
+        reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
+        forward_reduced_donor_penalty: &mut Vec<f64>,
+        forward_reduced_acceptor_penalty: &mut Vec<f64>,
+        reverse_reduced_donor_penalty: &mut Vec<f64>,
+        reverse_reduced_acceptor_penalty: &mut Vec<f64>,
+        hidden_splice_penalty: &mut Vec<f64>,
+    ) {
         // TODO: useless of hidden_splice_penalty, remove later.
         assert!(base_matrix.len() > 0);
         let ncols = base_matrix.iter().next().unwrap().1.len();
@@ -143,7 +156,7 @@ impl PileupMatrix {
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
         // let mut extended_size = false;
-        let mut extend_size = 41;   // donor site penalty (p) + splicing gap open (h2)
+        let mut extend_size = 0; // donor site penalty (p) + splicing gap open (h2)
         for i in 0..ncols {
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
@@ -187,7 +200,7 @@ impl PileupMatrix {
             reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
             reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
             // extended = false;
-            extend_size = 41;
+            extend_size = 0;
         }
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         // The size of donor and acceptor is ref_base_vec.len() + 1.
@@ -202,22 +215,63 @@ impl PileupMatrix {
                 if reduced_base_matrix.get(readname).is_none() {
                     reduced_base_matrix.insert(readname.clone(), vec![base_vec[*i]]);
                 } else {
-                    reduced_base_matrix.get_mut(readname).unwrap().push(base_vec[*i]);
+                    reduced_base_matrix
+                        .get_mut(readname)
+                        .unwrap()
+                        .push(base_vec[*i]);
                 }
             }
         }
 
-        hidden_splice_penalty.push(0.0);
-        for i in 1..column_indexes.len() {
-            if column_indexes[i] - column_indexes[i - 1] != 1 {
-                hidden_splice_penalty.push(1.0);
+        let mut ref_sliding_window: Vec<u8> = Vec::new();
+        let ref_base_vec = base_matrix.get("ref").unwrap();
+        // hidden_splice_penalty.push(0.0);
+        for i in 0..column_indexes.len() - 1 {
+            if column_indexes[i + 1] - column_indexes[i] != 1 {
+                // only next base is splicing donor site, then add splicing penalty.
+                let mut j = column_indexes[i] + 1;
+                ref_sliding_window.clear();
+                while ref_sliding_window.len() < 3 && j < ref_base_vec.len() {
+                    if ref_base_vec[j] != b'-' {
+                        ref_sliding_window.push(ref_base_vec[j]);
+                    }
+                    j += 1;
+                }
+                let mut tstr = String::new();
+                for c in ref_sliding_window.iter() {
+                    tstr.push(*c as char);
+                }
+                if tstr.len() < 3 {
+                    hidden_splice_penalty.push(0.0);
+                } else {
+                    if tstr[0..2] == "AT".to_string()
+                        || tstr[0..2] == "GC".to_string()
+                        || tstr == "GTC".to_string()
+                        || tstr == "GTT".to_string()
+                        || tstr == "GTA".to_string()
+                        || tstr == "GTG".to_string()
+                        || tstr[0..2] == "GT".to_string()
+                        || tstr == "CTT".to_string()
+                        || tstr == "CTC".to_string()
+                        || tstr == "CTG".to_string()
+                        || tstr == "CTA"
+                    {
+                        hidden_splice_penalty.push(1.0);
+                    } else {
+                        hidden_splice_penalty.push(0.0);
+                    }
+                }
             } else {
                 hidden_splice_penalty.push(0.0);
             }
         }
+        hidden_splice_penalty.push(0.0);
     }
 
-    pub fn get_donor_acceptor_penalty(&self, standed_penalty: f64) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    pub fn get_donor_acceptor_penalty(
+        &self,
+        standed_penalty: f64,
+    ) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
         let mut forward_donor_penalty: Vec<f64> = Vec::new();
         let mut forward_acceptor_penalty: Vec<f64> = Vec::new();
         let mut reverse_donor_penalty: Vec<f64> = Vec::new();
@@ -259,16 +313,22 @@ impl PileupMatrix {
                     reverse_acceptor_penalty.push(standed_penalty);
                 } else {
                     if tstr[1..3] == "AC".to_string() {
-                        forward_acceptor_penalty.push(standed_penalty / 2.0);
-                    } else if tstr == "CAG".to_string() || tstr == "TAG".to_string() || tstr == "AAG".to_string() || tstr == "GAG".to_string() {
+                        forward_acceptor_penalty.push(standed_penalty - 9.0);
+                    } else if tstr == "AAG".to_string() || tstr == "GAG".to_string() {
+                        forward_acceptor_penalty.push(standed_penalty - 22.0);
+                    } else if tstr == "CAG".to_string() || tstr == "TAG".to_string() {
                         forward_acceptor_penalty.push(0.0);
                     } else {
                         forward_acceptor_penalty.push(standed_penalty);
                     }
 
-                    if tstr[1..3] == "GC".to_string() || tstr[1..3] == "AT".to_string() {
-                        reverse_acceptor_penalty.push(standed_penalty / 2.0);
-                    } else if tstr == "TAC".to_string() || tstr == "CAC".to_string() || tstr == "GAC".to_string() || tstr == "AAC".to_string() {
+                    if tstr[1..3] == "AT".to_string() {
+                        reverse_acceptor_penalty.push(standed_penalty - 9.0);
+                    } else if tstr[1..3] == "GC".to_string() {
+                        reverse_acceptor_penalty.push(standed_penalty - 15.0);
+                    } else if tstr == "GAC".to_string() || tstr == "AAC".to_string() {
+                        reverse_acceptor_penalty.push(standed_penalty - 22.0);
+                    } else if tstr == "TAC".to_string() || tstr == "CAC".to_string() {
                         reverse_acceptor_penalty.push(0.0);
                     } else {
                         reverse_acceptor_penalty.push(standed_penalty);
@@ -296,17 +356,23 @@ impl PileupMatrix {
                     forward_donor_penalty.push(standed_penalty);
                     reverse_donor_penalty.push(standed_penalty);
                 } else {
-                    if tstr[0..2] == "GC".to_string() || tstr[0..2] == "AT".to_string() {
-                        forward_donor_penalty.push(standed_penalty / 2.0);
-                    } else if tstr == "GTA".to_string() || tstr == "GTG".to_string() || tstr == "GTC".to_string() || tstr == "GTT".to_string() {
+                    if tstr[0..2] == "AT".to_string() {
+                        forward_donor_penalty.push(standed_penalty - 9.0);
+                    } else if tstr[0..2] == "GC".to_string() {
+                        forward_donor_penalty.push(standed_penalty - 15.0);
+                    } else if tstr == "GTC".to_string() || tstr == "GTT".to_string() {
+                        forward_donor_penalty.push(standed_penalty - 22.0);
+                    } else if tstr == "GTA".to_string() || tstr == "GTG".to_string() {
                         forward_donor_penalty.push(0.0);
                     } else {
                         forward_donor_penalty.push(standed_penalty);
                     }
 
                     if tstr[0..2] == "GT".to_string() {
-                        reverse_donor_penalty.push(standed_penalty / 2.0);
-                    } else if tstr == "CTG".to_string() || tstr == "CTA".to_string() || tstr == "CTT".to_string() || tstr == "CTC".to_string() {
+                        reverse_donor_penalty.push(standed_penalty - 9.0);
+                    } else if tstr == "CTT".to_string() || tstr == "CTC".to_string() {
+                        reverse_donor_penalty.push(standed_penalty - 22.0);
+                    } else if tstr == "CTG".to_string() || tstr == "CTA".to_string() {
                         reverse_donor_penalty.push(0.0);
                     } else {
                         reverse_donor_penalty.push(standed_penalty);
@@ -314,13 +380,23 @@ impl PileupMatrix {
                 }
             }
         }
-        (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty)
+        (
+            forward_donor_penalty,
+            forward_acceptor_penalty,
+            reverse_donor_penalty,
+            reverse_acceptor_penalty,
+        )
     }
 
-    pub fn profile_realign(base_matrix: &HashMap<String, Vec<u8>>, forward_donor_penalty: &Vec<f64>, forward_acceptor_penalty: &Vec<f64>,
-                           reverse_donor_penalty: &Vec<f64>, reverse_acceptor_penalty: &Vec<f64>,
-                           best_reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
-                           best_column_indexes: &mut Vec<usize>) {
+    pub fn profile_realign(
+        base_matrix: &HashMap<String, Vec<u8>>,
+        forward_donor_penalty: &Vec<f64>,
+        forward_acceptor_penalty: &Vec<f64>,
+        reverse_donor_penalty: &Vec<f64>,
+        reverse_acceptor_penalty: &Vec<f64>,
+        best_reduced_base_matrix: &mut HashMap<String, Vec<u8>>,
+        best_column_indexes: &mut Vec<usize>,
+    ) {
         let mut old_score = -f64::INFINITY;
         let mut new_score = 0.0;
         let mut profile: Vec<ColumnBaseCount> = Vec::new();
@@ -332,19 +408,21 @@ impl PileupMatrix {
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut hidden_splice_penalty: Vec<f64> = Vec::new();
         let mut prev_aligned_seq: Vec<u8> = Vec::new();
-        PileupMatrix::generate_reduced_profile(base_matrix,
-                                               forward_donor_penalty,
-                                               forward_acceptor_penalty,
-                                               reverse_donor_penalty,
-                                               reverse_acceptor_penalty,
-                                               &mut profile,
-                                               &mut column_indexes,
-                                               &mut reduced_base_matrix,
-                                               &mut forward_reduced_donor_penalty,
-                                               &mut forward_reduced_acceptor_penalty,
-                                               &mut reverse_reduced_donor_penalty,
-                                               &mut reverse_reduced_acceptor_penalty,
-                                               &mut hidden_splice_penalty);
+        PileupMatrix::generate_reduced_profile(
+            base_matrix,
+            forward_donor_penalty,
+            forward_acceptor_penalty,
+            reverse_donor_penalty,
+            reverse_acceptor_penalty,
+            &mut profile,
+            &mut column_indexes,
+            &mut reduced_base_matrix,
+            &mut forward_reduced_donor_penalty,
+            &mut forward_reduced_acceptor_penalty,
+            &mut reverse_reduced_donor_penalty,
+            &mut reverse_reduced_acceptor_penalty,
+            &mut hidden_splice_penalty,
+        );
         best_column_indexes.clear();
         *best_column_indexes = column_indexes.clone();
         for i in 0..profile.len() {
@@ -367,14 +445,18 @@ impl PileupMatrix {
         let mut iteration = 0;
         while new_score > old_score {
             iteration += 1;
-            println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
+            println!(
+                "Iteration: {}, old_score: {}, new_score: {}",
+                iteration, old_score, new_score
+            );
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
                     continue;
                 }
 
                 // let query = String::from_utf8(base_vec.clone()).unwrap().replace(" ", "").replace("-", "").replace("N", "");
-                let query = std::str::from_utf8(reduced_base_matrix.get(readname).unwrap()).unwrap();
+                let query =
+                    std::str::from_utf8(reduced_base_matrix.get(readname).unwrap()).unwrap();
                 // TODO: 1. get the banded start position and banded end position on the reference coordinate and record the related column index.
                 //       2. choose the sub_matrix from base_matrix between the banded start position and banded end position
                 //       3. calculate the alignment (reduce the size of target by ignoring the front padding and back padding)
@@ -388,8 +470,32 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
-                let (reverse_alignment_score, reverse_aligned_query, reverse_ref_target, reverse_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &reverse_reduced_donor_penalty, &reverse_reduced_acceptor_penalty, &hidden_splice_penalty, 20);
-                let (forward_alignment_score, forward_aligned_query, forward_ref_target, forward_major_target) = banded_nw_splice_aware3(&query.as_bytes().to_vec(), &profile, &forward_reduced_donor_penalty, &forward_reduced_acceptor_penalty, &hidden_splice_penalty, 20);
+                let (
+                    reverse_alignment_score,
+                    reverse_aligned_query,
+                    reverse_ref_target,
+                    reverse_major_target,
+                ) = banded_nw_splice_aware3(
+                    &query.as_bytes().to_vec(),
+                    &profile,
+                    &reverse_reduced_donor_penalty,
+                    &reverse_reduced_acceptor_penalty,
+                    &hidden_splice_penalty,
+                    20,
+                );
+                let (
+                    forward_alignment_score,
+                    forward_aligned_query,
+                    forward_ref_target,
+                    forward_major_target,
+                ) = banded_nw_splice_aware3(
+                    &query.as_bytes().to_vec(),
+                    &profile,
+                    &forward_reduced_donor_penalty,
+                    &forward_reduced_acceptor_penalty,
+                    &hidden_splice_penalty,
+                    20,
+                );
 
                 let alignment_score: f64;
                 let aligned_query: Vec<u8>;
@@ -409,9 +515,18 @@ impl PileupMatrix {
 
                 // println!("align end");
                 println!("iter: {}, qname: {}", iteration, readname);
-                println!("ref target: \n{}", std::str::from_utf8(&ref_target).unwrap());
-                println!("major target: \n{}", std::str::from_utf8(&major_target).unwrap());
-                println!("aligned query: \n{}", std::str::from_utf8(&aligned_query).unwrap());
+                println!(
+                    "ref target: \n{}",
+                    std::str::from_utf8(&ref_target).unwrap()
+                );
+                println!(
+                    "major target: \n{}",
+                    std::str::from_utf8(&major_target).unwrap()
+                );
+                println!(
+                    "aligned query: \n{}",
+                    std::str::from_utf8(&aligned_query).unwrap()
+                );
                 println!("alignment score: {}", alignment_score);
                 assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
                 reduced_base_matrix.insert(readname.clone(), aligned_query);
@@ -437,7 +552,11 @@ impl PileupMatrix {
         println!("{}", String::from_utf8(prev_aligned_seq).unwrap());
     }
 
-    pub fn update_base_matrix_from_realign(&mut self, realign_base_matrix: &HashMap<String, Vec<u8>>, column_indexes: &Vec<usize>) {
+    pub fn update_base_matrix_from_realign(
+        &mut self,
+        realign_base_matrix: &HashMap<String, Vec<u8>>,
+        column_indexes: &Vec<usize>,
+    ) {
         for (readname, base_vec) in realign_base_matrix.iter() {
             if *readname == "ref".to_string() {
                 continue;
@@ -446,8 +565,16 @@ impl PileupMatrix {
             assert!(base_vec.len() == column_indexes.len());
             for i in 0..column_indexes.len() {
                 if self.base_matrix.get(readname).unwrap()[column_indexes[i]] != base_vec[i] {
-                    if self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char != ' ' && base_vec[i] as char != 'N' {
-                        println!("Modified: readname: {}, column index: {}, old base: {}, new base: {}", readname, column_indexes[i], self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char, base_vec[i] as char);
+                    if self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char != ' '
+                        && base_vec[i] as char != 'N'
+                    {
+                        println!(
+                            "Modified: readname: {}, column index: {}, old base: {}, new base: {}",
+                            readname,
+                            column_indexes[i],
+                            self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char,
+                            base_vec[i] as char
+                        );
                     }
                 }
                 self.base_matrix.get_mut(readname).unwrap()[column_indexes[i]] = base_vec[i];
@@ -470,7 +597,15 @@ impl PileupMatrix {
             let mut left_hard_clip = 0;
             let mut right_hard_clip = 0;
 
-            let cg = self.bam_records.get(readname).unwrap().cigar().iter().next().unwrap().clone();
+            let cg = self
+                .bam_records
+                .get(readname)
+                .unwrap()
+                .cigar()
+                .iter()
+                .next()
+                .unwrap()
+                .clone();
             if cg.char() == 'S' {
                 left_soft_clip = cg.len() as u32;
                 new_cigar.push(Cigar::SoftClip(cg.len() as u32));
@@ -479,13 +614,20 @@ impl PileupMatrix {
                 new_cigar.push(Cigar::HardClip(cg.len() as u32));
             }
 
-            let cg = self.bam_records.get(readname).unwrap().cigar().iter().last().unwrap().clone();
+            let cg = self
+                .bam_records
+                .get(readname)
+                .unwrap()
+                .cigar()
+                .iter()
+                .last()
+                .unwrap()
+                .clone();
             if cg.char() == 'S' {
                 right_soft_clip = cg.len() as u32;
             } else if cg.char() == 'H' {
                 right_hard_clip = cg.len() as u32;
             }
-
 
             // update the cigar
             let mut first_base_pair_index = 0;
@@ -547,7 +689,11 @@ impl PileupMatrix {
                     }
                 }
 
-                if base_vec[i] != b'-' && base_vec[i] != b'N' && ref_seq[i] != b'-' && ref_seq[i] != b'N' {
+                if base_vec[i] != b'-'
+                    && base_vec[i] != b'N'
+                    && ref_seq[i] != b'-'
+                    && ref_seq[i] != b'N'
+                {
                     op = 'M';
                 } else if base_vec[i] == b'-' && ref_seq[i] != b'-' && ref_seq[i] != b'N' {
                     op = 'D';
@@ -619,11 +765,17 @@ impl PileupMatrix {
             }
             println!();
             println!("readname: {}", readname);
-            println!("cigar len: {} read len:{}", cglen, self.bam_records.get(readname).unwrap().seq_len());
+            println!(
+                "cigar len: {} read len:{}",
+                cglen,
+                self.bam_records.get(readname).unwrap().seq_len()
+            );
             assert!(cglen == self.bam_records.get(readname).unwrap().seq_len() as u32);
 
-
-            println!("ref: \n{}", String::from_utf8(ref_seq.to_vec()).unwrap().clone());
+            println!(
+                "ref: \n{}",
+                String::from_utf8(ref_seq.to_vec()).unwrap().clone()
+            );
             println!("read: \n{}", String::from_utf8(base_vec.to_vec()).unwrap());
 
             // count how many blank bases in the beginning, this will add to the ref_start
@@ -645,10 +797,12 @@ impl PileupMatrix {
             let record = self.bam_records.get(readname).unwrap();
             let mut out_record = bam::Record::from(record.clone());
             out_record.set_pos(read_ref_start as i64);
-            out_record.set(record.qname(),
-                           Some(&new_cigar_string),
-                           &record.seq().as_bytes(),
-                           record.qual());
+            out_record.set(
+                record.qname(),
+                Some(&new_cigar_string),
+                &record.seq().as_bytes(),
+                record.qual(),
+            );
             self.bam_records.insert(readname.clone(), out_record);
         }
     }
@@ -664,7 +818,6 @@ impl PileupMatrix {
         }
     }
 }
-
 
 pub struct ColumnBaseCount {
     pub n_a: u16,
@@ -728,7 +881,10 @@ impl ColumnBaseCount {
         cbc.n_n = 1;
 
         // max_count does not consider padding (blank).
-        cbc.max_count = max(max(max(max(max(cbc.n_a, cbc.n_c), cbc.n_g), cbc.n_t), cbc.n_n), cbc.n_dash);
+        cbc.max_count = max(
+            max(max(max(max(cbc.n_a, cbc.n_c), cbc.n_g), cbc.n_t), cbc.n_n),
+            cbc.n_dash,
+        );
         return cbc;
     }
 
