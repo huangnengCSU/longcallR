@@ -20,7 +20,7 @@ use crate::matrix::ColumnBaseCount;
 use align::nw_splice_aware;
 use isolated_region::find_isolated_regions;
 
-fn main2() {
+fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
     // let region = "chr22:30425831-30425912";
@@ -33,8 +33,8 @@ fn main2() {
     // let region = "chr22:26483883-26512499";
     // let region = "chr22:20302014-20324303";
     // let region = "chr22:26483883-26512499";
-    // let region = "chr22:37009116-37030993";
-    let region = "chr22:20302014-20324303";
+    let region = "chr22:37009116-37030993";
+    // let region = "chr22:20302014-20324303";
     // let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
@@ -92,28 +92,28 @@ fn main2() {
     let mut reader = fasta::Reader::from_file(ref_path).unwrap();
     for record in reader.records() {
         let record = record.unwrap();
-        println!("{}", record.id());
+        // println!("{}", record.id());
         // println!("{}", std::str::from_utf8(record.seq()).unwrap());
-        println!("{}", record.seq().len());
+        // println!("{}", record.seq().len());
     }
 
     let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
     generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
-    println!("matrices_vec.len(): {:?}", matrices_vec.len());
-    for (readname, seq) in matrices_vec[0].base_matrix.iter() {
-        println!("readname: {:?}", readname);
-        println!("seq: {:?}", String::from_utf8(seq.clone()).unwrap());
-    }
+    // println!("matrices_vec.len(): {:?}", matrices_vec.len());
+    // for (readname, seq) in matrices_vec[0].base_matrix.iter() {
+        // println!("readname: {:?}", readname);
+        // println!("seq: {:?}", String::from_utf8(seq.clone()).unwrap());
+    // }
     // let mut v: Vec<_> = map.into_iter().collect();
     // v.sort_by(|x,y| x.0.cmp(&y.0));
     let mut sorted: Vec<_> = matrices_vec[0].positions.clone().into_iter().collect();
     sorted.sort_by(|a, b| a.1.cmp(&b.1));
-    println!("max_idx: {:?}", matrices_vec[0].max_idx);
-    println!("current pos: {:?}", matrices_vec[0].current_pos);
-    for (ref_pos, idx) in sorted.iter() {
-        print!("idx: {:?}\t", idx);
-        println!("ref_pos: {:?}", ref_pos);
-    }
+    // println!("max_idx: {:?}", matrices_vec[0].max_idx);
+    // println!("current pos: {:?}", matrices_vec[0].current_pos);
+    // for (ref_pos, idx) in sorted.iter() {
+    //     print!("idx: {:?}\t", idx);
+    //     println!("ref_pos: {:?}", ref_pos);
+    // }
 
     let mut column_base_counts: Vec<ColumnBaseCount> = Vec::new();
     let mut column_indexes: Vec<usize> = Vec::new();
@@ -154,15 +154,15 @@ fn main2() {
         let it = matrices_vec[i].base_matrix.iter().next().unwrap();
         let qname = it.0;
         let seq = std::str::from_utf8(it.1).unwrap().to_string();
-        println!("new seq: {} \n{:?}", qname, seq);
-        println!("start pos: {}, end pos: {}", matrices_vec[i].region.start, matrices_vec[i].region.end);
+        // println!("new seq: {} \n{:?}", qname, seq);
+        // println!("start pos: {}, end pos: {}", matrices_vec[i].region.start, matrices_vec[i].region.end);
 
         matrices_vec[i].update_bam_records_from_realign();
         matrices_vec[i].write_bam_records("new4.bam", &header);
     }
 }
 
-fn main() {
+fn main2() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:37009116-37030993";
     let region = "chr22:20302014-20324303";
