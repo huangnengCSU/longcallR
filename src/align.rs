@@ -112,15 +112,7 @@ pub fn nw_splice_aware(
     //     mat.push(row);
     // }
 
-    let mut mat = vec![
-        vec![
-            SpliceMatrixElement {
-                ..Default::default()
-            };
-            q_len + 1
-        ];
-        t_len + 1
-    ];
+    let mut mat = vec![vec![SpliceMatrixElement { ..Default::default() }; q_len + 1]; t_len + 1];
 
     // let declare_end = declare_now.elapsed().as_millis();
     // println!("Declare Elapsed: {} millisecond", declare_end);
@@ -404,15 +396,7 @@ pub fn semi_nw_splice_aware(
     //     mat.push(row);
     // }
 
-    let mut mat = vec![
-        vec![
-            SpliceMatrixElement {
-                ..Default::default()
-            };
-            q_len + 1
-        ];
-        t_len + 1
-    ];
+    let mut mat = vec![vec![SpliceMatrixElement { ..Default::default() }; q_len + 1]; t_len + 1];
 
     // let declare_end = declare_now.elapsed().as_millis();
     // println!("Declare Elapsed: {} millisecond", declare_end);
@@ -1355,13 +1339,13 @@ pub fn banded_nw_splice_aware3(
     // TODO: calculate penalty of passing a intron region, where the region is cut by the process of cutting all reads introns.
     // TODO: useless of hidden_splice_penalty, remove later.
     // Case: wtc11_ont_grch38: chr22:37024802-37025006
-    let h = 4.0; // short gap open, q in minimap2
-    let g = 2.0; // short gap extend, e in minimap2
+    let h = 2.0; // short gap open, q in minimap2
+    let g = 1.0; // short gap extend, e in minimap2
     let h2 = 32.0; // long gap open, q hat in minimap2
-                   // let p = 9.0; // splice junction site penalty
+    // let p = 9.0; // splice junction site penalty
     let b: f64 = 36.0; // splice junction site penalty
     let match_score = 3.0;
-    let mismatch_score = -5.0;
+    let mismatch_score = -3.0;
 
     // let query_without_gap = query.replace("-", "").replace("N", "");
     let query_t = std::str::from_utf8(query.clone().as_slice())
@@ -1468,13 +1452,15 @@ pub fn banded_nw_splice_aware3(
             } else {
                 if col.get_depth() <= 5 {
                     let tbase = col.get_ref_base();
-                    sij = if qbase == tbase {
-                        match_score
+                    if tbase == b'-' {
+                        sij = match_score;
+                    } else if qbase == tbase {
+                        sij = match_score;
                     } else {
-                        mismatch_score
-                    };
+                        sij = mismatch_score;
+                    }
                 } else {
-                    sij = 3.0 - 8.0 * col.get_score(&qbase);
+                    sij = 3.0 - 3.0 * col.get_score(&qbase);
                 }
             }
 
@@ -1631,7 +1617,7 @@ pub fn banded_nw_splice_aware3(
                 u -= 1;
                 trace_back_stat = TraceBack::M;
             } else {
-                println!("{},{},{},{}", trace_back_stat==TraceBack::M, trace_back_stat==TraceBack::IX, trace_back_stat==TraceBack::IX2, trace_back_stat==TraceBack::IY);
+                println!("{},{},{},{}", trace_back_stat == TraceBack::M, trace_back_stat == TraceBack::IX, trace_back_stat == TraceBack::IX2, trace_back_stat == TraceBack::IY);
                 panic!("Error: no traceback");
             }
         } else if trace_back_stat == TraceBack::IX {
@@ -1705,5 +1691,8 @@ pub fn banded_nw_splice_aware3(
     // aligned_target.reverse();
     ref_target.reverse();
     major_target.reverse();
+    println!("original:\n {:?}", std::str::from_utf8(query).unwrap());
+    println!("ref:\n {:?}", std::str::from_utf8(ref_target.as_slice()).unwrap());
+    println!("aligned:\n {:?}", std::str::from_utf8(aligned_query.as_slice()).unwrap());
     (alignment_score, aligned_query, ref_target, major_target)
 }
