@@ -1343,9 +1343,9 @@ pub fn banded_nw_splice_aware3(
     let g = 1.0; // short gap extend, e in minimap2
     let h2 = 32.0; // long gap open, q hat in minimap2
     // let p = 9.0; // splice junction site penalty
-    let b: f64 = 36.0; // splice junction site penalty
-    let match_score = 3.0;
-    let mismatch_score = -3.0;
+    let b: f64 = 34.0; // splice junction site penalty
+    let match_score = 2.0;
+    let mismatch_score = -2.0;
 
     // let query_without_gap = query.replace("-", "").replace("N", "");
     let query_t = std::str::from_utf8(query.clone().as_slice())
@@ -1460,7 +1460,7 @@ pub fn banded_nw_splice_aware3(
                         sij = mismatch_score;
                     }
                 } else {
-                    sij = 3.0 - 3.0 * col.get_score(&qbase);
+                    sij = 2.0 - 2.0 * col.get_score(&qbase);
                 }
             }
 
