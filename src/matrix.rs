@@ -428,16 +428,16 @@ impl PileupMatrix {
         for i in 0..profile.len() {
             prev_aligned_seq.push(profile[i].get_major_base());
         }
-        println!("major sequence:");
-        for i in 0..profile.len() {
-            print!("{}", profile[i].get_major_base() as char);
-        }
-        println!();
-        println!("ref sequence:");
-        for i in 0..profile.len() {
-            print!("{}", profile[i].get_ref_base() as char);
-        }
-        println!();
+        // println!("major sequence:");
+        // for i in 0..profile.len() {
+        //     print!("{}", profile[i].get_major_base() as char);
+        // }
+        // println!();
+        // println!("ref sequence:");
+        // for i in 0..profile.len() {
+        //     print!("{}", profile[i].get_ref_base() as char);
+        // }
+        // println!();
         for i in 0..profile.len() {
             let cbc = &profile[i];
             new_score += cbc.get_score(&cbc.get_major_base());
@@ -445,10 +445,7 @@ impl PileupMatrix {
         let mut iteration = 0;
         while new_score > old_score {
             iteration += 1;
-            println!(
-                "Iteration: {}, old_score: {}, new_score: {}",
-                iteration, old_score, new_score
-            );
+            // println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
                     continue;
@@ -470,6 +467,7 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = semi_nw_splice_aware(&query.as_bytes().to_vec(), &profile);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware(&query.as_bytes().to_vec(), &profile, 20);
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
+                println!("qname: {}", readname);
                 let (
                     reverse_alignment_score,
                     reverse_aligned_query,
@@ -514,20 +512,12 @@ impl PileupMatrix {
                 }
 
                 // println!("align end");
-                println!("iter: {}, qname: {}", iteration, readname);
-                println!(
-                    "ref target: \n{}",
-                    std::str::from_utf8(&ref_target).unwrap()
-                );
-                println!(
-                    "major target: \n{}",
-                    std::str::from_utf8(&major_target).unwrap()
-                );
-                println!(
-                    "aligned query: \n{}",
-                    std::str::from_utf8(&aligned_query).unwrap()
-                );
-                println!("alignment score: {}", alignment_score);
+                // println!("iter: {}, qname: {}", iteration, readname);
+                // println!("original query: \n{}", query);
+                // println!("ref target: \n{}", std::str::from_utf8(&ref_target).unwrap());
+                // println!("major target: \n{}", std::str::from_utf8(&major_target).unwrap());
+                // println!("aligned query: \n{}", std::str::from_utf8(&aligned_query).unwrap());
+                // println!("alignment score: {}", alignment_score);
                 assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
                 reduced_base_matrix.insert(readname.clone(), aligned_query);
                 profile.clear();
@@ -548,8 +538,8 @@ impl PileupMatrix {
                 *best_reduced_base_matrix = reduced_base_matrix.clone();
             }
         }
-        println!("new major sequence:");
-        println!("{}", String::from_utf8(prev_aligned_seq).unwrap());
+        // println!("new major sequence:");
+        // println!("{}", String::from_utf8(prev_aligned_seq).unwrap());
     }
 
     pub fn update_base_matrix_from_realign(
@@ -568,12 +558,11 @@ impl PileupMatrix {
                     if self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char != ' '
                         && base_vec[i] as char != 'N'
                     {
-                        println!(
-                            "Modified: readname: {}, column index: {}, old base: {}, new base: {}",
-                            readname,
-                            column_indexes[i],
-                            self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char,
-                            base_vec[i] as char
+                        println!("Modified: readname: {}, column index: {}, old base: {}, new base: {}",
+                                 readname,
+                                 column_indexes[i],
+                                 self.base_matrix.get(readname).unwrap()[column_indexes[i]] as char,
+                                 base_vec[i] as char
                         );
                     }
                 }
@@ -758,25 +747,24 @@ impl PileupMatrix {
             let new_cigar_string = CigarString(new_cigar);
             let mut cglen = 0;
             for cg in new_cigar_string.iter() {
-                print!("{}{}", cg.len(), cg.char());
+                // print!("{}{}", cg.len(), cg.char());
                 if cg.char() == 'M' || cg.char() == 'I' || cg.char() == 'S' {
                     cglen += cg.len();
                 }
             }
             println!();
-            println!("readname: {}", readname);
-            println!(
-                "cigar len: {} read len:{}",
-                cglen,
-                self.bam_records.get(readname).unwrap().seq_len()
+            println!("readname: {}, cigar len: {} read len:{}",
+                     readname,
+                     cglen,
+                     self.bam_records.get(readname).unwrap().seq_len()
             );
             assert!(cglen == self.bam_records.get(readname).unwrap().seq_len() as u32);
 
-            println!(
-                "ref: \n{}",
-                String::from_utf8(ref_seq.to_vec()).unwrap().clone()
-            );
-            println!("read: \n{}", String::from_utf8(base_vec.to_vec()).unwrap());
+            // println!(
+            //     "ref: \n{}",
+            //     String::from_utf8(ref_seq.to_vec()).unwrap().clone()
+            // );
+            // println!("read: \n{}", String::from_utf8(base_vec.to_vec()).unwrap());
 
             // count how many blank bases in the beginning, this will add to the ref_start
             let mut blank_count = 0;
