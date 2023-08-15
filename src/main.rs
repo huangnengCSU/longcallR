@@ -20,7 +20,7 @@ use crate::matrix::ColumnBaseCount;
 use align::nw_splice_aware;
 use isolated_region::find_isolated_regions;
 
-fn main() {
+fn main2() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
     // let region = "chr22:30425831-30425912";
@@ -33,9 +33,9 @@ fn main() {
     // let region = "chr22:26483883-26512499";
     // let region = "chr22:20302014-20324303";
     // let region = "chr22:26483883-26512499";
-    let region = "chr22:37009116-37030993";
+    // let region = "chr22:37009116-37030993";
     // let region = "chr22:20302014-20324303";
-    // let region = "chr22:26483883-26512499";
+    let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
@@ -101,8 +101,8 @@ fn main() {
     generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
     // println!("matrices_vec.len(): {:?}", matrices_vec.len());
     // for (readname, seq) in matrices_vec[0].base_matrix.iter() {
-        // println!("readname: {:?}", readname);
-        // println!("seq: {:?}", String::from_utf8(seq.clone()).unwrap());
+    // println!("readname: {:?}", readname);
+    // println!("seq: {:?}", String::from_utf8(seq.clone()).unwrap());
     // }
     // let mut v: Vec<_> = map.into_iter().collect();
     // v.sort_by(|x,y| x.0.cmp(&y.0));
@@ -162,10 +162,10 @@ fn main() {
     }
 }
 
-fn main2() {
+fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:37009116-37030993";
-    let region = "chr22:20302014-20324303";
+    let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
     generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
@@ -176,9 +176,10 @@ fn main2() {
         let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut forward_reduced_donor_penalty: Vec<f64> = Vec::new();
         let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
-        let mut reverse_redcued_donor_penalty: Vec<f64> = Vec::new();
+        let mut reverse_reduced_donor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
-        let mut hidden_splice_penalty: Vec<f64> = Vec::new();
+        let mut forward_hidden_splice_penalty: Vec<f64> = Vec::new();
+        let mut reverse_hidden_splice_penalty: Vec<f64> = Vec::new();
         let (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(30.0);
         PileupMatrix::generate_reduced_profile(&matrices_vec[i].base_matrix,
                                                &forward_donor_penalty,
@@ -190,9 +191,10 @@ fn main2() {
                                                &mut reduced_base_matrix,
                                                &mut forward_reduced_donor_penalty,
                                                &mut forward_reduced_acceptor_penalty,
-                                               &mut reverse_redcued_donor_penalty,
+                                               &mut reverse_reduced_donor_penalty,
                                                &mut reverse_reduced_acceptor_penalty,
-                                               &mut hidden_splice_penalty);
+                                               &mut forward_hidden_splice_penalty,
+                                               &mut reverse_hidden_splice_penalty);
         println!("reference:");
         for d in matrices_vec[i].base_matrix.get("ref").unwrap().iter() {
             print!("{}\t", *d as char);
@@ -234,7 +236,7 @@ fn main2() {
         }
         println!();
         println!("reverse reduced donor_penalty:");
-        for d in reverse_redcued_donor_penalty.iter() {
+        for d in reverse_reduced_donor_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
@@ -243,7 +245,11 @@ fn main2() {
             print!("{}\t", d);
         }
         println!();
-        for d in hidden_splice_penalty.iter() {
+        for d in forward_hidden_splice_penalty.iter() {
+            print!("{}\t", d);
+        }
+        println!();
+        for d in reverse_hidden_splice_penalty.iter() {
             print!("{}\t", d);
         }
         println!();
