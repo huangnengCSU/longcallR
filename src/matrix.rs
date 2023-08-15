@@ -141,7 +141,8 @@ impl PileupMatrix {
         forward_reduced_acceptor_penalty: &mut Vec<f64>,
         reverse_reduced_donor_penalty: &mut Vec<f64>,
         reverse_reduced_acceptor_penalty: &mut Vec<f64>,
-        hidden_splice_penalty: &mut Vec<f64>,
+        forward_hidden_splice_penalty: &mut Vec<f64>,
+        reverse_hidden_splice_penalty: &mut Vec<f64>,
     ) {
         // TODO: useless of hidden_splice_penalty, remove later.
         assert!(base_matrix.len() > 0);
@@ -242,7 +243,8 @@ impl PileupMatrix {
                     tstr.push(*c as char);
                 }
                 if tstr.len() < 3 {
-                    hidden_splice_penalty.push(0.0);
+                    forward_hidden_splice_penalty.push(0.0);
+                    reverse_hidden_splice_penalty.push(0.0);
                 } else {
                     if tstr[0..2] == "AT".to_string()
                         || tstr[0..2] == "GC".to_string()
@@ -250,22 +252,30 @@ impl PileupMatrix {
                         || tstr == "GTT".to_string()
                         || tstr == "GTA".to_string()
                         || tstr == "GTG".to_string()
-                        || tstr[0..2] == "GT".to_string()
+                    {
+                        forward_hidden_splice_penalty.push(1.0);
+                    } else {
+                        forward_hidden_splice_penalty.push(0.0);
+                    }
+
+                    if tstr[0..2] == "GT".to_string()
                         || tstr == "CTT".to_string()
                         || tstr == "CTC".to_string()
                         || tstr == "CTG".to_string()
-                        || tstr == "CTA"
+                        || tstr == "CTA".to_string()
                     {
-                        hidden_splice_penalty.push(1.0);
+                        reverse_hidden_splice_penalty.push(1.0);
                     } else {
-                        hidden_splice_penalty.push(0.0);
+                        reverse_hidden_splice_penalty.push(0.0);
                     }
                 }
             } else {
-                hidden_splice_penalty.push(0.0);
+                forward_hidden_splice_penalty.push(0.0);
+                reverse_hidden_splice_penalty.push(0.0);
             }
         }
-        hidden_splice_penalty.push(0.0);
+        forward_hidden_splice_penalty.push(0.0);
+        reverse_hidden_splice_penalty.push(0.0);
     }
 
     pub fn get_donor_acceptor_penalty(
@@ -406,7 +416,8 @@ impl PileupMatrix {
         let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_donor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
-        let mut hidden_splice_penalty: Vec<f64> = Vec::new();
+        let mut forward_hidden_splice_penalty: Vec<f64> = Vec::new();
+        let mut reverse_hidden_splice_penalty: Vec<f64> = Vec::new();
         let mut prev_aligned_seq: Vec<u8> = Vec::new();
         PileupMatrix::generate_reduced_profile(
             base_matrix,
@@ -421,7 +432,8 @@ impl PileupMatrix {
             &mut forward_reduced_acceptor_penalty,
             &mut reverse_reduced_donor_penalty,
             &mut reverse_reduced_acceptor_penalty,
-            &mut hidden_splice_penalty,
+            &mut forward_hidden_splice_penalty,
+            &mut reverse_hidden_splice_penalty
         );
         best_column_indexes.clear();
         *best_column_indexes = column_indexes.clone();
@@ -478,7 +490,7 @@ impl PileupMatrix {
                     &profile,
                     &reverse_reduced_donor_penalty,
                     &reverse_reduced_acceptor_penalty,
-                    &hidden_splice_penalty,
+                    &reverse_hidden_splice_penalty,
                     20,
                 );
                 let (
@@ -491,7 +503,7 @@ impl PileupMatrix {
                     &profile,
                     &forward_reduced_donor_penalty,
                     &forward_reduced_acceptor_penalty,
-                    &hidden_splice_penalty,
+                    &forward_hidden_splice_penalty,
                     20,
                 );
 
@@ -499,7 +511,7 @@ impl PileupMatrix {
                 let aligned_query: Vec<u8>;
                 let ref_target: Vec<u8>;
                 let major_target: Vec<u8>;
-                if forward_alignment_score > reverse_alignment_score {
+                if forward_alignment_score >= reverse_alignment_score {
                     alignment_score = forward_alignment_score;
                     aligned_query = forward_aligned_query;
                     ref_target = forward_ref_target;
