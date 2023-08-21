@@ -141,23 +141,17 @@ impl PileupMatrix {
         forward_reduced_acceptor_penalty: &mut Vec<f64>,
         reverse_reduced_donor_penalty: &mut Vec<f64>,
         reverse_reduced_acceptor_penalty: &mut Vec<f64>,
-        forward_hidden_splice_penalty: &mut Vec<f64>,
-        reverse_hidden_splice_penalty: &mut Vec<f64>,
+        splice_boundary: &mut Vec<bool>,
     ) {
-        // TODO: useless of hidden_splice_penalty, remove later.
         assert!(base_matrix.len() > 0);
         let ncols = base_matrix.iter().next().unwrap().1.len();
-        // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
-        // The size of donor and acceptor is ref_base_vec.len() + 1.
-        // The last element of donor is meaningless, but the last element of acceptor is meaningful.
         assert!(forward_donor_penalty.len() == ncols + 1);
         assert!(forward_acceptor_penalty.len() == ncols + 1);
         assert!(reverse_donor_penalty.len() == ncols + 1);
         assert!(reverse_acceptor_penalty.len() == ncols + 1);
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
-        // let mut extended_size = false;
-        let mut extend_size = 0; // donor site penalty (p) + splicing gap open (h2)
+        let mut extend_size = 30; // (telda(q)-q)/e
         for i in 0..ncols {
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
@@ -179,17 +173,6 @@ impl PileupMatrix {
                     reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
                     extend_size -= 1;
                 }
-                // if *column_indexes.last().unwrap() == i - 1 && !extended {
-                //     // extend one base at the beginning of the reduced region
-                //     column_base_counts.push(cbc);
-                //     column_indexes.push(i);
-                //     column_bases.clear();
-                //     forward_reduced_donor_penalty.push(forward_donor_penalty[i]);
-                //     forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
-                //     reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
-                //     reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
-                //     extended = true;
-                // }
                 column_bases.clear();
                 continue;
             }
@@ -200,14 +183,11 @@ impl PileupMatrix {
             forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
             reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
             reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
-            // extended = false;
-            extend_size = 0;
+            extend_size = 30;
         }
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         // The size of donor and acceptor is ref_base_vec.len() + 1.
         // The last element of donor is meaningless, but the last element of acceptor is meaningful.
-        // forward_reduced_donor_penalty.push(forward_donor_penalty[ncols]);
-        // reverse_reduced_donor_penalty.push(reverse_donor_penalty[ncols]);
         forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[ncols]);
         reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[ncols]);
         reduced_base_matrix.clear();
@@ -216,66 +196,19 @@ impl PileupMatrix {
                 if reduced_base_matrix.get(readname).is_none() {
                     reduced_base_matrix.insert(readname.clone(), vec![base_vec[*i]]);
                 } else {
-                    reduced_base_matrix
-                        .get_mut(readname)
-                        .unwrap()
-                        .push(base_vec[*i]);
+                    reduced_base_matrix.get_mut(readname).unwrap().push(base_vec[*i]);
                 }
             }
         }
 
-        let mut ref_sliding_window: Vec<u8> = Vec::new();
-        let ref_base_vec = base_matrix.get("ref").unwrap();
-        // hidden_splice_penalty.push(0.0);
         for i in 0..column_indexes.len() - 1 {
             if column_indexes[i + 1] - column_indexes[i] != 1 {
-                // only next base is splicing donor site, then add splicing penalty.
-                let mut j = column_indexes[i] + 1;
-                ref_sliding_window.clear();
-                while ref_sliding_window.len() < 3 && j < ref_base_vec.len() {
-                    if ref_base_vec[j] != b'-' {
-                        ref_sliding_window.push(ref_base_vec[j]);
-                    }
-                    j += 1;
-                }
-                let mut tstr = String::new();
-                for c in ref_sliding_window.iter() {
-                    tstr.push(*c as char);
-                }
-                if tstr.len() < 3 {
-                    forward_hidden_splice_penalty.push(0.0);
-                    reverse_hidden_splice_penalty.push(0.0);
-                } else {
-                    if tstr[0..2] == "AT".to_string()
-                        || tstr[0..2] == "GC".to_string()
-                        || tstr == "GTC".to_string()
-                        || tstr == "GTT".to_string()
-                        || tstr == "GTA".to_string()
-                        || tstr == "GTG".to_string()
-                    {
-                        forward_hidden_splice_penalty.push(1.0);
-                    } else {
-                        forward_hidden_splice_penalty.push(0.0);
-                    }
-
-                    if tstr[0..2] == "GT".to_string()
-                        || tstr == "CTT".to_string()
-                        || tstr == "CTC".to_string()
-                        || tstr == "CTG".to_string()
-                        || tstr == "CTA".to_string()
-                    {
-                        reverse_hidden_splice_penalty.push(1.0);
-                    } else {
-                        reverse_hidden_splice_penalty.push(0.0);
-                    }
-                }
+                splice_boundary.push(true);
             } else {
-                forward_hidden_splice_penalty.push(0.0);
-                reverse_hidden_splice_penalty.push(0.0);
+                splice_boundary.push(false);
             }
         }
-        forward_hidden_splice_penalty.push(0.0);
-        reverse_hidden_splice_penalty.push(0.0);
+        splice_boundary.push(false);
     }
 
     pub fn get_donor_acceptor_penalty(
@@ -418,6 +351,7 @@ impl PileupMatrix {
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut forward_hidden_splice_penalty: Vec<f64> = Vec::new();
         let mut reverse_hidden_splice_penalty: Vec<f64> = Vec::new();
+        let mut splice_boundary: Vec<bool> = Vec::new();
         let mut prev_aligned_seq: Vec<u8> = Vec::new();
         PileupMatrix::generate_reduced_profile(
             base_matrix,
@@ -432,8 +366,7 @@ impl PileupMatrix {
             &mut forward_reduced_acceptor_penalty,
             &mut reverse_reduced_donor_penalty,
             &mut reverse_reduced_acceptor_penalty,
-            &mut forward_hidden_splice_penalty,
-            &mut reverse_hidden_splice_penalty
+            &mut splice_boundary,
         );
         best_column_indexes.clear();
         *best_column_indexes = column_indexes.clone();
@@ -490,7 +423,7 @@ impl PileupMatrix {
                     &profile,
                     &reverse_reduced_donor_penalty,
                     &reverse_reduced_acceptor_penalty,
-                    &reverse_hidden_splice_penalty,
+                    &splice_boundary,
                     20,
                 );
                 let (
@@ -503,7 +436,7 @@ impl PileupMatrix {
                     &profile,
                     &forward_reduced_donor_penalty,
                     &forward_reduced_acceptor_penalty,
-                    &forward_hidden_splice_penalty,
+                    &splice_boundary,
                     20,
                 );
 

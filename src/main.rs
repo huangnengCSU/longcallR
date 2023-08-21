@@ -20,7 +20,7 @@ use crate::matrix::ColumnBaseCount;
 use align::nw_splice_aware;
 use isolated_region::find_isolated_regions;
 
-fn main2() {
+fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
     // let region = "chr22:30425831-30425912";
@@ -34,8 +34,8 @@ fn main2() {
     // let region = "chr22:20302014-20324303";
     // let region = "chr22:26483883-26512499";
     // let region = "chr22:37009116-37030993";
-    // let region = "chr22:20302014-20324303";
-    let region = "chr22:26483883-26512499";
+    let region = "chr22:20302014-20324303";
+    // let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let out_path = "new.bam";
     let out_path2 = "new2.bam";
@@ -162,10 +162,10 @@ fn main2() {
     }
 }
 
-fn main() {
+fn main2() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
-    // let region = "chr22:37009116-37030993";
-    let region = "chr22:26483883-26512499";
+    let region = "chr22:37009116-37030993";
+    // let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
     generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
@@ -178,8 +178,7 @@ fn main() {
         let mut forward_reduced_acceptor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_donor_penalty: Vec<f64> = Vec::new();
         let mut reverse_reduced_acceptor_penalty: Vec<f64> = Vec::new();
-        let mut forward_hidden_splice_penalty: Vec<f64> = Vec::new();
-        let mut reverse_hidden_splice_penalty: Vec<f64> = Vec::new();
+        let mut splice_boundary: Vec<bool> = Vec::new();
         let (forward_donor_penalty, forward_acceptor_penalty, reverse_donor_penalty, reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(30.0);
         PileupMatrix::generate_reduced_profile(&matrices_vec[i].base_matrix,
                                                &forward_donor_penalty,
@@ -193,8 +192,7 @@ fn main() {
                                                &mut forward_reduced_acceptor_penalty,
                                                &mut reverse_reduced_donor_penalty,
                                                &mut reverse_reduced_acceptor_penalty,
-                                               &mut forward_hidden_splice_penalty,
-                                               &mut reverse_hidden_splice_penalty);
+                                               &mut splice_boundary);
         println!("reference:");
         for d in matrices_vec[i].base_matrix.get("ref").unwrap().iter() {
             print!("{}\t", *d as char);
@@ -245,12 +243,8 @@ fn main() {
             print!("{}\t", d);
         }
         println!();
-        for d in forward_hidden_splice_penalty.iter() {
-            print!("{}\t", d);
-        }
-        println!();
-        for d in reverse_hidden_splice_penalty.iter() {
-            print!("{}\t", d);
+        for d in splice_boundary.iter() {
+            print!("{}\t", *d as u8);
         }
         println!();
     }

@@ -1333,7 +1333,7 @@ pub fn banded_nw_splice_aware3(
     profile: &Vec<ColumnBaseCount>,
     reduced_donor_penalty: &Vec<f64>,
     reduced_acceptor_penalty: &Vec<f64>,
-    hidden_splice_penalty: &Vec<f64>,
+    splice_boundary: &Vec<bool>,
     width: usize,
 ) -> (f64, Vec<u8>, Vec<u8>, Vec<u8>) {
     // TODO: calculate penalty of passing a intron region, where the region is cut by the process of cutting all reads introns.
@@ -1482,18 +1482,11 @@ pub fn banded_nw_splice_aware3(
             }
             // println!("i:{}", i);
             mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2).max(
-                mat[i - 1][v + 1 - offset]
-                    .ix2
-                    .max(mat[i - 1][v + 1 - offset].cb - reduced_donor_penalty[i - 1] - h2),
-            ); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+                mat[i - 1][v + 1 - offset].ix2); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 {
                 mat[i][v].ix2_prev_m = true;
             } else if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].ix2 {
                 mat[i][v].ix2_prev_ix2 = true;
-            } else if mat[i][v].ix2
-                == mat[i - 1][v + 1 - offset].cb - reduced_donor_penalty[i - 1] - h2
-            {
-                mat[i][v].ix2_prev_cb = true;
             }
 
             // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
@@ -1510,8 +1503,6 @@ pub fn banded_nw_splice_aware3(
             } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i] {
                 mat[i][v].m_prev_ix2 = true;
             }
-
-            mat[i][v].cb = mat[i][v].m + hidden_splice_penalty[i - 1] * b;
         }
         i += 1;
         j += 1;
