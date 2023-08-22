@@ -151,7 +151,8 @@ impl PileupMatrix {
         assert!(reverse_acceptor_penalty.len() == ncols + 1);
         let mut ref_base: u8 = 0;
         let mut column_bases: Vec<u8> = Vec::new();
-        let mut extend_size = 30; // (telda(q)-q)/e
+        // TODO: if the splicing cut is short than extend size?
+        let mut extend_size = 96; // L>(d(i)+a(a)+telda(q)-q)/e
         for i in 0..ncols {
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
@@ -183,7 +184,7 @@ impl PileupMatrix {
             forward_reduced_acceptor_penalty.push(forward_acceptor_penalty[i]);
             reverse_reduced_donor_penalty.push(reverse_donor_penalty[i]);
             reverse_reduced_acceptor_penalty.push(reverse_acceptor_penalty[i]);
-            extend_size = 30;
+            extend_size = 96;
         }
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         // The size of donor and acceptor is ref_base_vec.len() + 1.
