@@ -5,7 +5,7 @@ mod align;
 mod isolated_region;
 
 // extern crate bio;
-
+use std::time::{Duration, Instant};
 use rust_htslib::{bam, bam::Read};
 use bam_reader::{BamReader};
 use bam_reader::{write_read_records1, write_read_records2, write_read_records3};
@@ -21,6 +21,7 @@ use align::nw_splice_aware;
 use isolated_region::find_isolated_regions;
 
 fn main() {
+    let main_s = Instant::now();
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
     // let region = "chr22:30425831-30425912";
@@ -37,9 +38,9 @@ fn main() {
     // let region = "chr22:20302014-20324303";
     let region = "chr22:26483883-26512499";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
-    let out_path = "new.bam";
-    let out_path2 = "new2.bam";
-    let out_path3 = "new3.bam";
+    // let out_path = "new.bam";
+    // let out_path2 = "new2.bam";
+    // let out_path3 = "new3.bam";
     // let bam_reader = BamReader::new(bam_path.to_string(), region.to_string());
     // let mut reader = bam::IndexedReader::from_path(bam_path).unwrap();
     // let header = bam::Header::from_template(reader.header());
@@ -54,12 +55,12 @@ fn main() {
     //     writer.write(&out_record);
     // }
 
-
+    let reader_s = Instant::now();
     let bam_reader = BamReader::new(bam_path.to_string(), region.to_string());
-    let mut read_records: HashMap<String, Vec<bam::Record>> = HashMap::new();
-
+    // let mut read_records: HashMap<String, Vec<bam::Record>> = HashMap::new();
+    //
     let header = bam_reader.get_bam_header();
-    bam_reader.get_read_records(&mut read_records);
+    // bam_reader.get_read_records(&mut read_records);
 
     // let mut writer = bam::Writer::from_path(out_path, &header, bam::Format::Bam).unwrap();
     //
@@ -85,9 +86,9 @@ fn main() {
     //         }
     //     }
     // }
-    write_read_records1(&read_records, &header, String::from(out_path));
-    write_read_records2(&mut read_records, &header, String::from(out_path2));
-    write_read_records3(&mut read_records, &header, String::from(out_path3));
+    // write_read_records1(&read_records, &header, String::from(out_path));
+    // write_read_records2(&mut read_records, &header, String::from(out_path2));
+    // write_read_records3(&mut read_records, &header, String::from(out_path3));
 
     let mut reader = fasta::Reader::from_file(ref_path).unwrap();
     for record in reader.records() {
@@ -118,6 +119,7 @@ fn main() {
     let mut column_base_counts: Vec<ColumnBaseCount> = Vec::new();
     let mut column_indexes: Vec<usize> = Vec::new();
     let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
+    let reader_duration = reader_s.elapsed();
 
     // PileupMatrix::generate_reduced_profile(&matrices_vec[0].base_matrix, &mut column_base_counts, &mut column_indexes, &mut reduced_base_matrix);
     // for cbc in column_base_counts.iter() {
@@ -134,6 +136,8 @@ fn main() {
     // println!("aligned_query:\n {:?}", aligned_query);
     // println!("ref_target:\n {:?}", ref_target);
     // println!("major_target:\n {:?}", major_target);
+    let mut total_align_runtime: u64 = 0;
+    let mut total_update_runtime: u64 = 0;
     for i in 0..matrices_vec.len() {
         let (forward_donor_penalty,
             forward_acceptor_penalty,
@@ -141,6 +145,7 @@ fn main() {
             reverse_acceptor_penalty) = matrices_vec[i].get_donor_acceptor_penalty(30.0);
         let mut best_reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
         let mut best_column_indexes: Vec<usize> = Vec::new();
+        let align_s = Instant::now();
         PileupMatrix::profile_realign(&matrices_vec[i].base_matrix,
                                       &forward_donor_penalty,
                                       &forward_acceptor_penalty,
@@ -148,8 +153,11 @@ fn main() {
                                       &reverse_acceptor_penalty,
                                       &mut best_reduced_base_matrix,
                                       &mut best_column_indexes);
+        let align_duration = align_s.elapsed().as_secs();
+        total_align_runtime += align_duration;
         // let seq = std::str::from_utf8(matrices_vec[i].base_matrix.iter().next().unwrap().1).unwrap().to_string();
         // println!("seq: \n{:?}", seq);
+        let update_s = Instant::now();
         matrices_vec[i].update_base_matrix_from_realign(&best_reduced_base_matrix, &best_column_indexes);
         let it = matrices_vec[i].base_matrix.iter().next().unwrap();
         let qname = it.0;
@@ -158,8 +166,15 @@ fn main() {
         // println!("start pos: {}, end pos: {}", matrices_vec[i].region.start, matrices_vec[i].region.end);
 
         matrices_vec[i].update_bam_records_from_realign();
+        let update_duration = update_s.elapsed().as_secs();
+        total_update_runtime += update_duration;
         matrices_vec[i].write_bam_records("new4.bam", &header);
     }
+    let main_duration = main_s.elapsed();
+    println!("main: {:?}", main_duration);
+    println!("reader: {:?}", reader_duration);
+    println!("align: {:?}", total_align_runtime);
+    println!("update: {:?}", total_update_runtime);
 }
 
 fn main2() {
