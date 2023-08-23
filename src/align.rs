@@ -1508,51 +1508,6 @@ pub fn banded_nw_splice_aware3(
         j += 1;
     }
 
-    // j = 1;
-    // k = 0;
-    // for i in 1..t_len + 1 {
-    //     if query[j - 1] != b'-' && query[j - 1] != b'N' {
-    //         k += 1;
-    //     }
-    //     if k as i32 - width as i32 > 0 {
-    //         left_bound = (k as i32 - width as i32) as usize;
-    //     } else {
-    //         left_bound = 1;
-    //     }
-    //     right_bound = if k + width + 1 <= q_len + 1 { k + width + 1 } else { q_len + 1 };
-    //     println!("left_bound: {}, right_bound: {}", left_bound, right_bound);
-    //     print!("i = {}, M  :\t", i);
-    //     for u in left_bound..right_bound {
-    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
-    //         print!("{}  ", mat[i][v].m);
-    //     }
-    //     println!();
-    //     print!("i = {}, Ix :\t", i);
-    //     for u in left_bound..right_bound {
-    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
-    //         print!("{}  ", mat[i][v].ix);
-    //     }
-    //     println!();
-    //     print!("i = {}, Iy :\t", i);
-    //     for u in left_bound..right_bound {
-    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
-    //         print!("{}  ", mat[i][v].iy);
-    //     }
-    //     println!();
-    //     print!("i = {}, Ix2:\t", i);
-    //     for u in left_bound..right_bound {
-    //         let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
-    //         print!("{}  ", mat[i][v].ix2);
-    //     }
-    //     println!();
-    //     println!();
-    //     // for _ in 0..q_len + 1 {
-    //     //     print!("--------");
-    //     // }
-    //     // println!();
-    //     j += 1;
-    // }
-
     // trace back
     let mut aligned_query: Vec<u8> = Vec::new();
     let mut ref_target: Vec<u8> = Vec::new();
