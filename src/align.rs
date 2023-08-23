@@ -11,8 +11,6 @@ struct SpliceMatrixElement {
     // gap in target: insertion
     ix2: f64,
     // gap in query: introns
-    cb: f64,
-    // splicing cut boundary
     m_prev_m: bool,
     m_prev_ix: bool,
     m_prev_iy: bool,
@@ -25,18 +23,16 @@ struct SpliceMatrixElement {
     iy_prev_iy: bool,
 
     ix2_prev_m: bool,
-    ix2_prev_cb: bool,
     ix2_prev_ix2: bool,
 }
 
 impl Default for SpliceMatrixElement {
     fn default() -> SpliceMatrixElement {
         SpliceMatrixElement {
-            m: 0.0,
-            ix: 0.0,
-            iy: 0.0,
-            ix2: 0.0,
-            cb: -f64::INFINITY,
+            m: -f64::INFINITY,
+            ix: -f64::INFINITY,
+            iy: -f64::INFINITY,
+            ix2: -f64::INFINITY,
             m_prev_m: false,
             m_prev_ix: false,
             m_prev_iy: false,
@@ -49,7 +45,6 @@ impl Default for SpliceMatrixElement {
             iy_prev_iy: false,
 
             ix2_prev_m: false,
-            ix2_prev_cb: false,
             ix2_prev_ix2: false,
         }
     }
@@ -62,7 +57,6 @@ impl Clone for SpliceMatrixElement {
             ix: self.ix,
             iy: self.iy,
             ix2: self.ix2,
-            cb: self.cb,
             m_prev_m: self.m_prev_m,
             m_prev_ix: self.m_prev_ix,
             m_prev_iy: self.m_prev_iy,
@@ -75,7 +69,6 @@ impl Clone for SpliceMatrixElement {
             iy_prev_iy: self.iy_prev_iy,
 
             ix2_prev_m: self.ix2_prev_m,
-            ix2_prev_cb: self.ix2_prev_cb,
             ix2_prev_ix2: self.ix2_prev_ix2,
         }
     }
@@ -1348,50 +1341,37 @@ pub fn banded_nw_splice_aware3(
     let mismatch_score = -2.0;
 
     // let query_without_gap = query.replace("-", "").replace("N", "");
-    let query_t = std::str::from_utf8(query.clone().as_slice())
-        .unwrap()
-        .replace("-", "")
-        .replace("N", "");
+    let query_t = std::str::from_utf8(query.clone().as_slice()).unwrap().replace("-", "").replace("N", "");
     let query_without_gap = query_t.as_bytes();
 
     let q_len = query_without_gap.len();
     let t_len = profile.len();
 
-    // let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![
-    //     vec![
-    //         SpliceMatrixElement {
-    //             ..Default::default()
-    //         };
-    //         q_len + 1
-    //     ];
-    //     t_len + 1
-    // ];
+    let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
 
-    let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
-    for _ in 0..t_len + 1 {
-        let mut row: Vec<SpliceMatrixElement> = Vec::new();
-        for _ in 0..(2 * width) + 3 {
-            row.push(SpliceMatrixElement {
-                m: -f64::INFINITY,
-                ix: -f64::INFINITY,
-                iy: -f64::INFINITY,
-                ix2: -f64::INFINITY,
-                cb: -f64::INFINITY,
-                m_prev_m: false,
-                m_prev_ix: false,
-                m_prev_iy: false,
-                m_prev_ix2: false,
-                ix_prev_m: false,
-                ix_prev_ix: false,
-                iy_prev_m: false,
-                iy_prev_iy: false,
-                ix2_prev_m: false,
-                ix2_prev_ix2: false,
-                ix2_prev_cb: false,
-            });
-        }
-        mat.push(row);
-    }
+    // let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
+    // for _ in 0..t_len + 1 {
+    //     let mut row: Vec<SpliceMatrixElement> = Vec::new();
+    //     for _ in 0..(2 * width) + 3 {
+    //         row.push(SpliceMatrixElement {
+    //             m: -f64::INFINITY,
+    //             ix: -f64::INFINITY,
+    //             iy: -f64::INFINITY,
+    //             ix2: -f64::INFINITY,
+    //             m_prev_m: false,
+    //             m_prev_ix: false,
+    //             m_prev_iy: false,
+    //             m_prev_ix2: false,
+    //             ix_prev_m: false,
+    //             ix_prev_ix: false,
+    //             iy_prev_m: false,
+    //             iy_prev_iy: false,
+    //             ix2_prev_m: false,
+    //             ix2_prev_ix2: false
+    //         });
+    //     }
+    //     mat.push(row);
+    // }
     let mut offset_vec: Vec<usize> = vec![0; t_len + 1];
     let mut k_vec: Vec<usize> = vec![0; t_len + 1];
 
@@ -1593,13 +1573,6 @@ pub fn banded_nw_splice_aware3(
                 i -= 1;
                 trace_back_stat = TraceBack::IX2;
             } else if mat[i][v].ix2_prev_m {
-                aligned_query.push(b'N');
-                // aligned_target.push(tbase);
-                ref_target.push(ref_base);
-                major_target.push(major_base);
-                i -= 1;
-                trace_back_stat = TraceBack::M;
-            } else if mat[i][v].ix2_prev_cb {
                 aligned_query.push(b'N');
                 // aligned_target.push(tbase);
                 ref_target.push(ref_base);
