@@ -1348,6 +1348,7 @@ pub fn banded_nw_splice_aware3(
     let t_len = profile.len();
 
     let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
+    println!("mat size: {} x {}", mat.len(), mat[0].len());
 
     // let mut mat: Vec<Vec<SpliceMatrixElement>> = Vec::new();
     // for _ in 0..t_len + 1 {
