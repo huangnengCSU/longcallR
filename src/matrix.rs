@@ -126,13 +126,13 @@ impl PileupMatrix {
         }
     }
 
-    pub fn update_base_matrix_profile(base_matrix: &mut HashMap<String, Vec<u8>>, column_base_counts: &mut Vec<ColumnBaseCount>, readname: String, readseq: &Vec<u8>) {
+    pub fn update_base_matrix_profile(base_matrix: &mut HashMap<String, Vec<u8>>, column_base_counts: &mut Vec<ColumnBaseCount>, readname: String, readseq: &Vec<u8>, left_most_pos: usize, right_most_pos: usize) {
         let prev_readseq = base_matrix.get_mut(&readname).unwrap();
         let prev_readseq_len = prev_readseq.len();
-        assert!(prev_readseq_len == readseq.len());
+        assert!(prev_readseq_len == readseq.len() + left_most_pos + prev_readseq_len - 1 - right_most_pos);
         assert!(prev_readseq_len == column_base_counts.len());
-        for i in 0..prev_readseq_len {
-            let prev_base = prev_readseq[i];
+        for i in 0..readseq.len() {
+            let prev_base = prev_readseq[left_most_pos + i];
             let new_base = readseq[i];
             if prev_base == new_base {
                 continue;
@@ -140,22 +140,22 @@ impl PileupMatrix {
                 if prev_base != b'N' {
                     match prev_base {
                         b'A' => {
-                            column_base_counts[i].n_a -= 1;
+                            column_base_counts[left_most_pos + i].n_a -= 1;
                         }
                         b'C' => {
-                            column_base_counts[i].n_c -= 1;
+                            column_base_counts[left_most_pos + i].n_c -= 1;
                         }
                         b'G' => {
-                            column_base_counts[i].n_g -= 1;
+                            column_base_counts[left_most_pos + i].n_g -= 1;
                         }
                         b'T' => {
-                            column_base_counts[i].n_t -= 1;
+                            column_base_counts[left_most_pos + i].n_t -= 1;
                         }
                         b' ' => {
-                            column_base_counts[i].n_blank -= 1;
+                            column_base_counts[left_most_pos + i].n_blank -= 1;
                         }
                         b'-' => {
-                            column_base_counts[i].n_dash -= 1;
+                            column_base_counts[left_most_pos + i].n_dash -= 1;
                         }
                         _ => {
                             panic!("Invalid base: {}", prev_base);
@@ -164,37 +164,37 @@ impl PileupMatrix {
                 }
                 match new_base {
                     b'A' => {
-                        column_base_counts[i].n_a += 1;
-                        prev_readseq[i] = b'A';
+                        column_base_counts[left_most_pos + i].n_a += 1;
+                        prev_readseq[left_most_pos + i] = b'A';
                     }
                     b'C' => {
-                        column_base_counts[i].n_c += 1;
-                        prev_readseq[i] = b'C';
+                        column_base_counts[left_most_pos + i].n_c += 1;
+                        prev_readseq[left_most_pos + i] = b'C';
                     }
                     b'G' => {
-                        column_base_counts[i].n_g += 1;
-                        prev_readseq[i] = b'G';
+                        column_base_counts[left_most_pos + i].n_g += 1;
+                        prev_readseq[left_most_pos + i] = b'G';
                     }
                     b'T' => {
-                        column_base_counts[i].n_t += 1;
-                        prev_readseq[i] = b'T';
+                        column_base_counts[left_most_pos + i].n_t += 1;
+                        prev_readseq[left_most_pos + i] = b'T';
                     }
                     b' ' => {
-                        column_base_counts[i].n_blank += 1;
-                        prev_readseq[i] = b' ';
+                        column_base_counts[left_most_pos + i].n_blank += 1;
+                        prev_readseq[left_most_pos + i] = b' ';
                     }
                     b'-' => {
-                        column_base_counts[i].n_dash += 1;
-                        prev_readseq[i] = b'-';
+                        column_base_counts[left_most_pos + i].n_dash += 1;
+                        prev_readseq[left_most_pos + i] = b'-';
                     }
                     b'N' => {
-                        prev_readseq[i] = b'N';
+                        prev_readseq[left_most_pos + i] = b'N';
                     }
                     _ => {
                         panic!("Invalid base: {}", new_base);
                     }
                 }
-                column_base_counts[i].update_max_count();
+                column_base_counts[left_most_pos + i].update_max_count();
             }
         }
     }
@@ -479,11 +479,24 @@ impl PileupMatrix {
                         break;
                     }
                 }
+
+                if left_most_query_pos as i32 - 11 >= 0 {
+                    left_most_query_pos -= 11;
+                } else {
+                    left_most_query_pos = 0;
+                }
+
                 for i in (0..query.len()).rev() {
                     if query[i] != b' ' {
                         right_most_query_pos = i;
                         break;
                     }
+                }
+
+                if right_most_query_pos + 12 <= query.len() - 1 {
+                    right_most_query_pos += 12;
+                } else {
+                    right_most_query_pos = query.len() - 1;
                 }
 
                 // TODO: 1. get the banded start position and banded end position on the reference coordinate and record the related column index.
@@ -501,17 +514,18 @@ impl PileupMatrix {
                 // let (alignment_score, aligned_query, ref_target, major_target) = banded_nw_splice_aware2(&query.as_bytes().to_vec(), &profile, 20);
                 let a_s = Instant::now();
                 println!("qname: {}", readname);
+                println!("query size: {}, left_most_query_pos: {}, right_most_query_pos: {}", query.len(), left_most_query_pos, right_most_query_pos);
                 let (
                     reverse_alignment_score,
                     reverse_aligned_query,
                     reverse_ref_target,
                     reverse_major_target,
                 ) = banded_nw_splice_aware3(
-                    &query.to_vec(),
-                    &profile,
-                    &reverse_reduced_donor_penalty,
-                    &reverse_reduced_acceptor_penalty,
-                    &splice_boundary,
+                    &query[left_most_query_pos..=right_most_query_pos].to_vec(),
+                    &profile[left_most_query_pos..=right_most_query_pos].to_vec(),
+                    &reverse_reduced_donor_penalty[left_most_query_pos..=right_most_query_pos].to_vec(),
+                    &reverse_reduced_acceptor_penalty[left_most_query_pos..=right_most_query_pos + 1].to_vec(),
+                    &splice_boundary[left_most_query_pos..=right_most_query_pos].to_vec(),
                     10,
                 );
                 let (
@@ -520,11 +534,11 @@ impl PileupMatrix {
                     forward_ref_target,
                     forward_major_target,
                 ) = banded_nw_splice_aware3(
-                    &query.to_vec(),
-                    &profile,
-                    &forward_reduced_donor_penalty,
-                    &forward_reduced_acceptor_penalty,
-                    &splice_boundary,
+                    &query[left_most_query_pos..=right_most_query_pos].to_vec(),
+                    &profile[left_most_query_pos..=right_most_query_pos].to_vec(),
+                    &forward_reduced_donor_penalty[left_most_query_pos..=right_most_query_pos].to_vec(),
+                    &forward_reduced_acceptor_penalty[left_most_query_pos..=right_most_query_pos + 1].to_vec(),
+                    &splice_boundary[left_most_query_pos..=right_most_query_pos].to_vec(),
                     10,
                 );
                 let a_d = a_s.elapsed().as_millis();
@@ -553,14 +567,14 @@ impl PileupMatrix {
                 // println!("major target: \n{}", std::str::from_utf8(&major_target).unwrap());
                 // println!("aligned query: \n{}", std::str::from_utf8(&aligned_query).unwrap());
                 // println!("alignment score: {}", alignment_score);
-                assert!(aligned_query.len() == reduced_base_matrix.get(readname).unwrap().len());
+                assert!(aligned_query.len() + left_most_query_pos + query.len() - 1 - right_most_query_pos == reduced_base_matrix.get(readname).unwrap().len());
                 // let insert_s = Instant::now();
                 // reduced_base_matrix.insert(readname.clone(), aligned_query);
                 // insert_runtime += insert_s.elapsed().as_millis();
                 // profile.clear();
                 let generate_s = Instant::now();
                 // PileupMatrix::generate_column_profile(&reduced_base_matrix, &mut profile);
-                PileupMatrix::update_base_matrix_profile(&mut reduced_base_matrix, &mut profile, readname.clone(), &aligned_query);
+                PileupMatrix::update_base_matrix_profile(&mut reduced_base_matrix, &mut profile, readname.clone(), &aligned_query, left_most_query_pos, right_most_query_pos);
                 generate_runtime += generate_s.elapsed().as_millis();
             }
             old_score = new_score;
