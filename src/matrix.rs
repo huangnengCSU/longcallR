@@ -453,21 +453,39 @@ impl PileupMatrix {
             new_score += cbc.get_score(&cbc.get_major_base());
         }
         let mut iteration = 0;
+        let mut cnt = 0;
         while new_score > old_score {
             let realign_s = Instant::now();
             let mut double_strand_align_runtime: u128 = 0;
             // let mut insert_runtime: u128 = 0;
             let mut generate_runtime: u128 = 0;
             iteration += 1;
-            // println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
+            println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
             for (readname, base_vec) in base_matrix.iter() {
                 if *readname == "ref".to_string() {
                     continue;
                 }
 
+                cnt += 1;
                 // let query = String::from_utf8(base_vec.clone()).unwrap().replace(" ", "").replace("-", "").replace("N", "");
                 let query =
-                    std::str::from_utf8(reduced_base_matrix.get(readname).unwrap()).unwrap();
+                    std::str::from_utf8(reduced_base_matrix.get(readname).unwrap()).unwrap().as_bytes();
+
+                let mut left_most_query_pos = 0;    // not include the padding
+                let mut right_most_query_pos = 0;   // not include the padding
+                for i in 0..query.len() {
+                    if query[i] != b' ' {
+                        left_most_query_pos = i;
+                        break;
+                    }
+                }
+                for i in (0..query.len()).rev() {
+                    if query[i] != b' ' {
+                        right_most_query_pos = i;
+                        break;
+                    }
+                }
+
                 // TODO: 1. get the banded start position and banded end position on the reference coordinate and record the related column index.
                 //       2. choose the sub_matrix from base_matrix between the banded start position and banded end position
                 //       3. calculate the alignment (reduce the size of target by ignoring the front padding and back padding)
@@ -489,7 +507,7 @@ impl PileupMatrix {
                     reverse_ref_target,
                     reverse_major_target,
                 ) = banded_nw_splice_aware3(
-                    &query.as_bytes().to_vec(),
+                    &query.to_vec(),
                     &profile,
                     &reverse_reduced_donor_penalty,
                     &reverse_reduced_acceptor_penalty,
@@ -502,7 +520,7 @@ impl PileupMatrix {
                     forward_ref_target,
                     forward_major_target,
                 ) = banded_nw_splice_aware3(
-                    &query.as_bytes().to_vec(),
+                    &query.to_vec(),
                     &profile,
                     &forward_reduced_donor_penalty,
                     &forward_reduced_acceptor_penalty,
@@ -565,6 +583,7 @@ impl PileupMatrix {
             // println!("insert runtime: {}", insert_runtime);
             println!("generate runtime: {}", generate_runtime);
         }
+        println!("total cnt: {}", cnt);
         // println!("new major sequence:");
         // println!("{}", String::from_utf8(prev_aligned_seq).unwrap());
     }
@@ -844,6 +863,22 @@ pub struct ColumnBaseCount {
     pub n_blank: u16,
     pub max_count: u16,
     pub ref_base: u8,
+}
+
+impl Clone for ColumnBaseCount {
+    fn clone(&self) -> Self {
+        ColumnBaseCount {
+            n_a: self.n_a,
+            n_c: self.n_c,
+            n_g: self.n_g,
+            n_t: self.n_t,
+            n_n: self.n_n,
+            n_dash: self.n_dash,
+            n_blank: self.n_blank,
+            max_count: self.max_count,
+            ref_base: self.ref_base,
+        }
+    }
 }
 
 impl ColumnBaseCount {
