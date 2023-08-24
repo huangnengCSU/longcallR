@@ -1372,17 +1372,18 @@ pub fn banded_nw_splice_aware3(
     //     }
     //     mat.push(row);
     // }
-    let mut offset_vec: Vec<usize> = vec![0; t_len + 1];
+    // let mut offset_vec: Vec<usize> = vec![0; t_len + 1];
     let mut k_vec: Vec<usize> = vec![0; t_len + 1];
 
     // Initialize first row
     mat[0][width + 1].ix = -h - g;
-    mat[0][width + 1].iy = -h - g - f64::INFINITY;
+    // mat[0][width + 1].iy = -h - g - f64::INFINITY;
     mat[0][width + 1].ix2 = -f64::INFINITY;
-    mat[0][width + 1].m = mat[0][width + 1]
-        .ix
-        .max(mat[0][width + 1].iy)
-        .max(mat[0][width + 1].ix2);
+    // mat[0][width + 1].m = mat[0][width + 1]
+    //     .ix
+    //     .max(mat[0][width + 1].iy)
+    //     .max(mat[0][width + 1].ix2);
+    mat[0][width + 1].m = mat[0][width + 1].ix;
 
     // for j in width + 2..2 * width + 3 {
     //     mat[0][j].ix = -f64::INFINITY;
@@ -1401,10 +1402,10 @@ pub fn banded_nw_splice_aware3(
         let mut offset: usize;
         if query[j - 1] != b'-' && query[j - 1] != b'N' {
             k += 1;
-            offset_vec[i] = 0; // m is upper, gap is right_upper
+            // offset_vec[i] = 0; // m is upper, gap is right_upper
             offset = 0;
         } else {
-            offset_vec[i] = 1; // m is left_upper, gap is upper
+            // offset_vec[i] = 1; // m is left_upper, gap is upper
             offset = 1;
         }
         k_vec[i] = k; // store k index of each row
@@ -1451,6 +1452,14 @@ pub fn banded_nw_splice_aware3(
                 } else if mat[i][v].ix == mat[i - 1][v + 1 - offset].ix {
                     mat[i][v].ix_prev_ix = true;
                 }
+
+                // if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
+                //     mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
+                //     mat[i][v].ix_prev_m = true;
+                // } else {
+                //     mat[i][v].ix = mat[i - 1][v + 1 - offset].ix;
+                //     mat[i][v].ix_prev_ix = true;
+                // }
             } else {
                 mat[i][v].ix =
                     (mat[i - 1][v + 1 - offset].m - h - g).max(mat[i - 1][v + 1 - offset].ix - g);
@@ -1459,8 +1468,16 @@ pub fn banded_nw_splice_aware3(
                 } else if mat[i][v].ix == mat[i - 1][v + 1 - offset].ix - g {
                     mat[i][v].ix_prev_ix = true;
                 }
+
+                // if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - g {
+                //     mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
+                //     mat[i][v].ix_prev_m = true;
+                // } else {
+                //     mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - g;
+                //     mat[i][v].ix_prev_ix = true;
+                // }
             }
-            // println!("i:{}", i);
+
             mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2).max(
                 mat[i - 1][v + 1 - offset].ix2); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 {
@@ -1468,6 +1485,15 @@ pub fn banded_nw_splice_aware3(
             } else if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].ix2 {
                 mat[i][v].ix2_prev_ix2 = true;
             }
+
+            // if mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 >= mat[i - 1][v + 1 - offset].ix2 {
+            //     mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2;
+            //     mat[i][v].ix2_prev_m = true;
+            // } else {
+            //     mat[i][v].ix2 = mat[i - 1][v + 1 - offset].ix2;
+            //     mat[i][v].ix2_prev_ix2 = true;
+            // }
+
 
             // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
             // The size of donor and acceptor is ref_base_vec.len() + 1.
@@ -1483,6 +1509,17 @@ pub fn banded_nw_splice_aware3(
             } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i] {
                 mat[i][v].m_prev_ix2 = true;
             }
+
+            // if mat[i - 1][v - offset].m + sij >= mat[i][v].ix && mat[i - 1][v - offset].m + sij >= mat[i][v].ix2 - reduced_acceptor_penalty[i] {
+            //     mat[i][v].m = mat[i - 1][v - offset].m + sij;
+            //     mat[i][v].m_prev_m = true;
+            // } else if mat[i][v].ix >= mat[i - 1][v - offset].m + sij && mat[i][v].ix >= mat[i][v].ix2 - reduced_acceptor_penalty[i] {
+            //     mat[i][v].m = mat[i][v].ix;
+            //     mat[i][v].m_prev_ix = true;
+            // } else if mat[i][v].ix2 - reduced_acceptor_penalty[i] >= mat[i - 1][v - offset].m + sij && mat[i][v].ix2 - reduced_acceptor_penalty[i] >= mat[i][v].ix {
+            //     mat[i][v].m = mat[i][v].ix2 - reduced_acceptor_penalty[i];
+            //     mat[i][v].m_prev_ix2 = true;
+            // }
         }
         i += 1;
         j += 1;
@@ -1505,6 +1542,7 @@ pub fn banded_nw_splice_aware3(
     }
     // find max value and index in score_vec
     let (max_score, max_index) = find_max_value_and_index(&score_vec);
+
     alignment_score = max_score;
     v = max_index;
     k = k_vec[i];
@@ -1526,7 +1564,6 @@ pub fn banded_nw_splice_aware3(
         k = k_vec[i];
         v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
         let qbase = query_without_gap[u - 1];
-        // let tbase = target[i - 1];
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == TraceBack::M {
@@ -1536,7 +1573,6 @@ pub fn banded_nw_splice_aware3(
                 trace_back_stat = TraceBack::IX2;
             } else if mat[i][v].m_prev_m {
                 aligned_query.push(qbase);
-                // aligned_target.push(tbase);
                 ref_target.push(ref_base);
                 major_target.push(major_base);
                 i -= 1;
@@ -1588,11 +1624,9 @@ pub fn banded_nw_splice_aware3(
     }
 
     while i > 0 {
-        // let tbase = target[i - 1];
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
         aligned_query.push(b'-');
-        // aligned_target.push(tbase);
         ref_target.push(ref_base);
         major_target.push(major_base);
         i -= 1;
@@ -1600,14 +1634,12 @@ pub fn banded_nw_splice_aware3(
     while u > 0 {
         let qbase = query_without_gap[u - 1];
         aligned_query.push(qbase);
-        // aligned_target.push(b'-');
         ref_target.push(b'-');
         major_target.push(b'-');
         u -= 1;
     }
 
     aligned_query.reverse();
-    // aligned_target.reverse();
     ref_target.reverse();
     major_target.reverse();
     println!("original:\n {:?}", std::str::from_utf8(query).unwrap());
