@@ -455,9 +455,9 @@ impl PileupMatrix {
         let mut iteration = 0;
         while new_score > old_score {
             let realign_s = Instant::now();
-            let mut double_strand_align_runtime: u64 = 0;
+            let mut double_strand_align_runtime: u128 = 0;
             // let mut insert_runtime: u128 = 0;
-            let mut generate_runtime: u64 = 0;
+            let mut generate_runtime: u128 = 0;
             iteration += 1;
             // println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
             for (readname, base_vec) in base_matrix.iter() {
@@ -494,7 +494,7 @@ impl PileupMatrix {
                     &reverse_reduced_donor_penalty,
                     &reverse_reduced_acceptor_penalty,
                     &splice_boundary,
-                    20,
+                    10,
                 );
                 let (
                     forward_alignment_score,
@@ -507,9 +507,9 @@ impl PileupMatrix {
                     &forward_reduced_donor_penalty,
                     &forward_reduced_acceptor_penalty,
                     &splice_boundary,
-                    20,
+                    10,
                 );
-                let a_d = a_s.elapsed().as_secs();
+                let a_d = a_s.elapsed().as_millis();
                 double_strand_align_runtime += a_d;
 
                 let alignment_score: f64;
@@ -543,7 +543,7 @@ impl PileupMatrix {
                 let generate_s = Instant::now();
                 // PileupMatrix::generate_column_profile(&reduced_base_matrix, &mut profile);
                 PileupMatrix::update_base_matrix_profile(&mut reduced_base_matrix, &mut profile, readname.clone(), &aligned_query);
-                generate_runtime += generate_s.elapsed().as_secs();
+                generate_runtime += generate_s.elapsed().as_millis();
             }
             old_score = new_score;
             new_score = 0.0;
