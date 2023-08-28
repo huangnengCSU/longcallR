@@ -3,11 +3,12 @@ mod matrix;
 mod pileup2matrix;
 mod align;
 mod isolated_region;
+mod base_matrix;
 
 // extern crate bio;
 use std::time::{Duration, Instant};
 use rust_htslib::{bam, bam::Read};
-use bam_reader::{BamReader};
+use bam_reader::{BamReader, Region};
 use bam_reader::{write_read_records1, write_read_records2, write_read_records3};
 use std::collections::HashMap;
 use std::process::exit;
@@ -19,8 +20,9 @@ use pileup2matrix::generate_pileup_matrix;
 use crate::matrix::ColumnBaseCount;
 use align::nw_splice_aware;
 use isolated_region::find_isolated_regions;
+use crate::base_matrix::{*};
 
-fn main() {
+fn main3() {
     let main_s = Instant::now();
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let region = "chr22:30425877-30425912"; // 1-based
@@ -34,9 +36,10 @@ fn main() {
     // let region = "chr22:26483883-26512499";
     // let region = "chr22:20302014-20324303";
     // let region = "chr22:26483883-26512499";
-    // let region = "chr22:37009116-37030993";
+    let region = "chr22:37009116-37030993";
     // let region = "chr22:20302014-20324303";
-    let region = "chr22:26483883-26512499";
+    // let region = "chr22:26483883-26512499";
+    // let region = "chr22:37830851-38181804";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     // let out_path = "new.bam";
     // let out_path2 = "new2.bam";
@@ -100,7 +103,7 @@ fn main() {
 
     let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
     generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
-    // println!("matrices_vec.len(): {:?}", matrices_vec.len());
+    println!("matrices_vec.len(): {:?}", matrices_vec.len());
     // for (readname, seq) in matrices_vec[0].base_matrix.iter() {
     // println!("readname: {:?}", readname);
     // println!("seq: {:?}", String::from_utf8(seq.clone()).unwrap());
@@ -109,7 +112,7 @@ fn main() {
     // v.sort_by(|x,y| x.0.cmp(&y.0));
     let mut sorted: Vec<_> = matrices_vec[0].positions.clone().into_iter().collect();
     sorted.sort_by(|a, b| a.1.cmp(&b.1));
-    // println!("max_idx: {:?}", matrices_vec[0].max_idx);
+    println!("max_idx: {:?}", matrices_vec[0].max_idx);
     // println!("current pos: {:?}", matrices_vec[0].current_pos);
     // for (ref_pos, idx) in sorted.iter() {
     //     print!("idx: {:?}\t", idx);
@@ -265,10 +268,153 @@ fn main2() {
     }
 }
 
-fn main3() {
+fn main4() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
-    let regions = find_isolated_regions(bam_path, 200);
+    let regions = find_isolated_regions(bam_path, 1000);
     for region in regions.iter() {
         println!("{}:{}-{}", region.chr, region.start, region.end);
     }
+}
+
+
+fn main() {
+    let main_s = Instant::now();
+    let bam_path = "wtc11_ont_grch38.chr22.bam";
+    // let input_region = "chr22:37009116-37030993";
+    // let input_region = "chr22:20302014-20324303";
+    // let input_region = "chr22:26483883-26512499";
+    // let input_region = "chr22:37830851-38181804";
+    let input_region = "chr22:37010969-37018554";
+    let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
+
+    let reader_s = Instant::now();
+    // let bam_reader = BamReader::new(bam_path.to_string(), region.to_string());
+    // // // let mut read_records: HashMap<String, Vec<bam::Record>> = HashMap::new();
+    // // //
+    // let header = bam_reader.get_bam_header();
+    // // bam_reader.get_read_records(&mut read_records);
+    //
+    // // let mut writer = bam::Writer::from_path(out_path, &header, bam::Format::Bam).unwrap();
+    // //
+    // // for (qname, record_vec) in read_records.iter_mut() {
+    // //     for record in record_vec.iter_mut() {
+    // //         let mut out_record = bam::Record::from(record.clone());
+    // //         out_record.set_pos(123456);
+    // //         // let mut new_cigar = CigarString(vec![Cigar::Match(1), Cigar::Ins(1), Cigar::Match(1)]);
+    // //         // out_record.set(record.qname(),
+    // //         //                Some(&new_cigar),
+    // //         //                &record.seq().as_bytes(),
+    // //         //                record.qual());
+    // //         let new_cigar = record.cigar().take();
+    // //         out_record.set(record.qname(),
+    // //                        Some(&new_cigar),
+    // //                        &record.seq().as_bytes(),
+    // //                        record.qual());
+    // //         println!("qname: {:?}, pos: {:?}", qname, record.pos());
+    // //         let re = writer.write(&out_record);
+    // //         if re.is_err() {
+    // //             println!("error: {:?}", re);
+    // //             exit(1);
+    // //         }
+    // //     }
+    // // }
+    // // write_read_records1(&read_records, &header, String::from(out_path));
+    // // write_read_records2(&mut read_records, &header, String::from(out_path2));
+    // // write_read_records3(&mut read_records, &header, String::from(out_path3));
+    //
+    // let mut reader = fasta::Reader::from_file(ref_path).unwrap();
+    // for record in reader.records() {
+    //     let record = record.unwrap();
+    //     // println!("{}", record.id());
+    //     // println!("{}", std::str::from_utf8(record.seq()).unwrap());
+    //     // println!("{}", record.seq().len());
+    // }
+    //
+    // let mut matrices_vec: Vec<PileupMatrix> = Vec::new();
+    // generate_pileup_matrix(&bam_path.to_string(), &ref_path.to_string(), &region.to_string(), &mut matrices_vec);
+
+    let mut base_matrix = BaseMatrix::new();
+    let region = Region::new(input_region.to_string());
+    // let bam_reader = BamReader::new(bam_path.to_string(), region.to_string());
+    base_matrix.load_data(bam_path.to_string(), region);
+    let ref_seqs = load_reference(ref_path.to_string());
+    base_matrix.load_ref_data(ref_seqs);
+    base_matrix.expand_insertion();
+
+
+    // println!("matrices_vec.len(): {:?}", matrices_vec.len());
+    // for (readname, seq) in matrices_vec[0].base_matrix.iter() {
+    // println!("readname: {:?}", readname);
+    // println!("seq: {:?}", String::from_utf8(seq.clone()).unwrap());
+    // }
+    // let mut v: Vec<_> = map.into_iter().collect();
+    // v.sort_by(|x,y| x.0.cmp(&y.0));
+    // let mut sorted: Vec<_> = matrices_vec[0].positions.clone().into_iter().collect();
+    // sorted.sort_by(|a, b| a.1.cmp(&b.1));
+    // println!("max_idx: {:?}", matrices_vec[0].max_idx);
+    // println!("current pos: {:?}", matrices_vec[0].current_pos);
+    // for (ref_pos, idx) in sorted.iter() {
+    //     print!("idx: {:?}\t", idx);
+    //     println!("ref_pos: {:?}", ref_pos);
+    // }
+
+    let mut column_base_counts: Vec<ColumnBaseCount> = Vec::new();
+    let mut column_indexes: Vec<usize> = Vec::new();
+    let mut reduced_base_matrix: HashMap<String, Vec<u8>> = HashMap::new();
+    let reader_duration = reader_s.elapsed();
+
+    // PileupMatrix::generate_reduced_profile(&matrices_vec[0].base_matrix, &mut column_base_counts, &mut column_indexes, &mut reduced_base_matrix);
+    // for cbc in column_base_counts.iter() {
+    //     println!("A:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
+    // }
+    // for i in 0..column_base_counts.len() {
+    //     let cbc = &column_base_counts[i];
+    //     println!("idx:{}\tA:{}, C:{}, G:{}, T:{}, N:{}, D:{}, B:{}", &column_indexes[i], cbc.n_a, cbc.n_c, cbc.n_g, cbc.n_t, cbc.n_n, cbc.n_dash, cbc.n_blank);
+    // }
+
+    // let query = String::from_utf8(matrices_vec[0].base_matrix.iter().next().unwrap().1.to_vec()).unwrap().replace("N", "").replace(" ", "");
+    // let (alignment_score, aligned_query, ref_target, major_target) = nw_splice_aware(&query, &column_base_counts);
+    // println!("alignment_score: {:?}", alignment_score);
+    // println!("aligned_query:\n {:?}", aligned_query);
+    // println!("ref_target:\n {:?}", ref_target);
+    // println!("major_target:\n {:?}", major_target);
+    let mut total_align_runtime: u64 = 0;
+    let mut total_update_runtime: u64 = 0;
+
+    let (forward_donor_penalty,
+        forward_acceptor_penalty,
+        reverse_donor_penalty,
+        reverse_acceptor_penalty) = get_donor_acceptor_penalty(&base_matrix.expanded_matrix,30.0);
+    let mut best_reduced_expanded_matrix: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut best_column_indexes: Vec<usize> = Vec::new();
+    let align_s = Instant::now();
+    profile_realign(&base_matrix.expanded_matrix,
+                                  &forward_donor_penalty,
+                                  &forward_acceptor_penalty,
+                                  &reverse_donor_penalty,
+                                  &reverse_acceptor_penalty,
+                                  &mut best_reduced_expanded_matrix,
+                                  &mut best_column_indexes);
+    let align_duration = align_s.elapsed().as_secs();
+    total_align_runtime += align_duration;
+    let update_s = Instant::now();
+    update_expanded_matrix_from_realign(&mut base_matrix.expanded_matrix,&best_reduced_expanded_matrix, &best_column_indexes);
+    let it = base_matrix.expanded_matrix.iter().next().unwrap();
+    let qname = it.0;
+    let seq = std::str::from_utf8(it.1).unwrap().to_string();
+    // println!("new seq: {} \n{:?}", qname, seq);
+    // println!("start pos: {}, end pos: {}", matrices_vec[i].region.start, matrices_vec[i].region.end);
+
+    update_bam_records_from_realign(&mut base_matrix.expanded_matrix, &mut base_matrix.bam_records,base_matrix.start_position, base_matrix.end_position);
+    let update_duration = update_s.elapsed().as_secs();
+    total_update_runtime += update_duration;
+    let bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+    let header = bam::Header::from_template(bam.header());
+    write_bam_records(&mut base_matrix.bam_records,"new4.bam", &header);
+    let main_duration = main_s.elapsed();
+    println!("main: {:?}", main_duration);
+    println!("reader: {:?}", reader_duration);
+    println!("align: {:?}", total_align_runtime);
+    println!("update: {:?}", total_update_runtime);
+    println!("start pos: {}, end pos: {}", base_matrix.start_position, base_matrix.end_position);
 }
