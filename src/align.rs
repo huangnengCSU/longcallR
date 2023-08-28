@@ -1442,7 +1442,7 @@ pub fn banded_nw_splice_aware3(
                         sij = mismatch_score;
                     }
                 } else {
-                    sij = 2.0 - 2.0 * col.get_score(&qbase);
+                    sij = 2.0 - 4.0 * col.get_score(&qbase);
                 }
             }
 
