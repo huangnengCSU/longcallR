@@ -1,5 +1,6 @@
 use rust_htslib::{bam, bam::Read, bam::Record, bam::Format};
 use rust_htslib::bam::record::{Cigar, CigarString};
+use rust_htslib::bam::ext::BamRecordExtensions;
 use bio::io::fasta;
 use std::collections::HashMap;
 use crate::bam_reader::Region;
@@ -38,6 +39,9 @@ impl BaseMatrix {
     }
 
     pub fn load_data(&mut self, bam_file: String, region: Region) {
+        /*
+        load reads in the given region and extend each read to the left and right
+        */
         let mut bam_reader = bam::IndexedReader::from_path(bam_file).unwrap();
         let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end));
         self.contig_name = region.chr.clone();
@@ -211,6 +215,112 @@ impl BaseMatrix {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    pub fn load_data_without_extension(&mut self, bam_file: String, region: Region){
+        /*
+        load reads which are entirely in the given region (without extension)
+        */
+        let mut bam_reader = bam::IndexedReader::from_path(bam_file).unwrap();
+        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end)); // left include, right exclude
+        self.contig_name = region.chr.clone();
+        if result.is_err() {
+            panic!("fetch region failed...");
+        }
+        let mut record = Record::new();
+        self.start_position = region.start;
+        self.end_position = region.end;
+        let max_length = region.end - region.start + 1;
+        while let Some(result) = bam_reader.read(&mut record) {
+            if result.is_err() {
+                panic!("BAM parsing failed...");
+            }
+            if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                continue;
+            }
+            let cigar = record.cigar();
+            let seq = record.seq().as_bytes();
+            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+            let pos = record.pos(); // 0-based
+            if pos < region.start as i64 -1 || pos > region.end as i64 -1 {
+                // left side of the read is not in the region
+                continue;
+            }
+            if record.reference_end() > region.end as i64 {
+                // right side of the read is not in the region
+                continue;
+            }
+
+            if self.bam_records.get(qname.as_str()).is_none() {
+                self.bam_records.insert(qname.clone(), record.clone());
+            }
+            if self.base_matrix.get_mut(&qname).is_none() {
+                self.base_matrix.insert(qname.clone(), Vec::new());
+            }
+            let mut pos_on_ref = pos;
+            let mut pos_on_query = cigar.leading_softclips();
+            let row = self.base_matrix.get_mut(&qname).unwrap();
+            // left padding
+            for _ in 0..pos_on_ref - region.start as i64 + 1 {
+                row.push(MatElement {
+                    curr: b' ',
+                    insert: Vec::new(),
+                });
+            }
+            for cg in cigar.iter() {
+                match cg.char() as u8 {
+                    b'S' | b'H' => {
+                        continue;
+                    }
+                    b'M' => {
+                        for _ in 0..cg.len() {
+                            let qbase = seq[pos_on_query as usize];
+                            row.push(MatElement {
+                                curr: qbase,
+                                insert: Vec::new(),
+                            });
+                            pos_on_query += 1;
+                            pos_on_ref += 1;
+                        }
+                    }
+                    b'I' => {
+                        let insert_seq = seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec();
+                        row.last_mut().unwrap().insert.extend(insert_seq);
+                        pos_on_query += cg.len() as i64;
+                    }
+                    b'D' => {
+                        for _ in 0..cg.len() {
+                            row.push(MatElement {
+                                curr: b'-',
+                                insert: Vec::new(),
+                            });
+                            pos_on_ref += 1;
+                        }
+                    }
+                    b'N' => {
+                        for _ in 0..cg.len() {
+                            row.push(MatElement {
+                                curr: b'N',
+                                insert: Vec::new(),
+                            });
+                            pos_on_ref += 1;
+                        }
+                    }
+                    _ => {
+                        panic!("Invalid cigar char: {}", cg.char());
+                    }
+                }
+            }
+        }
+        // right padding
+        for (_, row) in self.base_matrix.iter_mut() {
+            while row.len() < max_length as usize {
+                row.push(MatElement {
+                    curr: b' ',
+                    insert: Vec::new(),
+                });
             }
         }
     }
@@ -998,4 +1108,64 @@ pub fn write_bam_records(
             process::exit(1);
         }
     }
+}
+
+pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(String, i64, i64)>, Vec<(String, i64, i64)>) {
+    let mut normal_depth_regions: Vec<(String, i64, i64)> = Vec::new();
+    let mut high_depth_regions: Vec<(String, i64, i64)> = Vec::new();
+    let mut ctg = String::new();
+    let mut pre_ctg = String::new();
+    let mut s: i64 = -1;
+    let mut e: i64 = -1;
+    let mut state = 0;  // 0 is normal depth, 1 is high depth
+    let mut pre_state = 0;   // 0 is normal depth, 1 is high depth
+    let mut pre_depth = 0;
+
+
+    let mut bam = bam::Reader::from_path(bam_path).unwrap();
+    let header = bam.header().clone();
+    for p in bam.pileup(){
+        let pileup = p.unwrap();
+        let depth = pileup.depth();
+        let pos = pileup.pos(); //0-based
+
+        if s==-1 && e==-1 {
+            s = pos as i64;
+            e = pos as i64;
+            ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
+            pre_ctg = ctg.clone();
+            if depth >= depth_threshold {
+                state = 1;
+            } else {
+                state = 0;
+            }
+            pre_state = state;
+            pre_depth = depth;
+        }
+
+        if depth >= depth_threshold {
+            state = 1;
+        } else {
+            state = 0;
+        }
+
+        if state != pre_state || ctg != pre_ctg {
+            // println!("{}, depth: {}, pre_depth: {}", pos+1, depth, pre_depth);
+            if pre_state == 1 {
+                high_depth_regions.push((ctg.clone(), s + 1, e + 1));
+            }else{
+                normal_depth_regions.push((ctg.clone(), s + 1, e + 1));
+            }
+            ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
+            pre_ctg = ctg.clone();
+            s = pos as i64;
+            e = pos as i64;
+            pre_state = state;
+            pre_depth = depth;
+        }else{
+            e = pos as i64;
+            pre_depth = depth;
+        }
+    }
+    return (normal_depth_regions, high_depth_regions);
 }
