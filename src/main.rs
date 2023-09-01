@@ -337,16 +337,17 @@ fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     let (tx_l, rx_l) = mpsc::channel();
     let (tx_h, rx_h) = mpsc::channel();
-    let prod_v = multithread_produce(bam_path.to_string(), 4, tx_l, tx_h);
+    // let prod_v = multithread_produce(bam_path.to_string(), 4, tx_l, tx_h);
+    multithread_produce(bam_path.to_string(), 4, tx_l, tx_h);
 
-    for handle in prod_v {
-        handle.join().unwrap();
-    }
+    // for handle in prod_v {
+    //     handle.join().unwrap();
+    // }
 
     for region in rx_l {
-        println!("low: {:?}", region);
+        println!("low: {}:{}-{}", region.chr, region.start, region.end);
     }
     for region in rx_h {
-        println!("high: {:?}", region);
+        println!("high: {}:{}-{}", region.chr, region.start, region.end);
     }
 }

@@ -219,7 +219,7 @@ impl BaseMatrix {
         }
     }
 
-    pub fn load_data_without_extension(&mut self, bam_file: String, region: Region){
+    pub fn load_data_without_extension(&mut self, bam_file: String, region: Region) {
         /*
         load reads which are entirely in the given region (without extension)
         */
@@ -244,7 +244,7 @@ impl BaseMatrix {
             let seq = record.seq().as_bytes();
             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
             let pos = record.pos(); // 0-based
-            if pos < region.start as i64 -1 || pos > region.end as i64 -1 {
+            if pos < region.start as i64 - 1 || pos > region.end as i64 - 1 {
                 // left side of the read is not in the region
                 continue;
             }
@@ -1125,7 +1125,7 @@ pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(S
 
     let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
     let header = bam.header().clone();
-    for p in bam.pileup(){
+    for p in bam.pileup() {
         let pileup = p.unwrap();
         // let depth = pileup.alignments().filter(|alignment| {
         //     let record = alignment.record();
@@ -1135,7 +1135,7 @@ pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(S
         let pos = pileup.pos(); //0-based
         // println!("pos: {}, depth: {}", pos+1, depth);
 
-        if s==-1 && e==-1 {
+        if s == -1 && e == -1 {
             s = pos as i64;
             e = pos as i64;
             ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
@@ -1162,7 +1162,7 @@ pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(S
                 // println!("{}, depth: {}, pre_depth: {}", pos+1, depth, pre_depth);
                 if pre_state == 1 {
                     high_depth_regions.push((ctg.clone(), s + 1, e + 1));
-                }else{
+                } else {
                     normal_depth_regions.push((ctg.clone(), s + 1, e + 1));
                 }
             }
@@ -1173,7 +1173,7 @@ pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(S
             pre_state = state;
             pre_depth = depth;
             pre_pos = pos;
-        }else{
+        } else {
             e = pos as i64;
             pre_depth = depth;
             pre_pos = pos;
@@ -1183,11 +1183,9 @@ pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(S
 }
 
 
-
-
-pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_threshold: u32) -> (Vec<(String, i64, i64)>, Vec<(String, i64, i64)>) {
-    let mut normal_depth_regions: Vec<(String, i64, i64)> = Vec::new();
-    let mut high_depth_regions: Vec<(String, i64, i64)> = Vec::new();
+pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_threshold: u32) -> (Vec<Region>, Vec<Region>) {
+    let mut normal_depth_regions: Vec<Region> = Vec::new();
+    let mut high_depth_regions: Vec<Region> = Vec::new();
     let mut ctg = String::new();
     let mut pre_ctg = String::new();
     let mut s: i64 = -1;
@@ -1201,7 +1199,7 @@ pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_thres
     let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
     let header = bam.header().clone();
     bam.fetch(ctgname).unwrap();
-    for p in bam.pileup(){
+    for p in bam.pileup() {
         let pileup = p.unwrap();
         // let depth = pileup.alignments().filter(|alignment| {
         //     let record = alignment.record();
@@ -1211,7 +1209,7 @@ pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_thres
         let pos = pileup.pos(); //0-based
         // println!("pos: {}, depth: {}", pos+1, depth);
 
-        if s==-1 && e==-1 {
+        if s == -1 && e == -1 {
             s = pos as i64;
             e = pos as i64;
             ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
@@ -1237,9 +1235,11 @@ pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_thres
             if e > s {
                 // println!("{}, depth: {}, pre_depth: {}", pos+1, depth, pre_depth);
                 if pre_state == 1 {
-                    high_depth_regions.push((ctg.clone(), s + 1, e + 1));
-                }else{
-                    normal_depth_regions.push((ctg.clone(), s + 1, e + 1));
+                    high_depth_regions.push(Region { chr: ctg.clone(), start: s as u32 + 1, end: e as u32 + 1 });
+                    // high_depth_regions.push((ctg.clone(), s + 1, e + 1));
+                } else {
+                    normal_depth_regions.push(Region { chr: ctg.clone(), start: s as u32 + 1, end: e as u32 + 1 });
+                    // normal_depth_regions.push((ctg.clone(), s + 1, e + 1));
                 }
             }
             ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
@@ -1249,7 +1249,7 @@ pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_thres
             pre_state = state;
             pre_depth = depth;
             pre_pos = pos;
-        }else{
+        } else {
             e = pos as i64;
             pre_depth = depth;
             pre_pos = pos;

@@ -3,6 +3,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::collections::VecDeque;
 use threadpool::ThreadPool;
+use crate::bam_reader::Region;
 use crate::base_matrix::get_chrom_coverage_intervals;
 
 
@@ -41,7 +42,7 @@ use crate::base_matrix::get_chrom_coverage_intervals;
     return results.clone();
 }*/
 
-pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::Sender<(String, i64, i64)>, tx_high: mpsc::Sender<(String, i64, i64)>) {
+pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::Sender<Region>, tx_high: mpsc::Sender<Region>) {
     let pool = ThreadPool::new(thread_size);
     let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
     let bam_header = bam.header().clone();
