@@ -1181,3 +1181,79 @@ pub fn get_coverage_intervals(bam_path: String, depth_threshold: u32) -> (Vec<(S
     }
     return (normal_depth_regions, high_depth_regions);
 }
+
+
+
+
+pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_threshold: u32) -> (Vec<(String, i64, i64)>, Vec<(String, i64, i64)>) {
+    let mut normal_depth_regions: Vec<(String, i64, i64)> = Vec::new();
+    let mut high_depth_regions: Vec<(String, i64, i64)> = Vec::new();
+    let mut ctg = String::new();
+    let mut pre_ctg = String::new();
+    let mut s: i64 = -1;
+    let mut e: i64 = -1;
+    let mut state = 0;  // 0 is normal depth, 1 is high depth
+    let mut pre_state = 0;   // 0 is normal depth, 1 is high depth
+    let mut pre_depth = 0;
+    let mut pre_pos: u32 = 0;
+
+
+    let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
+    let header = bam.header().clone();
+    bam.fetch(ctgname).unwrap();
+    for p in bam.pileup(){
+        let pileup = p.unwrap();
+        // let depth = pileup.alignments().filter(|alignment| {
+        //     let record = alignment.record();
+        //     !record.is_duplicate() && !record.is_secondary() && !record.is_supplementary() && !record.is_unmapped()
+        // }).count() as u32;
+        let depth = pileup.depth();
+        let pos = pileup.pos(); //0-based
+        // println!("pos: {}, depth: {}", pos+1, depth);
+
+        if s==-1 && e==-1 {
+            s = pos as i64;
+            e = pos as i64;
+            ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
+            pre_ctg = ctg.clone();
+            if depth >= depth_threshold {
+                state = 1;
+            } else {
+                state = 0;
+            }
+            pre_state = state;
+            pre_depth = depth;
+            pre_pos = pos;
+            continue;
+        }
+
+        if depth >= depth_threshold {
+            state = 1;
+        } else {
+            state = 0;
+        }
+
+        if state != pre_state || ctg != pre_ctg || pos != pre_pos + 1 {
+            if e > s {
+                // println!("{}, depth: {}, pre_depth: {}", pos+1, depth, pre_depth);
+                if pre_state == 1 {
+                    high_depth_regions.push((ctg.clone(), s + 1, e + 1));
+                }else{
+                    normal_depth_regions.push((ctg.clone(), s + 1, e + 1));
+                }
+            }
+            ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
+            pre_ctg = ctg.clone();
+            s = pos as i64;
+            e = pos as i64;
+            pre_state = state;
+            pre_depth = depth;
+            pre_pos = pos;
+        }else{
+            e = pos as i64;
+            pre_depth = depth;
+            pre_pos = pos;
+        }
+    }
+    return (normal_depth_regions, high_depth_regions);
+}
