@@ -335,19 +335,17 @@ fn main4() {
 
 fn main() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
+    let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let (tx_l, rx_l) = mpsc::channel();
     let (tx_h, rx_h) = mpsc::channel();
-    // let prod_v = multithread_produce(bam_path.to_string(), 4, tx_l, tx_h);
     multithread_produce(bam_path.to_string(), 4, tx_l, tx_h);
 
-    // for handle in prod_v {
-    //     handle.join().unwrap();
+    // for region in rx_l {
+    //     println!("low: {}:{}-{}", region.chr, region.start, region.end);
+    // }
+    // for region in rx_h {
+    //     println!("high: {}:{}-{}", region.chr, region.start, region.end);
     // }
 
-    for region in rx_l {
-        println!("low: {}:{}-{}", region.chr, region.start, region.end);
-    }
-    for region in rx_h {
-        println!("high: {}:{}-{}", region.chr, region.start, region.end);
-    }
+    multithread_work(bam_path.to_string(), ref_path.to_string(), "out.bam".to_string(), 4, rx_l, rx_h);
 }
