@@ -48,15 +48,16 @@ pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::S
     for ctg in bam_header.target_names() {
         contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
     }
+
     let shared_ctgnames = Arc::new(Mutex::new(contig_names));
     for i in 0..thread_size {
         let bam_file_clone = bam_file.clone();
         let shared_ctgnames = Arc::clone(&shared_ctgnames);
         let tx_l = tx_low.clone();
         let tx_h = tx_high.clone();
-        let handle = thread::spawn(move || loop {
+        let handle = thread::spawn(move || {
             let mut contig_name = shared_ctgnames.lock().unwrap();
-            if !contig_name.is_empty() {
+            while !contig_name.is_empty() {
                 let ctg = contig_name.pop_front().unwrap();
                 println!("thread {}: {}", i, ctg);
                 let (normal_depth_regions, high_depth_regions) = get_chrom_coverage_intervals(bam_file_clone.clone(), ctg.as_str(), 1000);
@@ -66,8 +67,6 @@ pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::S
                 for region in high_depth_regions {
                     tx_h.send(region).unwrap();
                 }
-            } else {
-                break;
             }
         });
         produce_v.push(handle);
