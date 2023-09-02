@@ -990,11 +990,14 @@ pub fn update_bam_records_from_realign(
                 op = 'I';
             } else if base_vec[i] == b'N' && ref_seq[i] != b'N' && ref_seq[i] != b'-' {
                 op = 'N';
+            } else if base_vec[i] == b'N' && ref_seq[i] == b'N' {
+                op = 'N';
             } else if base_vec[i] == b'N' && ref_seq[i] == b'-' {
                 continue;
             } else if base_vec[i] == b'-' && ref_seq[i] == b'-' {
                 continue;
             } else {
+                println!("readname: {}, base_vec[i]: {}, ref_seq[i]: {}", readname, base_vec[i] as char, ref_seq[i] as char);
                 panic!("should not happen2");
                 process::exit(1);
             }
