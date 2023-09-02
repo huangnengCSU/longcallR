@@ -76,6 +76,7 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
     }
     bam_records_queue.lock().unwrap().clear();
 
+    let pool = ThreadPool::new(thread_size);
     for high_depth_region in rx_high {
         let bam_file_clone = bam_file.clone();
         let out_bam_clone = out_bam.clone();
