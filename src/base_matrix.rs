@@ -990,12 +990,19 @@ pub fn update_bam_records_from_realign(
                 op = 'I';
             } else if base_vec[i] == b'N' && ref_seq[i] != b'N' && ref_seq[i] != b'-' {
                 op = 'N';
-            } else if base_vec[i] == b'N' && ref_seq[i] == b'N' {
-                op = 'N';
             } else if base_vec[i] == b'N' && ref_seq[i] == b'-' {
                 continue;
             } else if base_vec[i] == b'-' && ref_seq[i] == b'-' {
                 continue;
+            } else if ref_seq[i] == b'N' {
+                // TODO: why reference can be N and query is dash or nucleotide at the same time?
+                if base_vec[i] == b'N' {
+                    op = 'N';
+                } else if base_vec[i] == b'-' {
+                    op = 'D';
+                } else if base_vec[i] != b'N' && base_vec[i] != b'-' {
+                    op = 'M';
+                }
             } else {
                 println!("readname: {}, base_vec[i]: {}, ref_seq[i]: {}", readname, base_vec[i] as char, ref_seq[i] as char);
                 panic!("should not happen2");
