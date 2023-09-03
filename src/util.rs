@@ -1,6 +1,7 @@
-use rust_htslib::{bam, bam::{Read, ext::BamRecordExtensions}, bam::Record};
+use rust_htslib::{bam, bam::Record, bam::Format, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
+use std::process;
 use std::collections::{VecDeque, HashMap};
 use threadpool::ThreadPool;
 use crate::bam_reader::Region;
@@ -36,14 +37,18 @@ pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::S
 pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_low: mpsc::Receiver<Region>, rx_high: mpsc::Receiver<Region>) {
     let pool = ThreadPool::new(thread_size);
     let bam_records_queue: Arc<Mutex<VecDeque<bam::Record>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
+    let header = bam::Header::from_template(bam.header());
+    let bam_writer = bam::Writer::from_path(out_bam.clone(), &header, Format::Bam).unwrap();
+    let mut bam_writer = Arc::new(Mutex::new(bam_writer));
     let ref_seqs = load_reference(ref_file.to_string());
 
     // multiplethreads for low coverage regions
     for normal_depth_region in rx_low {
         let bam_file_clone = bam_file.clone();
-        let out_bam_clone = out_bam.clone();
         let ref_seqs_clone = ref_seqs.clone();
         let bam_records_queue = Arc::clone(&bam_records_queue);
+        let bam_writer_clone = Arc::clone(&bam_writer);
         pool.execute(move || {
             let mut base_matrix = BaseMatrix::new();
             base_matrix.load_data(bam_file_clone.clone().to_string(), normal_depth_region);
@@ -68,20 +73,35 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
             for (_, record) in base_matrix.bam_records {
                 queue.push_back(record);
             }
-            if queue.len() > 100000 {
-                println!("low coverage {} records in queue", queue.len());
+            if queue.len() > 10000 {
+                for record in queue.iter() {
+                    let re = bam_writer_clone.lock().unwrap().write(&record);
+                    if re != Ok(()) {
+                        println!("write failed");
+                        process::exit(1);
+                    }
+                }
                 queue.clear();
             }
         });
     }
-    bam_records_queue.lock().unwrap().clear();
+    if bam_records_queue.lock().unwrap().len() > 0 {
+        for record in bam_records_queue.lock().unwrap().iter() {
+            let re = bam_writer.lock().unwrap().write(&record);
+            if re != Ok(()) {
+                println!("write failed");
+                process::exit(1);
+            }
+        }
+        bam_records_queue.lock().unwrap().clear();
+    }
 
     let pool = ThreadPool::new(thread_size);
     for high_depth_region in rx_high {
         let bam_file_clone = bam_file.clone();
-        let out_bam_clone = out_bam.clone();
         let ref_seqs_clone = ref_seqs.clone();
         let bam_records_queue = Arc::clone(&bam_records_queue);
+        let bam_writer_clone = Arc::clone(&bam_writer);
         pool.execute(move || {
             let mut base_matrix = BaseMatrix::new();
             base_matrix.load_data_without_extension(bam_file_clone.clone().to_string(), high_depth_region);
@@ -106,11 +126,26 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
             for (_, record) in base_matrix.bam_records {
                 queue.push_back(record);
             }
-            if queue.len() > 100000 {
-                println!("high coverage {} records in queue", queue.len());
+            if queue.len() > 10000 {
+                for record in queue.iter() {
+                    let re = bam_writer_clone.lock().unwrap().write(&record);
+                    if re != Ok(()) {
+                        println!("write failed");
+                        process::exit(1);
+                    }
+                }
                 queue.clear();
             }
         });
     }
-    bam_records_queue.lock().unwrap().clear();
+    if bam_records_queue.lock().unwrap().len() > 0 {
+        for record in bam_records_queue.lock().unwrap().iter() {
+            let re = bam_writer.lock().unwrap().write(&record);
+            if re != Ok(()) {
+                println!("write failed");
+                process::exit(1);
+            }
+        }
+        bam_records_queue.lock().unwrap().clear();
+    }
 }
