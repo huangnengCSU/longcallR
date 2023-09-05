@@ -85,6 +85,7 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
             }
         });
     }
+    pool.join();
     if bam_records_queue.lock().unwrap().len() > 0 {
         for record in bam_records_queue.lock().unwrap().iter() {
             let re = bam_writer.lock().unwrap().write(&record);
@@ -138,6 +139,7 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
             }
         });
     }
+    pool.join();
     if bam_records_queue.lock().unwrap().len() > 0 {
         for record in bam_records_queue.lock().unwrap().iter() {
             let re = bam_writer.lock().unwrap().write(&record);
