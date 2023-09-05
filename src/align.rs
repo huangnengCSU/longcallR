@@ -1537,15 +1537,17 @@ pub fn banded_nw_splice_aware3(
 
     i = t_len;
 
-    let mut score_vec = Vec::new();
-    for vv in 0..2 * width + 3 {
-        score_vec.push(mat[i][vv].m);
-    }
+    // let mut score_vec = Vec::new();
+    // for vv in 0..2 * width + 3 {
+    //     score_vec.push(mat[i][vv].m);
+    // }
     // find max value and index in score_vec
-    let (max_score, max_index) = find_max_value_and_index(&score_vec);
+    // let (max_score, max_index) = find_max_value_and_index(&score_vec);
+    let vv = (width as i32 + 1 + (q_len as i32 - k_vec[i] as i32)) as usize;
+    let max_score = mat[i][vv].m;
 
     alignment_score = max_score;
-    v = max_index;
+    v = vv;
     k = k_vec[i];
     u = (v as i32 - (width as i32 + 1) + k as i32) as usize; // index on query_without_gap
 
