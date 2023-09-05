@@ -1063,11 +1063,16 @@ pub fn update_bam_records_from_realign(
             }
         }
         println!();
-        println!("readname: {}, cigar len: {} read len:{}",
+        println!("readname: {}, cigar len: {} read len: {}",
                  readname,
                  cglen,
                  bam_records.get(readname).unwrap().seq_len()
         );
+        if cglen != bam_records.get(readname).unwrap().seq_len() as u32 {
+            println!("cglen error: {}, cigar len: {}, read len: {}", readname, cglen, bam_records.get(readname).unwrap().seq_len());
+            println!("{}", new_cigar_string.to_string());
+            println!("{}", std::str::from_utf8(base_vec).unwrap());
+        }
         assert!(cglen == bam_records.get(readname).unwrap().seq_len() as u32);
 
         // println!(
