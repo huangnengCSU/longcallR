@@ -800,7 +800,7 @@ impl PileupMatrix {
 
             if right_hard_clip > 0 {
                 new_cigar.push(Cigar::HardClip(right_hard_clip));
-            } else if (right_soft_clip > 0) {
+            } else if right_soft_clip > 0 {
                 new_cigar.push(Cigar::SoftClip(right_soft_clip));
             }
 

@@ -261,7 +261,7 @@ pub fn nw_splice_aware(
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == TraceBack::IX {
-            if (mat[i][j].ix_prev_ix) {
+            if mat[i][j].ix_prev_ix {
                 aligned_query.push(b'-');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
@@ -562,7 +562,7 @@ pub fn semi_nw_splice_aware(
         let ref_base = profile[i - 1].get_ref_base();
         let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == TraceBack::IX {
-            if (mat[i][j].ix_prev_ix) {
+            if mat[i][j].ix_prev_ix {
                 aligned_query.push(b'-');
                 ref_target.push(ref_base);
                 major_target.push(major_base);
