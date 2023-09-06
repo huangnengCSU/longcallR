@@ -10,14 +10,15 @@ use std::time::{Duration, Instant};
 use std::process;
 
 
-pub struct MatElement {
-    pub curr: u8,
-    pub insert: Vec<u8>,
-}
+// pub struct MatElement {
+//     pub curr: u8,
+//     pub insert: Vec<u8>,
+// }
 
 
 pub struct BaseMatrix {
-    pub base_matrix: HashMap<String, Vec<MatElement>>,
+    pub base_matrix: HashMap<String, Vec<u8>>,
+    pub insertion_table: HashMap<usize, HashMap<String, String>>,
     pub expanded_matrix: HashMap<String, Vec<u8>>,
     pub bam_records: HashMap<String, bam::Record>,
     pub contig_name: String,
@@ -30,6 +31,7 @@ impl BaseMatrix {
     pub fn new() -> BaseMatrix {
         BaseMatrix {
             base_matrix: HashMap::new(),
+            insertion_table: HashMap::new(),
             expanded_matrix: HashMap::new(),
             bam_records: HashMap::new(),
             contig_name: String::new(),
@@ -92,10 +94,11 @@ impl BaseMatrix {
             let row = self.base_matrix.get_mut(&qname).unwrap();
             // left padding
             for _ in 0..pos_on_ref - left_most_position {
-                row.push(MatElement {
-                    curr: b' ',
-                    insert: Vec::new(),
-                });
+                row.push(b' ');
+                // row.push(MatElement {
+                //     curr: b' ',
+                //     insert: Vec::new(),
+                // });
             }
             for cg in cigar.iter() {
                 match cg.char() as u8 {
@@ -105,34 +108,41 @@ impl BaseMatrix {
                     b'M' => {
                         for _ in 0..cg.len() {
                             let qbase = seq[pos_on_query as usize];
-                            row.push(MatElement {
-                                curr: qbase,
-                                insert: Vec::new(),
-                            });
+                            // row.push(MatElement {
+                            //     curr: qbase,
+                            //     insert: Vec::new(),
+                            // });
+                            row.push(qbase);
                             pos_on_query += 1;
                             pos_on_ref += 1;
                         }
                     }
                     b'I' => {
-                        let insert_seq = seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec();
-                        row.last_mut().unwrap().insert.extend(insert_seq);
+                        let insert_seq = std::str::from_utf8(seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec().as_slice()).unwrap().to_string();
+                        if self.insertion_table.get(&row.len()).is_none() {
+                            self.insertion_table.insert(row.len().clone(), HashMap::new());
+                        }
+                        self.insertion_table.get_mut(&row.len()).unwrap().insert(qname.clone(), insert_seq);
+                        // row.last_mut().unwrap().insert.extend(insert_seq);
                         pos_on_query += cg.len() as i64;
                     }
                     b'D' => {
                         for _ in 0..cg.len() {
-                            row.push(MatElement {
-                                curr: b'-',
-                                insert: Vec::new(),
-                            });
+                            // row.push(MatElement {
+                            //     curr: b'-',
+                            //     insert: Vec::new(),
+                            // });
+                            row.push(b'-');
                             pos_on_ref += 1;
                         }
                     }
                     b'N' => {
                         for _ in 0..cg.len() {
-                            row.push(MatElement {
-                                curr: b'N',
-                                insert: Vec::new(),
-                            });
+                            // row.push(MatElement {
+                            //     curr: b'N',
+                            //     insert: Vec::new(),
+                            // });
+                            row.push(b'N');
                             pos_on_ref += 1;
                         }
                     }
@@ -149,10 +159,11 @@ impl BaseMatrix {
         // right padding
         for (_, row) in self.base_matrix.iter_mut() {
             while row.len() < max_length as usize {
-                row.push(MatElement {
-                    curr: b' ',
-                    insert: Vec::new(),
-                });
+                // row.push(MatElement {
+                //     curr: b' ',
+                //     insert: Vec::new(),
+                // });
+                row.push(b' ');
             }
         }
     }
@@ -162,11 +173,11 @@ impl BaseMatrix {
         let start_pos = self.start_position - 1;    // 0-based
         let end_pos = self.end_position - 1;    // 0-based, include
         let region_seq = &contig_seq[start_pos as usize..=end_pos as usize];
-        let mut row: Vec<MatElement> = Vec::new();
+        let mut row: Vec<u8> = Vec::new();
         for nucle in region_seq.iter() {
-            row.push(MatElement { curr: *nucle, insert: Vec::new() });
+            row.push(*nucle);
         }
-        assert!(row.len() as u32 == self.end_position - self.start_position + 1);
+        assert_eq!(row.len() as u32, self.end_position - self.start_position + 1);
         self.base_matrix.insert("ref".to_string(), row);
     }
 
@@ -182,10 +193,17 @@ impl BaseMatrix {
             // fill current base to the expanded matrix and get the max insertion length
             for qname in read_names.iter() {
                 let row = self.base_matrix.get(qname).unwrap();
-                self.expanded_matrix.get_mut(qname).unwrap().push(row[i as usize].curr);
-                if row[i as usize].insert.len() > max_insertion_len {
-                    max_insertion_len = row[i as usize].insert.len();
+                // self.expanded_matrix.get_mut(qname).unwrap().push(row[i as usize].curr);
+                self.expanded_matrix.get_mut(qname).unwrap().push(row[i as usize]);
+                if self.insertion_table.get(&(i as usize)).is_some() && self.insertion_table.get(&(i as usize)).unwrap().get(qname).is_some() {
+                    let insert_seq = self.insertion_table.get(&(i as usize)).unwrap().get(qname).unwrap();
+                    if insert_seq.len() > max_insertion_len {
+                        max_insertion_len = insert_seq.len();
+                    }
                 }
+                // if row[i as usize].insert.len() > max_insertion_len {
+                //     max_insertion_len = row[i as usize].insert.len();
+                // }
             }
             // fill insertion to the expanded matrix
             if max_insertion_len == 0 {
@@ -193,28 +211,56 @@ impl BaseMatrix {
             }
             for qname in read_names.iter() {
                 let row = self.base_matrix.get(qname).unwrap();
-                for nucle in row[i as usize].insert.iter() {
-                    self.expanded_matrix.get_mut(qname).unwrap().push(*nucle);
+                let mut insert_size = 0;
+                if self.insertion_table.get(&(i as usize)).unwrap().get(qname).is_some() {
+                    let insert_seq = self.insertion_table.get(&(i as usize)).unwrap().get(qname).unwrap();
+                    for nucle in insert_seq.as_bytes() {
+                        self.expanded_matrix.get_mut(qname).unwrap().push(*nucle);
+                        insert_size += 1;
+                    }
                 }
-                if row[i as usize].insert.len() == max_insertion_len {
+                // for nucle in row[i as usize].insert.iter() {
+                //     self.expanded_matrix.get_mut(qname).unwrap().push(*nucle);
+                // }
+
+                if insert_size == max_insertion_len {
                     continue;
                 } else {
-                    if i as i32 - 1 >= 0 && row[i as usize - 1].curr == b' ' {
-                        for _ in 0..max_insertion_len - row[i as usize].insert.len() {
+                    if i as i32 - 1 >= 0 && row[i as usize - 1] == b' ' {
+                        for _ in 0..max_insertion_len - insert_size {
                             self.expanded_matrix.get_mut(qname).unwrap().push(b' ');
                         }
                         // continue;
-                    } else if i + 1 < orig_matrix_len && row[i as usize + 1].curr == b' ' {
-                        for _ in 0..max_insertion_len - row[i as usize].insert.len() {
+                    } else if i + 1 < orig_matrix_len && row[i as usize + 1] == b' ' {
+                        for _ in 0..max_insertion_len - insert_size {
                             self.expanded_matrix.get_mut(qname).unwrap().push(b' ');
                         }
                         // continue;
                     } else {
-                        for _ in 0..max_insertion_len - row[i as usize].insert.len() {
+                        for _ in 0..max_insertion_len - insert_size {
                             self.expanded_matrix.get_mut(qname).unwrap().push(b'-');
                         }
                     }
                 }
+                // if row[i as usize].insert.len() == max_insertion_len {
+                //     continue;
+                // } else {
+                //     if i as i32 - 1 >= 0 && row[i as usize - 1].curr == b' ' {
+                //         for _ in 0..max_insertion_len - row[i as usize].insert.len() {
+                //             self.expanded_matrix.get_mut(qname).unwrap().push(b' ');
+                //         }
+                //         // continue;
+                //     } else if i + 1 < orig_matrix_len && row[i as usize + 1].curr == b' ' {
+                //         for _ in 0..max_insertion_len - row[i as usize].insert.len() {
+                //             self.expanded_matrix.get_mut(qname).unwrap().push(b' ');
+                //         }
+                //         // continue;
+                //     } else {
+                //         for _ in 0..max_insertion_len - row[i as usize].insert.len() {
+                //             self.expanded_matrix.get_mut(qname).unwrap().push(b'-');
+                //         }
+                //     }
+                // }
             }
         }
     }
@@ -264,10 +310,11 @@ impl BaseMatrix {
             let row = self.base_matrix.get_mut(&qname).unwrap();
             // left padding
             for _ in 0..pos_on_ref - region.start as i64 + 1 {
-                row.push(MatElement {
-                    curr: b' ',
-                    insert: Vec::new(),
-                });
+                row.push(b' ');
+                // row.push(MatElement {
+                //     curr: b' ',
+                //     insert: Vec::new(),
+                // });
             }
             for cg in cigar.iter() {
                 match cg.char() as u8 {
@@ -277,34 +324,43 @@ impl BaseMatrix {
                     b'M' => {
                         for _ in 0..cg.len() {
                             let qbase = seq[pos_on_query as usize];
-                            row.push(MatElement {
-                                curr: qbase,
-                                insert: Vec::new(),
-                            });
+                            row.push(qbase);
+                            // row.push(MatElement {
+                            //     curr: qbase,
+                            //     insert: Vec::new(),
+                            // });
                             pos_on_query += 1;
                             pos_on_ref += 1;
                         }
                     }
                     b'I' => {
-                        let insert_seq = seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec();
-                        row.last_mut().unwrap().insert.extend(insert_seq);
+                        // let insert_seq = seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec();
+                        // row.last_mut().unwrap().insert.extend(insert_seq);
+                        // pos_on_query += cg.len() as i64;
+                        let insert_seq = std::str::from_utf8(seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec().as_slice()).unwrap().to_string();
+                        if self.insertion_table.get(&row.len()).is_none() {
+                            self.insertion_table.insert(row.len().clone(), HashMap::new());
+                        }
+                        self.insertion_table.get_mut(&row.len()).unwrap().insert(qname.clone(), insert_seq);
                         pos_on_query += cg.len() as i64;
                     }
                     b'D' => {
                         for _ in 0..cg.len() {
-                            row.push(MatElement {
-                                curr: b'-',
-                                insert: Vec::new(),
-                            });
+                            // row.push(MatElement {
+                            //     curr: b'-',
+                            //     insert: Vec::new(),
+                            // });
+                            row.push(b'-');
                             pos_on_ref += 1;
                         }
                     }
                     b'N' => {
                         for _ in 0..cg.len() {
-                            row.push(MatElement {
-                                curr: b'N',
-                                insert: Vec::new(),
-                            });
+                            // row.push(MatElement {
+                            //     curr: b'N',
+                            //     insert: Vec::new(),
+                            // });
+                            row.push(b'N');
                             pos_on_ref += 1;
                         }
                     }
@@ -317,10 +373,11 @@ impl BaseMatrix {
         // right padding
         for (_, row) in self.base_matrix.iter_mut() {
             while row.len() < max_length as usize {
-                row.push(MatElement {
-                    curr: b' ',
-                    insert: Vec::new(),
-                });
+                // row.push(MatElement {
+                //     curr: b' ',
+                //     insert: Vec::new(),
+                // });
+                row.push(b' ');
             }
         }
     }
