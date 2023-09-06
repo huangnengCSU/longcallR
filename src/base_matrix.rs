@@ -10,10 +10,10 @@ use std::time::{Duration, Instant};
 use std::process;
 
 
-// pub struct MatElement {
-//     pub curr: u8,
-//     pub insert: Vec<u8>,
-// }
+pub struct MatElement {
+    pub curr: u8,
+    pub insert: Vec<u8>,
+}
 
 
 pub struct BaseMatrix {
