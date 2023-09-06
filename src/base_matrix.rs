@@ -45,7 +45,7 @@ impl BaseMatrix {
         load reads in the given region and extend each read to the left and right
         */
         let mut bam_reader = bam::IndexedReader::from_path(bam_file).unwrap();
-        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end));
+        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end + 1));   // fetch: left include, right exclude
         self.contig_name = region.chr.clone();
         if result.is_err() {
             panic!("fetch region failed...");
@@ -68,7 +68,7 @@ impl BaseMatrix {
             }
         }
         self.start_position = (left_most_position + 1) as u32;
-        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end));
+        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end + 1));   // fetch: left include, right exclude
         if result.is_err() {
             panic!("fetch region failed...");
         }
@@ -270,7 +270,7 @@ impl BaseMatrix {
         load reads which are entirely in the given region (without extension)
         */
         let mut bam_reader = bam::IndexedReader::from_path(bam_file).unwrap();
-        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end)); // left include, right exclude
+        let result = bam_reader.fetch((region.chr.as_str(), region.start, region.end + 1)); // left include, right exclude
         self.contig_name = region.chr.clone();
         if result.is_err() {
             panic!("fetch region failed...");
@@ -294,7 +294,7 @@ impl BaseMatrix {
                 // left side of the read is not in the region
                 continue;
             }
-            if record.reference_end() > region.end as i64 {
+            if record.reference_end() > region.end as i64 - 1 {
                 // right side of the read is not in the region
                 continue;
             }
