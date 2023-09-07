@@ -8,6 +8,8 @@ use crate::matrix::ColumnBaseCount;
 use crate::align::{banded_nw_splice_aware3};
 use std::time::{Duration, Instant};
 use std::process;
+use std::fs::File;
+use std::io::Write;
 
 
 pub struct MatElement {
@@ -1328,4 +1330,64 @@ pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_thres
         }
     }
     return (normal_depth_regions, high_depth_regions);
+}
+
+pub fn get_regions_by_coverage(bam_path: String, bed_path: String, depth_threshold: u32) {
+    let mut pre_ctg = String::new();
+    let mut s: u32 = u32::MAX;
+    let mut e: u32 = u32::MAX;
+    let mut pre_pos: u32 = u32::MAX;
+
+    let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
+    let header = bam.header().clone();
+    let mut writer = File::create(bed_path).unwrap();
+    for p in bam.pileup() {
+        let pileup = p.unwrap();
+        let depth = pileup.alignments().filter(|alignment| {
+            let record = alignment.record();
+            !alignment.is_refskip() && !record.is_duplicate() && !record.is_secondary() && !record.is_supplementary() && !record.is_unmapped()
+        }).count() as u32;
+        let pos = pileup.pos(); //0-based
+        let ctg = std::str::from_utf8(&header.tid2name(pileup.tid())).unwrap().to_string();
+
+        // first hit
+        if depth >= depth_threshold && s == u32::MAX && e == u32::MAX {
+            s = pos;
+            e = pos;
+            pre_pos = pos;
+            pre_ctg = ctg;
+            continue;
+        }
+
+        if depth >= depth_threshold {
+            if pos != pre_pos + 1 || ctg != pre_ctg {
+                if s != u32::MAX && e != u32::MAX {
+                    writeln!(writer, "{}\t{}\t{}", pre_ctg, s + 1, e + 1).unwrap();
+                    s = u32::MAX;
+                    e = u32::MAX;
+                }
+            }
+            if s == u32::MAX && e == u32::MAX {
+                s = pos;
+                e = pos;
+                pre_pos = pos;
+                pre_ctg = ctg;
+            } else {
+                e = pos;
+                pre_pos = pos;
+                pre_ctg = ctg;
+            }
+        } else {
+            if s != u32::MAX && e != u32::MAX {
+                writeln!(writer, "{}\t{}\t{}", pre_ctg, s + 1, e + 1).unwrap();
+            }
+            s = u32::MAX;
+            e = u32::MAX;
+            pre_pos = pos;
+            pre_ctg = ctg;
+        }
+    }
+    if s != u32::MAX && e != u32::MAX {
+        writeln!(writer, "{}\t{}\t{}", pre_ctg, s + 1, e + 1).unwrap();
+    }
 }
