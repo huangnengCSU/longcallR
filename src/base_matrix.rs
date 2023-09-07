@@ -1362,7 +1362,7 @@ pub fn get_regions_by_coverage(bam_path: String, bed_path: String, depth_thresho
         if depth >= depth_threshold {
             if pos != pre_pos + 1 || ctg != pre_ctg {
                 if s != u32::MAX && e != u32::MAX {
-                    writeln!(writer, "{}\t{}\t{}", pre_ctg, s + 1, e + 1).unwrap();
+                    writeln!(writer, "{}\t{}\t{}", pre_ctg, s, e).unwrap();    // bed is 0-based
                     s = u32::MAX;
                     e = u32::MAX;
                 }
@@ -1379,7 +1379,7 @@ pub fn get_regions_by_coverage(bam_path: String, bed_path: String, depth_thresho
             }
         } else {
             if s != u32::MAX && e != u32::MAX {
-                writeln!(writer, "{}\t{}\t{}", pre_ctg, s + 1, e + 1).unwrap();
+                writeln!(writer, "{}\t{}\t{}", pre_ctg, s, e).unwrap(); // bed is 0-based
             }
             s = u32::MAX;
             e = u32::MAX;
@@ -1388,6 +1388,6 @@ pub fn get_regions_by_coverage(bam_path: String, bed_path: String, depth_thresho
         }
     }
     if s != u32::MAX && e != u32::MAX {
-        writeln!(writer, "{}\t{}\t{}", pre_ctg, s + 1, e + 1).unwrap();
+        writeln!(writer, "{}\t{}\t{}", pre_ctg, s, e).unwrap();    // bed is 0-based
     }
 }
