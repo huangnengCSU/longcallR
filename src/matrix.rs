@@ -304,7 +304,7 @@ impl PileupMatrix {
             }
 
             // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
-            if i - 3 < 0 {
+            if i as i32 - 3 < 0 {
                 forward_acceptor_penalty.push(standed_penalty);
                 reverse_acceptor_penalty.push(standed_penalty);
             } else {
