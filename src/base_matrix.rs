@@ -5,7 +5,8 @@ use bio::io::fasta;
 use std::collections::HashMap;
 use crate::bam_reader::Region;
 use crate::matrix::ColumnBaseCount;
-use crate::align::{banded_nw_splice_aware3};
+// use crate::align::{banded_nw_splice_aware3};
+use crate::align2::{banded_nw_splice_aware3};
 use std::time::{Duration, Instant};
 use std::process;
 use std::fs::File;
@@ -522,7 +523,7 @@ pub fn get_donor_acceptor_penalty(
         }
 
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
-        if i - 3 < 0 {
+        if i as i32 - 3 < 0 {
             forward_acceptor_penalty.push(standed_penalty);
             reverse_acceptor_penalty.push(standed_penalty);
         } else {
