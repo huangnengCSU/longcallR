@@ -1,4 +1,4 @@
-use crate::align::{banded_nw_splice_aware3, nw_splice_aware, semi_nw_splice_aware};
+use crate::align::{banded_nw_splice_aware3};
 use crate::bam_reader::Region;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::record::CigarString;
