@@ -1,5 +1,6 @@
 use crate::matrix::ColumnBaseCount;
 
+#[derive(Clone)]
 struct SpliceMatrixElement {
     m: f64,
     // not matching
@@ -22,19 +23,6 @@ impl Default for SpliceMatrixElement {
             m_s: 0,
             ix_s: 0,
             ix2_s: 0,
-        }
-    }
-}
-
-impl Clone for SpliceMatrixElement {
-    fn clone(&self) -> SpliceMatrixElement {
-        SpliceMatrixElement {
-            m: self.m,
-            ix: self.ix,
-            ix2: self.ix2,
-            m_s: self.m_s,
-            ix_s: self.ix_s,
-            ix2_s: self.ix2_s,
         }
     }
 }
