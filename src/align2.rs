@@ -126,28 +126,31 @@ pub fn banded_nw_splice_aware3(
             }
 
             if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
-                mat[i][v].ix = (mat[i - 1][v + 1 - offset].m).max(mat[i - 1][v + 1 - offset].ix);
-                if mat[i][v].ix == mat[i - 1][v + 1 - offset].m {
+                if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
+                    mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
                     mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
-                } else if mat[i][v].ix == mat[i - 1][v + 1 - offset].ix {
+                } else {
+                    mat[i][v].ix = mat[i - 1][v + 1 - offset].ix;
                     mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
                 }
             } else {
-                mat[i][v].ix = (mat[i - 1][v + 1 - offset].m - h - g).max(mat[i - 1][v + 1 - offset].ix - g);
-                if mat[i][v].ix == mat[i - 1][v + 1 - offset].m - h - g {
+                if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - g {
+                    mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
                     mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
-                } else if mat[i][v].ix == mat[i - 1][v + 1 - offset].ix - g {
+                } else {
+                    mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - g;
                     mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
                 }
             }
 
-            mat[i][v].ix2 = (mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2).max(
-                mat[i - 1][v + 1 - offset].ix2); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
-            if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 {
+            if mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 >= mat[i - 1][v + 1 - offset].ix2 {
+                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2;
                 mat[i][v].ix2_s = 1; //mat[i][v].ix2_prev_m = true;
-            } else if mat[i][v].ix2 == mat[i - 1][v + 1 - offset].ix2 {
+            } else {
+                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].ix2;
                 mat[i][v].ix2_s = 3; //mat[i][v].ix2_prev_ix2 = true;
             }
+
 
             mat[i][v].m = (mat[i - 1][v - offset].m + sij)
                 .max(mat[i][v].ix)
