@@ -122,10 +122,10 @@ impl BaseMatrix {
                     }
                     b'I' => {
                         let insert_seq = std::str::from_utf8(seq[pos_on_query as usize..(pos_on_query + cg.len() as i64) as usize].to_vec().as_slice()).unwrap().to_string();
-                        if self.insertion_table.get(&row.len()).is_none() {
-                            self.insertion_table.insert(row.len().clone(), HashMap::new());
+                        if self.insertion_table.get(&(row.len() - 1)).is_none() {
+                            self.insertion_table.insert(row.len().clone() - 1, HashMap::new());
                         }
-                        self.insertion_table.get_mut(&row.len()).unwrap().insert(qname.clone(), insert_seq);
+                        self.insertion_table.get_mut(&(row.len() - 1)).unwrap().insert(qname.clone(), insert_seq);
                         // row.last_mut().unwrap().insert.extend(insert_seq);
                         pos_on_query += cg.len() as i64;
                     }
