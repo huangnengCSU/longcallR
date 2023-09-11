@@ -8,10 +8,11 @@ struct SpliceMatrixElement {
     // gap in query: deletion
     ix2: f64,
     // gap in query: introns
-    m_s: u8,    // previous state of m
-    ix_s: u8,   // previous state of ix
+    m_s: u8,
+    // previous state of m
+    ix_s: u8,
+    // previous state of ix
     ix2_s: u8,  // previous state of ix2
-
 }
 
 impl Default for SpliceMatrixElement {
@@ -53,6 +54,32 @@ pub fn banded_nw_splice_aware3(
 
     let q_len = query_without_gap.len();
     let t_len = profile.len();
+
+    // for d in reduced_donor_penalty.iter() {
+    //     print!("{}\t", d);
+    // }
+    // println!();
+    //
+    // for d in reduced_acceptor_penalty.iter() {
+    //     print!("{}\t", d);
+    // }
+    // println!();
+    //
+    // for d in 0..t_len {
+    //     print!("{}\t", profile[d].get_ref_base() as char);
+    // }
+    // println!();
+    //
+    // for i in 0..t_len {
+    //     print!("{}\t", profile[i].n_n);
+    // }
+    // println!();
+    //
+    // for i in 0..t_len {
+    //     print!("{}\t", profile[i].get_depth() + profile[i].n_n);
+    // }
+    // println!();
+
 
     let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
     // println!("mat size: {} x {}", mat.len(), mat[0].len());
@@ -113,6 +140,31 @@ pub fn banded_nw_splice_aware3(
                 }
             }
 
+            // position specific donor penalty (mat[i], taget[i-1], profile[i-1])
+            let mut dp_f = 1.0;
+            let mut ap_f = 1.0;
+            if i as i32 - 1 >= 0 {
+                dp_f = 0.5 * profile[i - 1].get_intron_penalty_ratio(); // [0,0.5]
+            }
+
+            // position specific acceptor penalty (mat[i], taget[i-1], profile[i-1]), previous position of current target position i-1, and not dash on reference
+            let mut ai = i as i32 - 1;
+            while ai >= 0 {
+                if profile[ai as usize].get_ref_base() == b'-' {
+                    ai -= 1;
+                } else {
+                    break;
+                }
+            }
+            if ai >= 0 {
+                ap_f = 0.5 * profile[ai as usize].get_intron_penalty_ratio();   // [0,0.5]
+            }
+            // if i as i32 - 1 >= 0 {
+            //     ap_f = profile[i - 1].get_intron_penalty_ratio();
+            // }
+
+            // println!("dp_f: {}, ap_f: {}", dp_f, ap_f);
+
             if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
                 if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
                     mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
@@ -131,8 +183,8 @@ pub fn banded_nw_splice_aware3(
                 }
             }
 
-            if mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2 >= mat[i - 1][v + 1 - offset].ix2 {
-                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] - h2;
+            if mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] * (0.5 + dp_f) - h2 >= mat[i - 1][v + 1 - offset].ix2 {
+                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - reduced_donor_penalty[i - 1] * (0.5 + dp_f) - h2;
                 mat[i][v].ix2_s = 1; //mat[i][v].ix2_prev_m = true;
             } else {
                 mat[i][v].ix2 = mat[i - 1][v + 1 - offset].ix2;
@@ -142,12 +194,12 @@ pub fn banded_nw_splice_aware3(
 
             mat[i][v].m = (mat[i - 1][v - offset].m + sij)
                 .max(mat[i][v].ix)
-                .max(mat[i][v].ix2 - reduced_acceptor_penalty[i]); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+                .max(mat[i][v].ix2 - reduced_acceptor_penalty[i] * (0.5 + ap_f)); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[i][v].m == mat[i - 1][v - offset].m + sij {
                 mat[i][v].m_s = 1; //mat[i][v].m_prev_m = true;
             } else if mat[i][v].m == mat[i][v].ix {
                 mat[i][v].m_s = 2; //mat[i][v].m_prev_ix = true;
-            } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i] {
+            } else if mat[i][v].m == mat[i][v].ix2 - reduced_acceptor_penalty[i] * (0.5 + ap_f) {
                 mat[i][v].m_s = 3; //mat[i][v].m_prev_ix2 = true;
             }
         }
