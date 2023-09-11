@@ -1144,9 +1144,10 @@ pub fn update_bam_records_from_realign(
         // count how many blank bases in the beginning, this will add to the ref_start
         let mut blank_count = 0;
         let mut read_ref_start = start_position as i64 - 1; // start_position is 1-based, pos in bam is 0-based
+        // print!("{},read ref start: {}, ", readname, read_ref_start);
         for i in 0..base_vec.len() {
             if base_vec[i] == b' ' {
-                if ref_seq[i] != b' ' && ref_seq[i] != b'-' && ref_seq[i] != b'N' {
+                if ref_seq[i] != b' ' && ref_seq[i] != b'-' {
                     blank_count += 1;
                 }
             } else {
@@ -1156,7 +1157,8 @@ pub fn update_bam_records_from_realign(
         if blank_count > 0 {
             read_ref_start += blank_count as i64;
         }
-
+        // print!("blank count: {}, read ref start: {}", blank_count, read_ref_start);
+        // println!();
         let record = bam_records.get(readname).unwrap();
         let mut out_record = bam::Record::from(record.clone());
         out_record.set_pos(read_ref_start as i64);
