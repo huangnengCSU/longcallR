@@ -1332,6 +1332,11 @@ pub fn get_chrom_coverage_intervals(bam_path: String, ctgname: &str, depth_thres
             pre_pos = pos;
         }
     }
+    if pre_state == 1 && e >= s {
+        high_depth_regions.push(Region { chr: ctg.clone(), start: s as u32 + 1, end: e as u32 + 1 });
+    } else if pre_state == 0 && e >= s {
+        normal_depth_regions.push(Region { chr: ctg.clone(), start: s as u32 + 1, end: e as u32 + 1 });
+    }
     return (normal_depth_regions, high_depth_regions);
 }
 
