@@ -174,12 +174,22 @@ pub fn banded_nw_splice_aware3(
                     mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
                 }
             } else {
-                if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - g {
-                    mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
-                    mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                if col.get_major_base() != b'-' && i as i32 - 2 >= 0 && profile[i - 2].get_major_base() == b'-' {
+                    if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - h - g {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
+                        mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                    } else {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - h - g;
+                        mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                    }
                 } else {
-                    mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - g;
-                    mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                    if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - g {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
+                        mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                    } else {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - g;
+                        mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                    }
                 }
             }
 
