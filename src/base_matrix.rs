@@ -680,7 +680,10 @@ pub fn profile_realign(
         let mut generate_runtime: u128 = 0;
         iteration += 1;
         println!("Iteration: {}, old_score: {}, new_score: {}", iteration, old_score, new_score);
-        for (readname, base_vec) in expanded_matrix.iter() {
+        let mut sorted_expanded_matrix: Vec<(&String, &Vec<u8>)> = expanded_matrix.iter().collect();
+        sorted_expanded_matrix.sort_by(|a, b| a.0.cmp(b.0));
+        // for (readname, base_vec) in expanded_matrix.iter() {
+        for (readname, base_vec) in sorted_expanded_matrix {
             if *readname == "ref".to_string() {
                 continue;
             }
