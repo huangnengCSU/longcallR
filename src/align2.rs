@@ -165,7 +165,7 @@ pub fn banded_nw_splice_aware3(
 
             // println!("dp_f: {}, ap_f: {}", dp_f, ap_f);
 
-            if col.get_major_base() == b'-' || col.get_major_base() == b'N' {
+            if col.get_ref_base() == b'-' || col.get_ref_base() == b'N' {
                 if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
                     mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
                     mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
@@ -174,7 +174,7 @@ pub fn banded_nw_splice_aware3(
                     mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
                 }
             } else {
-                if col.get_major_base() != b'-' && i as i32 - 2 >= 0 && profile[i - 2].get_major_base() == b'-' {
+                if col.get_ref_base() != b'-' && i as i32 - 2 >= 0 && profile[i - 2].get_ref_base() == b'-' {
                     if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - h - g {
                         mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
                         mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
