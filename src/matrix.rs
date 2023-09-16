@@ -1040,7 +1040,7 @@ impl ColumnBaseCount {
         self.max_count = max(max(max(max(self.n_a, self.n_c), self.n_g), self.n_t), self.n_dash);
     }
 
-    pub fn get_intron_penalty_ratio(&self) -> f64 {
-        return 1.0 - (self.n_n as f64) / (self.get_depth() + self.n_n) as f64;
+    pub fn get_intron_percentage(&self) -> f64 {
+        return (self.n_n as f64) / (self.get_depth() + self.n_n) as f64;
     }
 }
