@@ -514,13 +514,13 @@ pub fn get_donor_acceptor_penalty(
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         // The size of donor and acceptor is ref_base_vec.len() + 1.
         // The last element of donor is meaningless, but the last element of acceptor is meaningful.
-        if i < ref_base_vec.len() && ref_base_vec[i] == b'-' {
-            forward_donor_penalty.push(standed_penalty);
-            forward_acceptor_penalty.push(standed_penalty);
-            reverse_donor_penalty.push(standed_penalty);
-            reverse_acceptor_penalty.push(standed_penalty);
-            continue;
-        }
+        // if i < ref_base_vec.len() && ref_base_vec[i] == b'-' {
+        //     forward_donor_penalty.push(standed_penalty);
+        //     forward_acceptor_penalty.push(standed_penalty);
+        //     reverse_donor_penalty.push(standed_penalty);
+        //     reverse_acceptor_penalty.push(standed_penalty);
+        //     continue;
+        // }
 
         // trick: donor[i] store the penalty of ref[i], acceptor[i] store the penalty of ref[i-1].
         if i as i32 - 3 < 0 {
@@ -567,7 +567,15 @@ pub fn get_donor_acceptor_penalty(
                 }
             }
         }
-
+    }
+    for i in 0..ref_base_vec.len() + 1 {
+        if i < ref_base_vec.len() && ref_base_vec[i] == b'-' {
+            forward_donor_penalty.push(standed_penalty);
+            // forward_acceptor_penalty.push(standed_penalty);
+            reverse_donor_penalty.push(standed_penalty);
+            // reverse_acceptor_penalty.push(standed_penalty);
+            continue;
+        }
         if i + 2 >= ref_base_vec.len() {
             forward_donor_penalty.push(standed_penalty);
             reverse_donor_penalty.push(standed_penalty);
