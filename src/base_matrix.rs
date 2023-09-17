@@ -229,7 +229,7 @@ impl BaseMatrix {
                 if insert_size == max_insertion_len {
                     continue;
                 } else {
-                    if i as i32 - 1 >= 0 && row[i as usize - 1] == b' ' {
+                    if row[i as usize] == b' ' {
                         for _ in 0..max_insertion_len - insert_size {
                             self.expanded_matrix.get_mut(qname).unwrap().push(b' ');
                         }
