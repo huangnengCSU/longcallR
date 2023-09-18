@@ -147,7 +147,7 @@ pub fn banded_nw_splice_aware3(
                 if profile[i - 1].get_ref_base() == b'-' {
                     dp_f = 1.0;
                 } else {
-                    let curr_intron_percentage = profile[i - 1].get_intron_percentage();
+                    let (curr_intron_cnt, curr_intron_percentage) = profile[i - 1].get_intron_percentage();
                     let mut ai = i as i32 - 2;
                     while ai >= 0 {
                         if profile[ai as usize].get_ref_base() == b'-' {
@@ -157,8 +157,13 @@ pub fn banded_nw_splice_aware3(
                         }
                     }
                     if ai >= 0 {
-                        let prev_intron_percentage = profile[ai as usize].get_intron_percentage();
-                        dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
+                        let (prev_intron_cnt, prev_intron_percentage) = profile[ai as usize].get_intron_percentage();
+                        if (curr_intron_cnt as i32 - prev_intron_cnt as i32).abs() > 10 {
+                            dp_f = 0.0;
+                        } else {
+                            dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
+                        }
+                        // dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
                     }
                 }
             }
@@ -169,7 +174,7 @@ pub fn banded_nw_splice_aware3(
                 if profile[i - 1].get_ref_base() == b'-' {
                     ap_f = 1.0;
                 } else {
-                    let curr_intron_percentage = profile[i - 1].get_intron_percentage();
+                    let (curr_intron_cnt, curr_intron_percentage) = profile[i - 1].get_intron_percentage();
                     let mut ai = i;
                     while ai < t_len {
                         if profile[ai].get_ref_base() == b'-' {
@@ -179,8 +184,13 @@ pub fn banded_nw_splice_aware3(
                         }
                     }
                     if ai < t_len {
-                        let later_intron_percentage = profile[ai].get_intron_percentage();
-                        ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
+                        let (later_intron_cnt, later_intron_percentage) = profile[ai].get_intron_percentage();
+                        if (later_intron_cnt as i32 - curr_intron_cnt as i32).abs() > 10 {
+                            ap_f = 0.0;
+                        } else {
+                            ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
+                        }
+                        // ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
                     }
                 }
             }
