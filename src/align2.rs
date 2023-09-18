@@ -145,7 +145,7 @@ pub fn banded_nw_splice_aware3(
             let mut ap_f = 1.0;
             if i as i32 - 1 >= 0 && i < t_len {
                 if profile[i - 1].get_ref_base() == b'-' {
-                    dp_f = 0.5;
+                    dp_f = 1.0;
                 } else {
                     let curr_intron_percentage = profile[i - 1].get_intron_percentage();
                     let mut ai = i as i32 - 2;
@@ -167,7 +167,7 @@ pub fn banded_nw_splice_aware3(
 
             if i as i32 - 1 >= 0 && i < t_len {
                 if profile[i - 1].get_ref_base() == b'-' {
-                    ap_f = 0.5;
+                    ap_f = 1.0;
                 } else {
                     let curr_intron_percentage = profile[i - 1].get_intron_percentage();
                     let mut ai = i;
