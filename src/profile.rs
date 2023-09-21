@@ -1,6 +1,7 @@
-// use noodles::{bam, core::Region, sam, sam::alignment::record};
+use std::collections::HashMap;
 use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read};
+use seq_io::fasta::{Reader, Record};
 
 #[derive(Debug, Clone)]
 pub struct ParsedRead {
@@ -23,7 +24,9 @@ pub struct BaseFreq {
     // number of introns
     pub d: u32,
     // number of deletions
-    pub i: bool, // whether this position falls in an insertion
+    pub i: bool,
+    // whether this position falls in an insertion
+    pub ref_base: char,   // reference base, A,C,G,T,N,-
 }
 
 impl BaseFreq {
@@ -35,16 +38,18 @@ impl BaseFreq {
 #[derive(Default, Debug, Clone)]
 pub struct Profile {
     pub freq_vec: Vec<BaseFreq>,
+    pub region: Region, // 1-based, left closed, right open
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: String, ref_path: String, region: Region) {
+    pub fn init_with_pileup(&mut self, bam_path: String, region: Region) {
         /*
         Generate the initial profile from the pileup of input bam file
         bam_path: bam file path
         ref_path: reference file path
         region: region to extract, 1-based, left closed, right open
          */
+        self.region = region.clone();
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
         for p in bam.pileup() {
@@ -83,7 +88,7 @@ impl Profile {
                         bam::pileup::Indel::Ins(len) => {
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
@@ -117,8 +122,34 @@ impl Profile {
                 }
             }
         }
-        // TODO: add reference sequence
+    }
+    pub fn append_reference(&mut self, references: &HashMap<String, Vec<u8>>) {
+        /*
+        Fill the ``ref_base`` field in each BaseFreq.
+        Optional. If not called, the ``ref_base`` field in each BaseFreq will be '\0'
+         */
+        let chr = &self.region.chr;
+        let s = self.region.start - 1;    // 0-based, inclusive
+        let mut p = s as usize;
+        for i in 0..self.freq_vec.len() {
+            if self.freq_vec[i].i {
+                self.freq_vec[i].ref_base = '-'; // insertion
+            } else {
+                self.freq_vec[i].ref_base = references.get(chr).unwrap()[p] as char;
+                p += 1;
+            }
+        }
     }
     pub fn subtract(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {}
     pub fn add(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {}
+}
+
+pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
+    let mut references: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut reader = Reader::from_path(ref_path).unwrap();
+    while let Some(record) = reader.next() {
+        let record = record.expect("Error reading record");
+        references.insert(record.id().unwrap().to_string(), record.full_seq().to_vec());
+    }
+    return references;
 }
