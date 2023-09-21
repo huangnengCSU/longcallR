@@ -5,7 +5,7 @@ use rust_htslib::bam::Format;
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::bam::record::CigarString;
 
-#[derive(Clone)]
+#[derive(Default,Clone,Debug)]
 pub struct Region {
     pub(crate) chr: String,
     pub(crate) start: u32,
