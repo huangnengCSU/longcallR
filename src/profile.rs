@@ -5,11 +5,11 @@ use seq_io::fasta::{Reader, Record};
 
 #[derive(Debug, Clone)]
 pub struct ParsedRead {
-    pub bam_record: bam::Record,
+    pub bam_record: bam::record::Record,
     // read from bam file
     pub pased_seq: Vec<u8>,
     // parsed sequence, expand insertion
-    pub ref_pos: u32, // start position on reference based on the expanded insertion coordinate
+    pub ref_pos: i64, // start position on reference based on the expanded insertion coordinate
 }
 
 impl ParsedRead {}
@@ -42,7 +42,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: String, region: Region) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region) {
         /*
         Generate the initial profile from the pileup of input bam file
         bam_path: bam file path
@@ -152,4 +152,20 @@ pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
         references.insert(record.id().unwrap().to_string(), record.full_seq().to_vec());
     }
     return references;
+}
+
+pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> {
+    /*
+    Read each record in the bam file and store the record in PasedRead.bam_record.
+    */
+    let mut parsed_reads: HashMap<String, ParsedRead> = HashMap::new();
+    let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+    bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
+    for r in bam.records() {
+        let record = r.unwrap();
+        let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+        let parsed_read = ParsedRead { bam_record: record.clone(), pased_seq: Vec::new(), ref_pos: -1 };
+        parsed_reads.insert(qname, parsed_read);
+    }
+    return parsed_reads;
 }
