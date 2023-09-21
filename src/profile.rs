@@ -7,12 +7,14 @@ use seq_io::fasta::{Reader, Record};
 pub struct ParsedRead {
     pub bam_record: bam::record::Record,
     // read from bam file
-    pub pased_seq: Vec<u8>,
+    pub parsed_seq: Vec<u8>,
     // parsed sequence, expand insertion
     pub ref_pos: i64, // start position on reference based on the expanded insertion coordinate
 }
 
-impl ParsedRead {}
+impl ParsedRead {
+
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct BaseFreq {
@@ -156,7 +158,7 @@ pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
 
 pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> {
     /*
-    Read each record in the bam file and store the record in PasedRead.bam_record.
+    Read each record in the bam file and store the record in ParsedRead.bam_record.
     */
     let mut parsed_reads: HashMap<String, ParsedRead> = HashMap::new();
     let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
@@ -164,7 +166,7 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
     for r in bam.records() {
         let record = r.unwrap();
         let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-        let parsed_read = ParsedRead { bam_record: record.clone(), pased_seq: Vec::new(), ref_pos: -1 };
+        let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), ref_pos: -1 };
         parsed_reads.insert(qname, parsed_read);
     }
     return parsed_reads;
