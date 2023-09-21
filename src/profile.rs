@@ -13,7 +13,31 @@ pub struct ParsedRead {
 }
 
 impl ParsedRead {
+    pub fn init_parsed_seq(&mut self, profile: &Profile) {
+        /*
+        Parse cigar sequence and get the parsed sequence aligned to the profile (expanded insertion).
+        */
+        let ref_start = self.bam_record.pos();  // 0-based
+        let mut i = 0;  // the index of the first base in the profile (with expanded insertion)
+        let mut j = profile.region.start - 1;   // 0-based
+        if j as i64 > ref_start {
+            panic!("read start position exceeds the profile region!");
+        }
 
+        while i < profile.freq_vec.len() {
+            if !profile.freq_vec[i].i {
+                if j as i64 == ref_start {
+                    break;
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+
+        println!("readname:{}, i = {}, j = {}, refbase: {}", std::str::from_utf8(self.bam_record.qname()).unwrap(), i, j, profile.freq_vec[i].ref_base);
+
+        // TODO: parse cigar and get parsed sequence which is also aligned to the profile frequency vector
+    }
 }
 
 #[derive(Default, Debug, Clone)]
