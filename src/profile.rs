@@ -9,7 +9,7 @@ pub struct ParsedRead {
     // read from bam file
     pub parsed_seq: Vec<u8>,
     // parsed sequence, expand insertion
-    pub ref_pos: i64, // start position on reference based on the expanded insertion coordinate
+    pub pos_on_profile: i64, // start position of the first aligned base on the profile, 0-based
 }
 
 impl ParsedRead {
@@ -18,8 +18,8 @@ impl ParsedRead {
         Parse cigar sequence and get the parsed sequence aligned to the profile (expanded insertion).
         */
         let ref_start = self.bam_record.pos();  // 0-based
-        let mut i = 0;  // the index of the first base in the profile (with expanded insertion)
-        let mut j = profile.region.start - 1;   // 0-based
+        let mut i = 0;  // the index of the first base in the profile (with expanded insertion), offset on profile
+        let mut j = profile.region.start - 1;   // 0-based, offset on reference
         if j as i64 > ref_start {
             panic!("read start position exceeds the profile region!");
         }
@@ -37,6 +37,71 @@ impl ParsedRead {
         println!("readname:{}, i = {}, j = {}, refbase: {}", std::str::from_utf8(self.bam_record.qname()).unwrap(), i, j, profile.freq_vec[i].ref_base);
 
         // TODO: parse cigar and get parsed sequence which is also aligned to the profile frequency vector
+        self.pos_on_profile = i as i64;
+        let mut pos_on_read = 0;
+        println!("cigar: {}", self.bam_record.cigar().to_string());
+        for cg in self.bam_record.cigar().iter() {
+            println!("cg: {}", cg);
+            match cg.char() as u8 {
+                b'S' => {
+                    pos_on_read = cg.len();
+                    continue;
+                }
+                b'H' => {
+                    continue;
+                }
+                b'M' => {
+                    let mut k = cg.len() as i32;
+                    while k > 0 {
+                        if !profile.freq_vec[i].i {
+                            self.parsed_seq.push(profile.freq_vec[i].ref_base as u8);
+                            k -= 1;
+                            pos_on_read += 1;
+                        } else {
+                            self.parsed_seq.push('-' as u8);
+                        }
+                        i += 1;
+                    }
+                }
+                b'I' => {
+                    let mut k = cg.len() as i32;
+                    while k > 0 {
+                        self.parsed_seq.push(self.bam_record.seq()[pos_on_read as usize]);
+                        assert!(profile.freq_vec[i].i == true);
+                        k -= 1;
+                        i += 1;
+                        pos_on_read += 1;
+                    }
+                }
+                b'D' => {
+                    let mut k = cg.len() as i32;
+                    while k > 0 {
+                        if !profile.freq_vec[i].i {
+                            self.parsed_seq.push('-' as u8);
+                            k -= 1;
+                        } else {
+                            self.parsed_seq.push('-' as u8);
+                        }
+                        i += 1;
+                    }
+                }
+                b'N' => {
+                    let mut k = cg.len() as i32;
+                    while k > 0 {
+                        if !profile.freq_vec[i].i {
+                            self.parsed_seq.push('N' as u8);
+                            k -= 1;
+                        } else {
+                            self.parsed_seq.push('N' as u8);
+                        }
+                        i += 1;
+                    }
+                }
+                _ => {
+                    panic!("Invalid cigar character: {}", cg.char());
+                }
+            }
+        }
     }
 }
 
@@ -64,7 +129,7 @@ impl BaseFreq {
 #[derive(Default, Debug, Clone)]
 pub struct Profile {
     pub freq_vec: Vec<BaseFreq>,
-    pub region: Region, // 1-based, left closed, right open
+    pub region: Region, // position of aligned base (instead of input reigon), 1-based, left closed, right open
 }
 
 impl Profile {
@@ -75,25 +140,75 @@ impl Profile {
         ref_path: reference file path
         region: region to extract, 1-based, left closed, right open
          */
-        self.region = region.clone();
+        // self.region = region.clone();
+        let mut freq_vec_start = u32::MAX;  // 1-based
+        let mut freq_vec_end = u32::MIN;    // 1-based
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
+        let mut read_positions: HashMap<String, u32> = HashMap::new();
         for p in bam.pileup() {
             let pileup = p.unwrap();
             let pos = pileup.pos(); // 0-based
             if pos + 1 < region.start || pos + 1 >= region.end {
                 continue;
             }
+            if pos + 1 < freq_vec_start {
+                freq_vec_start = pos + 1;
+            }
+            if pos + 1 > freq_vec_end {
+                freq_vec_end = pos + 1;
+            }
             let mut bf = BaseFreq::default();
             let mut insert_bf: Vec<BaseFreq> = Vec::new();
             for alignment in pileup.alignments() {
                 if alignment.is_refskip() {
                     bf.n += 1;
+                    match alignment.indel() {
+                        bam::pileup::Indel::Ins(len) => {
+                            let record = alignment.record();
+                            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                            let seq = record.seq();
+                            if len > insert_bf.len() as u32 {
+                                for _ in 0..(len - insert_bf.len() as u32) {
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
+                                }
+                            }
+                            let q_pos = read_positions.get(&qname).unwrap();
+                            for tmpi in 1..=len {
+                                // insert_segment.push(seq[q_pos.unwrap() + tmpi as usize] as char);
+                                let base = seq[(q_pos + tmpi) as usize] as char;
+                                let bf = &mut insert_bf[tmpi as usize - 1];
+                                match base {
+                                    'A' => bf.a += 1,
+                                    'a' => bf.a += 1,
+                                    'C' => bf.c += 1,
+                                    'c' => bf.c += 1,
+                                    'G' => bf.g += 1,
+                                    'g' => bf.g += 1,
+                                    'T' => bf.t += 1,
+                                    't' => bf.t += 1,
+                                    _ => {
+                                        panic!("Invalid nucleotide base: {}", base);
+                                    }
+                                }
+                            }
+                            read_positions.insert(qname.clone(), *q_pos + len);
+                        }
+                        bam::pileup::Indel::Del(_len) => {}
+                        bam::pileup::Indel::None => {}
+                    }
+                    if insert_bf.len() > 0 {
+                        for tmpi in 0..insert_bf.len() {
+                            self.freq_vec.push(insert_bf[tmpi].clone());
+                        }
+                    }
                 } else if alignment.is_del() {
                     bf.d += 1;
                 } else {
                     let q_pos = alignment.qpos().unwrap();
                     let record = alignment.record();
+                    let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                    read_positions.insert(qname.clone(), q_pos as u32);
                     let seq = record.seq();
                     let base = seq[q_pos] as char;
                     match base {
@@ -135,6 +250,7 @@ impl Profile {
                                     }
                                 }
                             }
+                            read_positions.insert(qname.clone(), q_pos as u32 + len);
                         }
                         bam::pileup::Indel::Del(_len) => {}
                         bam::pileup::Indel::None => {}
@@ -148,6 +264,7 @@ impl Profile {
                 }
             }
         }
+        self.region = Region { chr: region.chr.clone(), start: freq_vec_start, end: freq_vec_end + 1 };
     }
     pub fn append_reference(&mut self, references: &HashMap<String, Vec<u8>>) {
         /*
@@ -190,7 +307,7 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
     for r in bam.records() {
         let record = r.unwrap();
         let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-        let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), ref_pos: -1 };
+        let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), pos_on_profile: -1 };
         parsed_reads.insert(qname, parsed_read);
     }
     return parsed_reads;
