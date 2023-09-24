@@ -36,7 +36,6 @@ impl ParsedRead {
 
         println!("readname:{}, i = {}, j = {}, refbase: {}", std::str::from_utf8(self.bam_record.qname()).unwrap(), i, j, profile.freq_vec[i].ref_base);
 
-        // TODO: parse cigar and get parsed sequence which is also aligned to the profile frequency vector
         self.pos_on_profile = i as i64;
         let mut pos_on_read = 0;
         let seq = self.bam_record.seq();
@@ -277,8 +276,70 @@ impl Profile {
             }
         }
     }
-    pub fn subtract(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {}
-    pub fn add(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {}
+    pub fn subtract(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {
+        /*
+        Subtract the parsed sequence from the profile.
+        start_pos: offset on profile, 0-based
+        parsed_seq: parsed sequence, expand insertion
+        */
+        for i in 0..parsed_seq.len() {
+            match parsed_seq[i] {
+                b'A' => {
+                    self.freq_vec[start_pos as usize + i].a -= 1;
+                }
+                b'C' => {
+                    self.freq_vec[start_pos as usize + i].c -= 1;
+                }
+                b'G' => {
+                    self.freq_vec[start_pos as usize + i].g -= 1;
+                }
+                b'T' => {
+                    self.freq_vec[start_pos as usize + i].t -= 1;
+                }
+                b'N' => {
+                    self.freq_vec[start_pos as usize + i].n -= 1;
+                }
+                b'-' => {
+                    self.freq_vec[start_pos as usize + i].d -= 1;
+                }
+                _ => {
+                    panic!("Invalid base: {}", parsed_seq[i] as char);
+                }
+            }
+        }
+    }
+    pub fn add(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {
+        /*
+        Add the parsed sequence to the profile.
+        start_pos: offset on profile, 0-based
+        parsed_seq: parsed sequence, expand insertion
+        */
+        for i in 0..parsed_seq.len() {
+            match parsed_seq[i] {
+                b'A' => {
+                    self.freq_vec[start_pos as usize + i].a += 1;
+                }
+                b'C' => {
+                    self.freq_vec[start_pos as usize + i].c += 1;
+                }
+                b'G' => {
+                    self.freq_vec[start_pos as usize + i].g += 1;
+                }
+                b'T' => {
+                    self.freq_vec[start_pos as usize + i].t += 1;
+                }
+                b'N' => {
+                    self.freq_vec[start_pos as usize + i].n += 1;
+                }
+                b'-' => {
+                    self.freq_vec[start_pos as usize + i].d += 1;
+                }
+                _ => {
+                    panic!("Invalid base: {}", parsed_seq[i] as char);
+                }
+            }
+        }
+    }
 }
 
 pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
