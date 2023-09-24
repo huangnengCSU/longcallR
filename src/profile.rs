@@ -39,9 +39,7 @@ impl ParsedRead {
         // TODO: parse cigar and get parsed sequence which is also aligned to the profile frequency vector
         self.pos_on_profile = i as i64;
         let mut pos_on_read = 0;
-        println!("cigar: {}", self.bam_record.cigar().to_string());
         for cg in self.bam_record.cigar().iter() {
-            println!("cg: {}", cg);
             match cg.char() as u8 {
                 b'S' => {
                     pos_on_read = cg.len();
@@ -67,7 +65,7 @@ impl ParsedRead {
                     let mut k = cg.len() as i32;
                     while k > 0 {
                         self.parsed_seq.push(self.bam_record.seq()[pos_on_read as usize]);
-                        assert!(profile.freq_vec[i].i == true);
+                        assert_eq!(profile.freq_vec[i].i, true);
                         k -= 1;
                         i += 1;
                         pos_on_read += 1;
@@ -168,6 +166,7 @@ impl Profile {
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
+                            println!("1:{}:{}", &qname, len);
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
                                     insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
@@ -197,11 +196,6 @@ impl Profile {
                         bam::pileup::Indel::Del(_len) => {}
                         bam::pileup::Indel::None => {}
                     }
-                    if insert_bf.len() > 0 {
-                        for tmpi in 0..insert_bf.len() {
-                            self.freq_vec.push(insert_bf[tmpi].clone());
-                        }
-                    }
                 } else if alignment.is_del() {
                     bf.d += 1;
                 } else {
@@ -227,6 +221,7 @@ impl Profile {
 
                     match alignment.indel() {
                         bam::pileup::Indel::Ins(len) => {
+                            println!("2:{}:{},{}", &qname, len, insert_bf.len());
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
                                     insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
@@ -235,16 +230,16 @@ impl Profile {
                             for tmpi in 1..=len {
                                 // insert_segment.push(seq[q_pos.unwrap() + tmpi as usize] as char);
                                 let base = seq[q_pos + tmpi as usize] as char;
-                                let bf = &mut insert_bf[tmpi as usize - 1];
+                                let ibf = &mut insert_bf[tmpi as usize - 1];
                                 match base {
-                                    'A' => bf.a += 1,
-                                    'a' => bf.a += 1,
-                                    'C' => bf.c += 1,
-                                    'c' => bf.c += 1,
-                                    'G' => bf.g += 1,
-                                    'g' => bf.g += 1,
-                                    'T' => bf.t += 1,
-                                    't' => bf.t += 1,
+                                    'A' => ibf.a += 1,
+                                    'a' => ibf.a += 1,
+                                    'C' => ibf.c += 1,
+                                    'c' => ibf.c += 1,
+                                    'G' => ibf.g += 1,
+                                    'g' => ibf.g += 1,
+                                    'T' => ibf.t += 1,
+                                    't' => ibf.t += 1,
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
@@ -257,10 +252,12 @@ impl Profile {
                     }
                 }
             }
+            println!("{:?}", bf.clone());
             self.freq_vec.push(bf);
             if insert_bf.len() > 0 {
                 for tmpi in 0..insert_bf.len() {
                     self.freq_vec.push(insert_bf[tmpi].clone());
+                    println!("{:?}", insert_bf[tmpi].clone());
                 }
             }
         }
