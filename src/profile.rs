@@ -39,6 +39,7 @@ impl ParsedRead {
         // TODO: parse cigar and get parsed sequence which is also aligned to the profile frequency vector
         self.pos_on_profile = i as i64;
         let mut pos_on_read = 0;
+        let seq = self.bam_record.seq();
         for cg in self.bam_record.cigar().iter() {
             match cg.char() as u8 {
                 b'S' => {
@@ -52,7 +53,7 @@ impl ParsedRead {
                     let mut k = cg.len() as i32;
                     while k > 0 {
                         if !profile.freq_vec[i].i {
-                            self.parsed_seq.push(profile.freq_vec[i].ref_base as u8);
+                            self.parsed_seq.push(seq[pos_on_read as usize]);
                             k -= 1;
                             pos_on_read += 1;
                         } else {
@@ -64,7 +65,7 @@ impl ParsedRead {
                 b'I' => {
                     let mut k = cg.len() as i32;
                     while k > 0 {
-                        self.parsed_seq.push(self.bam_record.seq()[pos_on_read as usize]);
+                        self.parsed_seq.push(seq[pos_on_read as usize]);
                         assert_eq!(profile.freq_vec[i].i, true);
                         k -= 1;
                         i += 1;
@@ -166,7 +167,6 @@ impl Profile {
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
-                            println!("1:{}:{}", &qname, len);
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
                                     insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
@@ -221,7 +221,6 @@ impl Profile {
 
                     match alignment.indel() {
                         bam::pileup::Indel::Ins(len) => {
-                            println!("2:{}:{},{}", &qname, len, insert_bf.len());
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
                                     insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
@@ -252,12 +251,10 @@ impl Profile {
                     }
                 }
             }
-            println!("{:?}", bf.clone());
             self.freq_vec.push(bf);
             if insert_bf.len() > 0 {
                 for tmpi in 0..insert_bf.len() {
                     self.freq_vec.push(insert_bf[tmpi].clone());
-                    println!("{:?}", insert_bf[tmpi].clone());
                 }
             }
         }
