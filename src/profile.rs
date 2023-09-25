@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read};
@@ -119,9 +120,52 @@ pub struct BaseFreq {
 }
 
 impl BaseFreq {
-    pub fn get_score1(&self, query: u8) {}
-    pub fn get_score2(&self, query: u8) {}
-    pub fn get_score(&self, query: u8) {}
+    pub fn get_score1(&self, query: u8) -> i32 {
+        let max_cnt = self.a.max(self.c.max(self.g.max(self.t.max(self.n.max(self.d)))));
+        match query {
+            b'A' => if self.a == max_cnt { 0 } else { 1 },
+            b'C' => if self.c == max_cnt { 0 } else { 1 },
+            b'G' => if self.g == max_cnt { 0 } else { 1 },
+            b'T' => if self.t == max_cnt { 0 } else { 1 },
+            b'N' => if self.n == max_cnt { 0 } else { 1 },
+            b'-' => if self.d == max_cnt { 0 } else { 1 },
+            _ => {
+                panic!("Invalid query base: {}", query as char);
+            }
+        }
+    }
+    pub fn get_score2(&self, query: u8) -> f64 {
+        let s = (self.a + self.c + self.g + self.t + self.d + self.n) as f64;
+        if s == 0.0 {
+            return 0.0;
+        }
+        match query {
+            b'A' => (s - self.a as f64) / s,
+            b'C' => (s - self.c as f64) / s,
+            b'G' => (s - self.g as f64) / s,
+            b'T' => (s - self.t as f64) / s,
+            b'N' => (s - self.n as f64) / s,
+            b'-' => (s - self.d as f64) / s,
+            _ => {
+                panic!("Invalid query base: {}", query as char);
+            }
+        }
+    }
+    pub fn get_score(&self, query: u8) -> f64 {
+        (self.get_score1(query) as f64 + self.get_score2(query)) / 2.0
+    }
+
+    pub fn get_depth_exclude_intron(&self) -> u32 {
+        self.a + self.c + self.g + self.t + self.d
+    }
+
+    pub fn get_depth_include_intron(&self) -> u32 {
+        self.a + self.c + self.g + self.t + self.d + self.n
+    }
+
+    pub fn get_intron_ratio(&self) -> (u32, f64) {
+        (self.n, (self.n as f64) / (self.get_depth_include_intron() as f64))
+    }
 }
 
 #[derive(Default, Debug, Clone)]
