@@ -56,7 +56,7 @@ impl ParsedRead {
                             k -= 1;
                             pos_on_read += 1;
                         } else {
-                            self.parsed_seq.push('-' as u8);
+                            self.parsed_seq.push('*' as u8);
                         }
                         i += 1;
                     }
@@ -78,7 +78,7 @@ impl ParsedRead {
                             self.parsed_seq.push('-' as u8);
                             k -= 1;
                         } else {
-                            self.parsed_seq.push('-' as u8);
+                            self.parsed_seq.push('*' as u8);
                         }
                         i += 1;
                     }
@@ -90,7 +90,7 @@ impl ParsedRead {
                             self.parsed_seq.push('N' as u8);
                             k -= 1;
                         } else {
-                            self.parsed_seq.push('N' as u8);
+                            self.parsed_seq.push('*' as u8);
                         }
                         i += 1;
                     }
@@ -143,7 +143,7 @@ impl Profile {
         let mut freq_vec_end = u32::MIN;    // 1-based
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
-        let mut read_positions: HashMap<String, u32> = HashMap::new();
+        let mut read_positions: HashMap<String, u32> = HashMap::new();  // store offset on profile of each read
         for p in bam.pileup() {
             let pileup = p.unwrap();
             let pos = pileup.pos(); // 0-based
@@ -276,31 +276,38 @@ impl Profile {
             }
         }
     }
-    pub fn subtract(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {
+    pub fn subtract(&mut self, offset_on_profile: u32, parsed_seq: &Vec<u8>) {
         /*
         Subtract the parsed sequence from the profile.
-        start_pos: offset on profile, 0-based
+        offset_on_profile: offset on profile, 0-based
         parsed_seq: parsed sequence, expand insertion
         */
         for i in 0..parsed_seq.len() {
             match parsed_seq[i] {
                 b'A' => {
-                    self.freq_vec[start_pos as usize + i].a -= 1;
+                    self.freq_vec[offset_on_profile as usize + i].a -= 1;
                 }
                 b'C' => {
-                    self.freq_vec[start_pos as usize + i].c -= 1;
+                    self.freq_vec[offset_on_profile as usize + i].c -= 1;
                 }
                 b'G' => {
-                    self.freq_vec[start_pos as usize + i].g -= 1;
+                    self.freq_vec[offset_on_profile as usize + i].g -= 1;
                 }
                 b'T' => {
-                    self.freq_vec[start_pos as usize + i].t -= 1;
+                    self.freq_vec[offset_on_profile as usize + i].t -= 1;
                 }
                 b'N' => {
-                    self.freq_vec[start_pos as usize + i].n -= 1;
+                    if !self.freq_vec[offset_on_profile as usize + i].i {
+                        self.freq_vec[offset_on_profile as usize + i].n -= 1;
+                    }
                 }
                 b'-' => {
-                    self.freq_vec[start_pos as usize + i].d -= 1;
+                    if !self.freq_vec[offset_on_profile as usize + i].i {
+                        self.freq_vec[offset_on_profile as usize + i].d -= 1;
+                    }
+                }
+                b'*' => {
+                    continue;
                 }
                 _ => {
                     panic!("Invalid base: {}", parsed_seq[i] as char);
@@ -308,31 +315,38 @@ impl Profile {
             }
         }
     }
-    pub fn add(&mut self, start_pos: u32, parsed_seq: &Vec<u8>) {
+    pub fn add(&mut self, offset_on_profile: u32, parsed_seq: &Vec<u8>) {
         /*
         Add the parsed sequence to the profile.
-        start_pos: offset on profile, 0-based
+        offset_on_profile: offset on profile, 0-based
         parsed_seq: parsed sequence, expand insertion
         */
         for i in 0..parsed_seq.len() {
             match parsed_seq[i] {
                 b'A' => {
-                    self.freq_vec[start_pos as usize + i].a += 1;
+                    self.freq_vec[offset_on_profile as usize + i].a += 1;
                 }
                 b'C' => {
-                    self.freq_vec[start_pos as usize + i].c += 1;
+                    self.freq_vec[offset_on_profile as usize + i].c += 1;
                 }
                 b'G' => {
-                    self.freq_vec[start_pos as usize + i].g += 1;
+                    self.freq_vec[offset_on_profile as usize + i].g += 1;
                 }
                 b'T' => {
-                    self.freq_vec[start_pos as usize + i].t += 1;
+                    self.freq_vec[offset_on_profile as usize + i].t += 1;
                 }
                 b'N' => {
-                    self.freq_vec[start_pos as usize + i].n += 1;
+                    if !self.freq_vec[offset_on_profile as usize + i].i {
+                        self.freq_vec[offset_on_profile as usize + i].n += 1;
+                    }
                 }
                 b'-' => {
-                    self.freq_vec[start_pos as usize + i].d += 1;
+                    if !self.freq_vec[offset_on_profile as usize + i].i {
+                        self.freq_vec[offset_on_profile as usize + i].d += 1;
+                    }
+                }
+                b'*' => {
+                    continue;
                 }
                 _ => {
                     panic!("Invalid base: {}", parsed_seq[i] as char);
