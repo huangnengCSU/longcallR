@@ -1,8 +1,8 @@
-use std::cmp::max;
 use std::collections::HashMap;
 use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read};
 use seq_io::fasta::{Reader, Record};
+use rust_lapper::{Interval, Lapper};
 
 #[derive(Debug, Clone)]
 pub struct ParsedRead {
@@ -171,7 +171,13 @@ impl BaseFreq {
 #[derive(Default, Debug, Clone)]
 pub struct Profile {
     pub freq_vec: Vec<BaseFreq>,
-    pub region: Region, // position of aligned base (instead of input reigon), 1-based, left closed, right open
+    pub region: Region,
+    // position of aligned base (instead of input reigon), 1-based, left closed, right open
+    pub forward_donor_penalty: Vec<f64>,
+    pub forward_acceptor_penalty: Vec<f64>,
+    pub reverse_donor_penalty: Vec<f64>,
+    pub reverse_acceptor_penalty: Vec<f64>,
+    pub intron_intervals: Vec<Interval<usize, bool>>,    // intron regions, the base of each read in this region is 'N'.
 }
 
 impl Profile {
@@ -398,6 +404,108 @@ impl Profile {
             }
         }
     }
+
+    pub fn cal_intron_penalty(&mut self) {
+        let mut ref_sliding_window: Vec<u8> = Vec::new();
+        for i in 0..self.freq_vec.len() + 1 {
+            if i as i32 - 3 < 0 {
+                self.forward_acceptor_penalty.push(30.0);
+                self.reverse_acceptor_penalty.push(30.0);
+            } else {
+                let mut j = i as i32 - 1;
+                ref_sliding_window.clear();
+                while ref_sliding_window.len() < 3 && j >= 0 {
+                    if !self.freq_vec[j as usize].i {
+                        ref_sliding_window.push(self.freq_vec[j as usize].ref_base as u8);
+                    }
+                    j -= 1;
+                }
+                let mut tstr = String::new();
+                for c in ref_sliding_window.iter().rev() {
+                    tstr.push(*c as char);
+                }
+                if tstr.len() < 3 {
+                    self.forward_acceptor_penalty.push(30.0);
+                    self.reverse_acceptor_penalty.push(30.0);
+                } else {
+                    if tstr[1..3] == "AC".to_string() {
+                        self.forward_acceptor_penalty.push(21.0);
+                    } else if tstr == "AAG".to_string() || tstr == "GAG".to_string() {
+                        self.forward_acceptor_penalty.push(8.0);
+                    } else if tstr == "CAG".to_string() || tstr == "TAG".to_string() {
+                        self.forward_acceptor_penalty.push(0.0);
+                    } else {
+                        self.forward_acceptor_penalty.push(30.0);
+                    }
+
+                    if tstr[1..3] == "AT".to_string() {
+                        self.reverse_acceptor_penalty.push(21.0);
+                    } else if tstr[1..3] == "GC".to_string() {
+                        self.reverse_acceptor_penalty.push(15.0);
+                    } else if tstr == "GAC".to_string() || tstr == "AAC".to_string() {
+                        self.reverse_acceptor_penalty.push(8.0);
+                    } else if tstr == "TAC".to_string() || tstr == "CAC".to_string() {
+                        self.reverse_acceptor_penalty.push(0.0);
+                    } else {
+                        self.reverse_acceptor_penalty.push(30.0);
+                    }
+                }
+            }
+        }
+
+        for i in 0..self.freq_vec.len() + 1 {
+            if i < self.freq_vec.len() && self.freq_vec[i].i {
+                self.forward_donor_penalty.push(30.0);
+                // forward_acceptor_penalty.push(standed_penalty);
+                self.reverse_donor_penalty.push(30.0);
+                // reverse_acceptor_penalty.push(standed_penalty);
+                continue;
+            }
+            if i + 2 >= self.freq_vec.len() {
+                self.forward_donor_penalty.push(30.0);
+                self.reverse_donor_penalty.push(30.0);
+            } else {
+                let mut j = i;
+                ref_sliding_window.clear();
+                while ref_sliding_window.len() < 3 && j < self.freq_vec.len() {
+                    if !self.freq_vec[j].i {
+                        ref_sliding_window.push(self.freq_vec[j].ref_base as u8);
+                    }
+                    j += 1;
+                }
+                let mut tstr = String::new();
+                for c in ref_sliding_window.iter() {
+                    tstr.push(*c as char);
+                }
+                if tstr.len() < 3 {
+                    self.forward_donor_penalty.push(30.0);
+                    self.reverse_donor_penalty.push(30.0);
+                } else {
+                    if tstr[0..2] == "AT".to_string() {
+                        self.forward_donor_penalty.push(21.0);
+                    } else if tstr[0..2] == "GC".to_string() {
+                        self.forward_donor_penalty.push(15.0);
+                    } else if tstr == "GTC".to_string() || tstr == "GTT".to_string() {
+                        self.forward_donor_penalty.push(8.0);
+                    } else if tstr == "GTA".to_string() || tstr == "GTG".to_string() {
+                        self.forward_donor_penalty.push(0.0);
+                    } else {
+                        self.forward_donor_penalty.push(30.0);
+                    }
+
+                    if tstr[0..2] == "GT".to_string() {
+                        self.reverse_donor_penalty.push(21.0);
+                    } else if tstr == "CTT".to_string() || tstr == "CTC".to_string() {
+                        self.reverse_donor_penalty.push(8.0);
+                    } else if tstr == "CTG".to_string() || tstr == "CTA".to_string() {
+                        self.reverse_donor_penalty.push(0.0);
+                    } else {
+                        self.reverse_donor_penalty.push(30.0);
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
@@ -424,4 +532,8 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
         parsed_reads.insert(qname, parsed_read);
     }
     return parsed_reads;
+}
+
+pub fn get_profile_removing_intron(profile: &Profile) -> () {
+    let mut extend_size = 96; // L>(d(i)+a(a)+telda(q)-q)/e
 }
