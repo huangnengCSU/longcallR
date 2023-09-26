@@ -1,18 +1,18 @@
 use crate::matrix::ColumnBaseCount;
 
 #[derive(Clone)]
-struct SpliceMatrixElement {
-    m: f64,
+pub struct SpliceMatrixElement {
+    pub m: f64,
     // not matching
-    ix: f64,
+    pub ix: f64,
     // gap in query: deletion
-    ix2: f64,
+    pub ix2: f64,
     // gap in query: introns
-    m_s: u8,
+    pub m_s: u8,
     // previous state of m
-    ix_s: u8,
+    pub ix_s: u8,
     // previous state of ix
-    ix2_s: u8,  // previous state of ix2
+    pub ix2_s: u8,  // previous state of ix2
 }
 
 impl Default for SpliceMatrixElement {

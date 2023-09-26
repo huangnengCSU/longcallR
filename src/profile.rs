@@ -3,6 +3,7 @@ use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read};
 use seq_io::fasta::{Reader, Record};
 use rust_lapper::{Interval, Lapper};
+use crate::align2::SpliceMatrixElement;
 
 #[derive(Debug, Clone)]
 pub struct ParsedRead {
@@ -116,7 +117,9 @@ pub struct BaseFreq {
     // number of deletions
     pub i: bool,
     // whether this position falls in an insertion
-    pub ref_base: char,   // reference base, A,C,G,T,N,-
+    pub ref_base: char,
+    // reference base, A,C,G,T,N,-
+    pub intron: bool, // whether this position is an intron
 }
 
 impl BaseFreq {
@@ -218,7 +221,7 @@ impl Profile {
                             let seq = record.seq();
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -272,7 +275,7 @@ impl Profile {
                         bam::pileup::Indel::Ins(len) => {
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00' });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
@@ -530,6 +533,46 @@ impl Profile {
                 extend_size = 96;
             }
         }
+        for iv in self.intron_intervals.iter() {
+            for i in iv.start..iv.stop {
+                self.freq_vec[i].intron = true;
+            }
+        }
+    }
+
+    pub fn generate_read_profile_for_realign(&mut self, parsed_read: &ParsedRead) -> (i64, i64, Vec<u8>, Profile) {
+        /*
+        1. generate parsed seq without intron and profile without intron as well
+        2. subtract parsed seq from profile
+        returns: (s, e, parsed_seq_without_intron, profile_without_intron)
+        s: start position of parsed read without introns on the profile, 0-based, inclusive
+        e: end position of parsed read without introns on the profile, 0-based, inclusive
+        parsed_seq_without_intron: parsed sequence without introns
+        profile_without_intron: profile without introns
+         */
+        let p = parsed_read.pos_on_profile as usize;
+        let mut s: i64 = -1;   // 0-based, include
+        let mut e: i64 = -1;   // 0-based, include
+        let mut parsed_seq_without_intron: Vec<u8> = Vec::new();
+        let mut profile_without_intron = Profile::default();
+        for i in 0..parsed_read.parsed_seq.len() {
+            let mut j = p + i;
+            if !self.freq_vec[j].intron {
+                if s == -1 && e == -1 {
+                    s = j as i64;
+                }
+                parsed_seq_without_intron.push(parsed_read.parsed_seq[i]);
+                profile_without_intron.freq_vec.push(self.freq_vec[j].clone());
+                profile_without_intron.forward_acceptor_penalty.push(self.forward_acceptor_penalty[j]);
+                profile_without_intron.forward_donor_penalty.push(self.forward_donor_penalty[j]);
+                profile_without_intron.reverse_acceptor_penalty.push(self.reverse_acceptor_penalty[j]);
+                profile_without_intron.reverse_donor_penalty.push(self.reverse_donor_penalty[j]);
+                e = j as i64;
+            }
+        }
+        profile_without_intron.forward_acceptor_penalty.push(self.forward_acceptor_penalty[e as usize + 1]); // acceptor penalty stored in the next position
+        profile_without_intron.reverse_acceptor_penalty.push(self.reverse_acceptor_penalty[e as usize + 1]); // acceptor penalty stored in the next position
+        (s, e, parsed_seq_without_intron, profile_without_intron)
     }
 }
 
@@ -557,4 +600,379 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
         parsed_reads.insert(qname, parsed_read);
     }
     return parsed_reads;
+}
+
+pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<u8>, Vec<u8>) {
+    // TODO: calculate penalty of passing a intron region, where the region is cut by the process of cutting all reads introns.
+    // TODO: useless of hidden_splice_penalty, remove later.
+    // Case: wtc11_ont_grch38: chr22:37024802-37025006
+    let h = 2.0; // short gap open, q in minimap2
+    let g = 1.0; // short gap extend, e in minimap2
+    let h2 = 32.0; // long gap open, q hat in minimap2
+    // let p = 9.0; // splice junction site penalty
+    let b: f64 = 34.0; // splice junction site penalty
+    let match_score = 2.0;
+    let mismatch_score = -2.0;
+
+    // let query_without_gap = query.replace("-", "").replace("N", "");
+    let query_t = std::str::from_utf8(query.clone().as_slice()).unwrap().replace("-", "").replace("N", "").replace("*", "");
+    let query_without_gap = query_t.as_bytes();
+
+    let q_len = query_without_gap.len();
+    let t_len = profile.freq_vec.len();
+
+    // for d in reduced_donor_penalty.iter() {
+    //     print!("{}\t", d);
+    // }
+    // println!();
+    //
+    // for d in reduced_acceptor_penalty.iter() {
+    //     print!("{}\t", d);
+    // }
+    // println!();
+    //
+    // for d in 0..t_len {
+    //     print!("{}\t", profile[d].get_ref_base() as char);
+    // }
+    // println!();
+    //
+    // for i in 0..t_len {
+    //     print!("{}\t", profile[i].n_n);
+    // }
+    // println!();
+    //
+    // for i in 0..t_len {
+    //     print!("{}\t", profile[i].get_depth() + profile[i].n_n);
+    // }
+    // println!();
+
+
+    let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
+    // println!("mat size: {} x {}", mat.len(), mat[0].len());
+
+    let mut k_vec: Vec<usize> = vec![0; t_len + 1];
+
+    // Initialize first row
+    mat[0][width + 1].ix = -h - g;
+    mat[0][width + 1].ix2 = -f64::INFINITY;
+    mat[0][width + 1].m = mat[0][width + 1].ix;
+
+    let mut i = 1; // index on target
+    let mut j = 1; // index on query
+    let mut k = 0; // index on query_without_gap
+
+    let mut left_bound: usize; // include this index
+    let mut right_bound: usize; // exclude this index
+    while i < t_len + 1 && k < q_len + 1 {
+        let mut offset: usize;
+        // if query[j - 1] != b'-' && query[j - 1] != b'N' {
+        if query[j - 1] != b'*' && query[j - 1] != b'-' && query[j - 1] != b'N' {
+            k += 1;
+            offset = 0;
+        } else {
+            offset = 1;
+        }
+        k_vec[i] = k; // store k index of each row
+
+        if k as i32 - width as i32 > 0 {
+            left_bound = (k as i32 - width as i32) as usize;
+        } else {
+            left_bound = 1;
+        }
+        right_bound = if k + width + 1 <= q_len + 1 {
+            k + width + 1
+        } else {
+            q_len + 1
+        };
+        for u in left_bound..right_bound {
+            // index on alignment matrix: (i,v), v = (w+1)+(u-k), u in [left_bound, right_bound)
+            let v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+            let col = &profile.freq_vec[i - 1];
+            let qbase = query_without_gap[u - 1];
+            let sij: f64;
+            if qbase == b' ' {
+                sij = 0.0;
+            } else {
+                if col.get_depth_exclude_intron() <= 5 {
+                    let tbase = col.ref_base as u8;
+                    if tbase == b'-' {
+                        sij = match_score;
+                    } else if qbase == tbase {
+                        sij = match_score;
+                    } else {
+                        sij = mismatch_score;
+                    }
+                } else {
+                    sij = 2.0 - 4.0 * col.get_score(qbase);
+                }
+            }
+
+            // position specific donor penalty (mat[i], taget[i-1], profile[i-1])
+            let mut dp_f = 1.0;
+            let mut ap_f = 1.0;
+            if i as i32 - 1 >= 0 && i < t_len {
+                //if profile[i - 1].get_ref_base() == b'-' {
+                if profile.freq_vec[i - 1].i {
+                    dp_f = 1.0;
+                } else {
+                    // let (curr_intron_cnt, curr_intron_percentage) = profile[i - 1].get_intron_percentage();
+                    let (curr_intron_cnt, curr_intron_percentage) = profile.freq_vec[i - 1].get_intron_ratio();
+                    let mut ai = i as i32 - 2;
+                    while ai >= 0 {
+                        // if profile[ai as usize].get_ref_base() == b'-' {
+                        if profile.freq_vec[ai as usize].i {
+                            ai -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if ai >= 0 {
+                        // let (prev_intron_cnt, prev_intron_percentage) = profile[ai as usize].get_intron_percentage();
+                        let (prev_intron_cnt, prev_intron_percentage) = profile.freq_vec[ai as usize].get_intron_ratio();
+                        // if (curr_intron_cnt as i32 - prev_intron_cnt as i32).abs() > 10 {
+                        //     dp_f = 0.0;
+                        // } else {
+                        //     dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
+                        // }
+                        dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
+                    }
+                }
+            }
+
+            // position specific acceptor penalty (mat[i], taget[i-1], profile[i-1]), previous position of current target position i-1, and not dash on reference
+
+            if i as i32 - 1 >= 0 && i < t_len {
+                if profile.freq_vec[i - 1].i {
+                    ap_f = 1.0;
+                } else {
+                    let (curr_intron_cnt, curr_intron_percentage) = profile.freq_vec[i - 1].get_intron_ratio();
+                    let mut ai = i;
+                    while ai < t_len {
+                        if profile.freq_vec[ai].i {
+                            ai += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if ai < t_len {
+                        let (later_intron_cnt, later_intron_percentage) = profile.freq_vec[ai].get_intron_ratio();
+                        // if (later_intron_cnt as i32 - curr_intron_cnt as i32).abs() > 10 {
+                        //     ap_f = 0.0;
+                        // } else {
+                        //     ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
+                        // }
+                        ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
+                    }
+                }
+            }
+
+            // println!("dp_f: {}, ap_f: {}", dp_f, ap_f);
+
+            // if col.get_ref_base() == b'-' || col.get_ref_base() == b'N' {
+            if col.i || col.ref_base == 'N' {
+                if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
+                    mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
+                    mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                } else {
+                    mat[i][v].ix = mat[i - 1][v + 1 - offset].ix;
+                    mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                }
+            } else {
+                if !col.i && i as i32 - 2 >= 0 && profile.freq_vec[i - 2].i {
+                    if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - h - g {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
+                        mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                    } else {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - h - g;
+                        mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                    }
+                } else {
+                    if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - g {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
+                        mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                    } else {
+                        mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - g;
+                        mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                    }
+                }
+            }
+
+            if mat[i - 1][v + 1 - offset].m - profile.forward_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= mat[i - 1][v + 1 - offset].ix2 {
+                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - profile.forward_donor_penalty[i - 1] - h2 - dp_f * 28.0;
+                mat[i][v].ix2_s = 1; //mat[i][v].ix2_prev_m = true;
+            } else {
+                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].ix2;
+                mat[i][v].ix2_s = 3; //mat[i][v].ix2_prev_ix2 = true;
+            }
+
+
+            mat[i][v].m = (mat[i - 1][v - offset].m + sij)
+                .max(mat[i][v].ix)
+                .max(mat[i][v].ix2 - profile.forward_acceptor_penalty[i] - ap_f * 28.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+            if mat[i][v].m == mat[i - 1][v - offset].m + sij {
+                mat[i][v].m_s = 1; //mat[i][v].m_prev_m = true;
+            } else if mat[i][v].m == mat[i][v].ix {
+                mat[i][v].m_s = 2; //mat[i][v].m_prev_ix = true;
+            } else if mat[i][v].m == mat[i][v].ix2 - profile.forward_acceptor_penalty[i] - ap_f * 28.0 {
+                mat[i][v].m_s = 3; //mat[i][v].m_prev_ix2 = true;
+            }
+        }
+        i += 1;
+        j += 1;
+    }
+
+    // trace back
+    let mut aligned_query: Vec<u8> = Vec::new();
+    let mut ref_target: Vec<u8> = Vec::new();
+    let mut major_target: Vec<u8> = Vec::new();
+    let mut alignment_score = 0.0;
+
+    let mut u: usize;
+    let mut v: usize;
+
+    i = t_len;
+
+    // let mut score_vec = Vec::new();
+    // for vv in 0..2 * width + 3 {
+    //     score_vec.push(mat[i][vv].m);
+    // }
+    // find max value and index in score_vec
+    // let (max_score, max_index) = find_max_value_and_index(&score_vec);
+    let vv = (width as i32 + 1 + (q_len as i32 - k_vec[i] as i32)) as usize;
+    let max_score = mat[i][vv].m;
+
+    alignment_score = max_score;
+    v = vv;
+    k = k_vec[i];
+    u = (v as i32 - (width as i32 + 1) + k as i32) as usize; // index on query_without_gap
+
+    let mut trace_back_stat: u8 = 0;
+    if mat[i][v].m_s == 2 {
+        //mat[i][v].m_prev_ix
+        trace_back_stat = 2;
+        // trace_back_stat = TraceBack::IX;
+    } else if mat[i][v].m_s == 3 {
+        //mat[i][v].m_prev_ix2
+        trace_back_stat = 3;
+        // trace_back_stat = TraceBack::IX2;
+    } else if mat[i][v].m_s == 1 {
+        // mat[i][v].m_prev_m
+        trace_back_stat = 1;
+        // trace_back_stat = TraceBack::M;
+    } else {
+        panic!("Error: no traceback");
+    }
+
+    while i > 0 && u > 0 {
+        // println!("i: {}, k: {}, m:{}, ix: {}, iy:{}, ix2:{}", i, k, mat[i][k].m, mat[i][k].ix, mat[i][k].iy, mat[i][k].ix2);
+        k = k_vec[i];
+        v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
+        let qbase = query_without_gap[u - 1];
+        let ref_base = profile.freq_vec[i - 1].ref_base;
+        // let major_base = profile[i - 1].get_major_base();
+        if trace_back_stat == 1 {
+            // trace_back_stat == TraceBack::M
+            if mat[i][v].m_s == 2 {
+                //mat[i][v].m_prev_ix
+                trace_back_stat = 2;
+                // trace_back_stat = TraceBack::IX;
+            } else if mat[i][v].m_s == 3 {
+                // mat[i][v].m_prev_ix2
+                trace_back_stat = 3;
+                // trace_back_stat = TraceBack::IX2;
+            } else if mat[i][v].m_s == 1 {
+                // mat[i][v].m_prev_m
+                aligned_query.push(qbase);
+                ref_target.push(ref_base as u8);
+                // major_target.push(major_base);
+                i -= 1;
+                u -= 1;
+                trace_back_stat = 1;
+                // trace_back_stat = TraceBack::M;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == 2 {
+            // trace_back_stat == TraceBack::IX
+            if mat[i][v].ix_s == 2 {
+                // mat[i][v].ix_prev_ix
+                aligned_query.push(b'-');
+                ref_target.push(ref_base as u8);
+                // major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = 2;
+                // trace_back_stat = TraceBack::IX;
+            } else if mat[i][v].ix_s == 1 {
+                //mat[i][v].ix_prev_m
+                aligned_query.push(b'-');
+                ref_target.push(ref_base as u8);
+                // major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = 1;
+                // trace_back_stat = TraceBack::M;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else if trace_back_stat == 3 {
+            // trace_back_stat == TraceBack::IX2
+            if mat[i][v].ix2_s == 3 {
+                // mat[i][v].ix2_prev_ix2
+                aligned_query.push(b'N');
+                ref_target.push(ref_base as u8);
+                // major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = 3;
+                // trace_back_stat = TraceBack::IX2;
+            } else if mat[i][v].ix2_s == 1 {
+                // mat[i][v].ix2_prev_m
+                aligned_query.push(b'N');
+                ref_target.push(ref_base as u8);
+                // major_target.push(major_base);
+                i -= 1;
+                trace_back_stat = 1;
+                // trace_back_stat = TraceBack::M;
+            } else {
+                panic!("Error: no traceback");
+            }
+        } else {
+            panic!("Error: no traceback");
+        }
+    }
+
+    while i > 0 {
+        let ref_base = profile.freq_vec[i - 1].ref_base;
+        // let major_base = profile[i - 1].get_major_base();
+        aligned_query.push(b'-');
+        ref_target.push(ref_base as u8);
+        // major_target.push(major_base);
+        i -= 1;
+    }
+    while u > 0 {
+        let qbase = query_without_gap[u - 1];
+        aligned_query.push(qbase);
+        ref_target.push(b'-');
+        // major_target.push(b'-');
+        u -= 1;
+    }
+
+    aligned_query.reverse();
+    ref_target.reverse();
+    // major_target.reverse();
+    println!("original:\n {:?}", std::str::from_utf8(query).unwrap());
+    println!("ref:\n {:?}", std::str::from_utf8(ref_target.as_slice()).unwrap());
+    // println!("aligned:\n {:?}", std::str::from_utf8(aligned_query.as_slice()).unwrap());
+    (alignment_score, aligned_query, ref_target)
+}
+
+pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedRead>) {
+    for (rname, pr) in parsed_reads.iter_mut() {
+        // query: parsed_seq
+        // target: profile
+        // alignment: query remove intron_intervals, profile remove intron_intervals
+        let lp = pr.pos_on_profile;
+        let rp = pr.pos_on_profile + pr.parsed_seq.len() as i64;
+        let (s, e, read_without_intron, profile_without_intron) = profile.generate_read_profile_for_realign(pr);
+        println!("s = {}, e = {}, rname = {}", s, e, rname);
+        banded_nw(&read_without_intron, &profile_without_intron, 10);
+    }
 }
