@@ -506,6 +506,31 @@ impl Profile {
             }
         }
     }
+
+    pub fn cal_intron_intervals(&mut self) {
+        let mut extend_size = 96; // L>(d(i)+a(a)+telda(q)-q)/e
+        let mut s: usize = 0;
+        let mut e: usize = 0;
+        for i in 0..self.freq_vec.len() {
+            if self.freq_vec[i].get_depth_exclude_intron() == 0 && self.freq_vec[i].n > 0 {
+                if extend_size > 0 {
+                    extend_size -= 1;
+                } else if s == 0 && e == 0 {
+                    s = i;
+                    e = i;
+                } else {
+                    e = i;
+                }
+            } else {
+                if e > s {
+                    self.intron_intervals.push(Interval { start: s, stop: e + 1, val: true });
+                }
+                s = 0;
+                e = 0;
+                extend_size = 96;
+            }
+        }
+    }
 }
 
 pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
@@ -532,8 +557,4 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
         parsed_reads.insert(qname, parsed_read);
     }
     return parsed_reads;
-}
-
-pub fn get_profile_removing_intron(profile: &Profile) -> () {
-    let mut extend_size = 96; // L>(d(i)+a(a)+telda(q)-q)/e
 }
