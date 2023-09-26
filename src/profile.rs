@@ -523,7 +523,7 @@ impl Profile {
                 }
             } else {
                 if e > s {
-                    self.intron_intervals.push(Interval { start: s, stop: e + 1, val: true });
+                    self.intron_intervals.push(Interval { start: s, stop: e + 1, val: true });  // 0-based, left closed, right open
                 }
                 s = 0;
                 e = 0;
