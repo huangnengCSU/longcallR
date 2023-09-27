@@ -123,6 +123,64 @@ pub struct BaseFreq {
 }
 
 impl BaseFreq {
+    pub fn subtract(&mut self, base: u8) {
+        match base {
+            b'A' => {
+                self.a -= 1;
+            }
+            b'C' => {
+                self.c -= 1;
+            }
+            b'G' => {
+                self.g -= 1;
+            }
+            b'T' => {
+                self.t -= 1;
+            }
+            b'N' => {
+                self.n -= 1;
+            }
+            b'-' => {
+                self.d -= 1;
+            }
+            b'*' => {
+                return;
+            }
+            _ => {
+                panic!("Invalid base: {}", base as char);
+            }
+        }
+    }
+
+    pub fn add(&mut self, base: u8) {
+        match base {
+            b'A' => {
+                self.a += 1;
+            }
+            b'C' => {
+                self.c += 1;
+            }
+            b'G' => {
+                self.g += 1;
+            }
+            b'T' => {
+                self.t += 1;
+            }
+            b'N' => {
+                self.n += 1;
+            }
+            b'-' => {
+                self.d += 1;
+            }
+            b'*' => {
+                return;
+            }
+            _ => {
+                panic!("Invalid base: {}", base as char);
+            }
+        }
+    }
+
     pub fn get_score1(&self, query: u8) -> i32 {
         let max_cnt = self.a.max(self.c.max(self.g.max(self.t.max(self.n.max(self.d)))));
         match query {
@@ -562,6 +620,7 @@ impl Profile {
                     s = j as i64;
                 }
                 parsed_seq_without_intron.push(parsed_read.parsed_seq[i]);
+                self.freq_vec[j].subtract(parsed_read.parsed_seq[i]);   // minus parsed base from freq_vec
                 profile_without_intron.freq_vec.push(self.freq_vec[j].clone());
                 profile_without_intron.forward_acceptor_penalty.push(self.forward_acceptor_penalty[j]);
                 profile_without_intron.forward_donor_penalty.push(self.forward_donor_penalty[j]);
@@ -827,7 +886,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     // trace back
     let mut aligned_query: Vec<u8> = Vec::new();
     let mut ref_target: Vec<u8> = Vec::new();
-    let mut major_target: Vec<u8> = Vec::new();
     let mut alignment_score = 0.0;
 
     let mut u: usize;
@@ -973,16 +1031,106 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     (alignment_score, aligned_query, ref_target)
 }
 
-pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedRead>) {
-    for (rname, pr) in parsed_reads.iter_mut() {
+pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedRead>, readnames: &Vec<String>) {
+    /*
+    Realign reads based on the profile.
+    profile: complete profile without any removal
+    parsed_reads: parsed reads without any removal
+    readnames: read names to be realigned
+    */
+    for rname in readnames.iter() {
         // query: parsed_seq
         // target: profile
         // alignment: query remove intron_intervals, profile remove intron_intervals
+        let pr = parsed_reads.get(rname).unwrap();
         let lp = pr.pos_on_profile;
         let rp = pr.pos_on_profile + pr.parsed_seq.len() as i64;
         let (s, e, read_without_intron, profile_without_intron) = profile.generate_read_profile_for_realign(pr);
         println!("s = {}, e = {}, rname = {}", s, e, rname);
-        banded_nw(&read_without_intron, &profile_without_intron, 10, false);
-        banded_nw(&read_without_intron, &profile_without_intron, 10, true);
+        let (f_score, f_query, f_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, false);
+        let (r_score, r_query, r_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, true);
+        if r_score > f_score {
+            println!("reverse strand");
+            update_profile_parsed_reads(profile, parsed_reads, &rname, &r_query, &r_target);
+        } else {
+            println!("forward strand");
+            update_profile_parsed_reads(profile, parsed_reads, &rname, &f_query, &f_target);
+        }
     }
+}
+
+pub fn update_profile_parsed_reads(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedRead>, qname: &String, aligned_query: &Vec<u8>, aligned_target: &Vec<u8>) {
+    /*
+    Update profile and parsed_reads based on the alignment result.
+    profile: complete profile without any removal
+    parsed_reads: parsed reads without any removal
+    qname: query name
+    aligned_query: aligned query after removing introns
+    aligned_target: aligned target after removing introns
+    */
+    let mut new_parsed_seq: Vec<u8> = Vec::new();
+    let mut front_gap_num = 0;
+    let mut non_gap_flag = false;
+    let p = parsed_reads.get(qname).unwrap().pos_on_profile;
+    let mut i = 0;  // index on aligned_query
+    let mut j = p;  // index on profile
+    while i < aligned_query.len() {
+        if !non_gap_flag {
+            if aligned_query[i] == b'-' || aligned_query[i] == b'*' {
+                front_gap_num += 1;
+                assert!(profile.freq_vec[j as usize].ref_base == aligned_target[i] as char);
+                j += 1;
+            } else {
+                non_gap_flag = true;
+                if !profile.freq_vec[j as usize].intron {
+                    new_parsed_seq.push(aligned_query[i]);
+                    profile.freq_vec[j as usize].add(aligned_query[i]); // add base to freq_vec
+                    assert!(profile.freq_vec[j as usize].ref_base == aligned_target[i] as char);
+                    i += 1;
+                    j += 1;
+                } else {
+                    while j < profile.freq_vec.len() as i64 {
+                        if profile.freq_vec[j as usize].intron {
+                            new_parsed_seq.push(b'N');
+                            j += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    new_parsed_seq.push(aligned_query[i]);
+                    profile.freq_vec[j as usize].add(aligned_query[i]); // add base to freq_vec
+                    assert!(profile.freq_vec[j as usize].ref_base == aligned_target[i] as char);
+                    i += 1;
+                    j += 1;
+                }
+            }
+        } else {
+            if !profile.freq_vec[j as usize].intron {
+                new_parsed_seq.push(aligned_query[i]);
+                profile.freq_vec[j as usize].add(aligned_query[i]); // add base to freq_vec
+                assert!(profile.freq_vec[j as usize].ref_base == aligned_target[i] as char);
+                i += 1;
+                j += 1;
+            } else {
+                while j < profile.freq_vec.len() as i64 {
+                    if profile.freq_vec[j as usize].intron {
+                        new_parsed_seq.push(b'N');
+                        j += 1;
+                    } else {
+                        break;
+                    }
+                }
+                new_parsed_seq.push(aligned_query[i]);
+                profile.freq_vec[j as usize].add(aligned_query[i]); // add base to freq_vec
+                assert!(profile.freq_vec[j as usize].ref_base == aligned_target[i] as char);
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    if front_gap_num > 0 {
+        parsed_reads.get_mut(qname).unwrap().pos_on_profile = p + front_gap_num;
+        println!("read = {} front_gap_num = {}", qname, front_gap_num);
+    }
+    parsed_reads.get_mut(qname).unwrap().parsed_seq = new_parsed_seq;
 }
