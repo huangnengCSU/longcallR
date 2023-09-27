@@ -602,10 +602,14 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
     return parsed_reads;
 }
 
-pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<u8>, Vec<u8>) {
-    // TODO: calculate penalty of passing a intron region, where the region is cut by the process of cutting all reads introns.
-    // TODO: useless of hidden_splice_penalty, remove later.
-    // Case: wtc11_ont_grch38: chr22:37024802-37025006
+pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_strand: bool) -> (f64, Vec<u8>, Vec<u8>) {
+    /*
+    Needleman-Wunsch alignment with banding.
+    query: query sequence without introns
+    profile: profile without introns
+    width: band width
+    reverse_strand: use forward donor/acceptor penalty or reverse donor/acceptor penalty
+    */
     let h = 2.0; // short gap open, q in minimap2
     let g = 1.0; // short gap extend, e in minimap2
     let h2 = 32.0; // long gap open, q hat in minimap2
@@ -613,6 +617,16 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
     let b: f64 = 34.0; // splice junction site penalty
     let match_score = 2.0;
     let mismatch_score = -2.0;
+    let standard_donor_penalty: &Vec<f64>;
+    let standard_acceptor_penalty: &Vec<f64>;
+
+    if reverse_strand {
+        standard_donor_penalty = &profile.reverse_donor_penalty;
+        standard_acceptor_penalty = &profile.reverse_acceptor_penalty;
+    } else {
+        standard_donor_penalty = &profile.forward_donor_penalty;
+        standard_acceptor_penalty = &profile.forward_acceptor_penalty;
+    }
 
     // let query_without_gap = query.replace("-", "").replace("N", "");
     let query_t = std::str::from_utf8(query.clone().as_slice()).unwrap().replace("-", "").replace("N", "").replace("*", "");
@@ -665,7 +679,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
     let mut right_bound: usize; // exclude this index
     while i < t_len + 1 && k < q_len + 1 {
         let mut offset: usize;
-        // if query[j - 1] != b'-' && query[j - 1] != b'N' {
         if query[j - 1] != b'*' && query[j - 1] != b'-' && query[j - 1] != b'N' {
             k += 1;
             offset = 0;
@@ -690,21 +703,17 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
             let col = &profile.freq_vec[i - 1];
             let qbase = query_without_gap[u - 1];
             let sij: f64;
-            if qbase == b' ' {
-                sij = 0.0;
-            } else {
-                if col.get_depth_exclude_intron() <= 5 {
-                    let tbase = col.ref_base as u8;
-                    if tbase == b'-' {
-                        sij = match_score;
-                    } else if qbase == tbase {
-                        sij = match_score;
-                    } else {
-                        sij = mismatch_score;
-                    }
+            if col.get_depth_exclude_intron() <= 5 {
+                let tbase = col.ref_base as u8;
+                if tbase == b'-' {
+                    sij = match_score;
+                } else if qbase == tbase {
+                    sij = match_score;
                 } else {
-                    sij = 2.0 - 4.0 * col.get_score(qbase);
+                    sij = mismatch_score;
                 }
+            } else {
+                sij = 2.0 - 4.0 * col.get_score(qbase);
             }
 
             // position specific donor penalty (mat[i], taget[i-1], profile[i-1])
@@ -715,11 +724,9 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
                 if profile.freq_vec[i - 1].i {
                     dp_f = 1.0;
                 } else {
-                    // let (curr_intron_cnt, curr_intron_percentage) = profile[i - 1].get_intron_percentage();
                     let (curr_intron_cnt, curr_intron_percentage) = profile.freq_vec[i - 1].get_intron_ratio();
                     let mut ai = i as i32 - 2;
                     while ai >= 0 {
-                        // if profile[ai as usize].get_ref_base() == b'-' {
                         if profile.freq_vec[ai as usize].i {
                             ai -= 1;
                         } else {
@@ -727,7 +734,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
                         }
                     }
                     if ai >= 0 {
-                        // let (prev_intron_cnt, prev_intron_percentage) = profile[ai as usize].get_intron_percentage();
                         let (prev_intron_cnt, prev_intron_percentage) = profile.freq_vec[ai as usize].get_intron_ratio();
                         // if (curr_intron_cnt as i32 - prev_intron_cnt as i32).abs() > 10 {
                         //     dp_f = 0.0;
@@ -740,7 +746,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
             }
 
             // position specific acceptor penalty (mat[i], taget[i-1], profile[i-1]), previous position of current target position i-1, and not dash on reference
-
             if i as i32 - 1 >= 0 && i < t_len {
                 if profile.freq_vec[i - 1].i {
                     ap_f = 1.0;
@@ -767,8 +772,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
             }
 
             // println!("dp_f: {}, ap_f: {}", dp_f, ap_f);
-
-            // if col.get_ref_base() == b'-' || col.get_ref_base() == b'N' {
             if col.i || col.ref_base == 'N' {
                 if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
                     mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
@@ -797,8 +800,8 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
                 }
             }
 
-            if mat[i - 1][v + 1 - offset].m - profile.forward_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= mat[i - 1][v + 1 - offset].ix2 {
-                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - profile.forward_donor_penalty[i - 1] - h2 - dp_f * 28.0;
+            if mat[i - 1][v + 1 - offset].m - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= mat[i - 1][v + 1 - offset].ix2 {
+                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0;
                 mat[i][v].ix2_s = 1; //mat[i][v].ix2_prev_m = true;
             } else {
                 mat[i][v].ix2 = mat[i - 1][v + 1 - offset].ix2;
@@ -808,12 +811,12 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
 
             mat[i][v].m = (mat[i - 1][v - offset].m + sij)
                 .max(mat[i][v].ix)
-                .max(mat[i][v].ix2 - profile.forward_acceptor_penalty[i] - ap_f * 28.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+                .max(mat[i][v].ix2 - standard_acceptor_penalty[i] - ap_f * 28.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[i][v].m == mat[i - 1][v - offset].m + sij {
                 mat[i][v].m_s = 1; //mat[i][v].m_prev_m = true;
             } else if mat[i][v].m == mat[i][v].ix {
                 mat[i][v].m_s = 2; //mat[i][v].m_prev_ix = true;
-            } else if mat[i][v].m == mat[i][v].ix2 - profile.forward_acceptor_penalty[i] - ap_f * 28.0 {
+            } else if mat[i][v].m == mat[i][v].ix2 - standard_acceptor_penalty[i] - ap_f * 28.0 {
                 mat[i][v].m_s = 3; //mat[i][v].m_prev_ix2 = true;
             }
         }
@@ -869,7 +872,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
         v = (width as i32 + 1 + (u as i32 - k as i32)) as usize;
         let qbase = query_without_gap[u - 1];
         let ref_base = profile.freq_vec[i - 1].ref_base;
-        // let major_base = profile[i - 1].get_major_base();
         if trace_back_stat == 1 {
             // trace_back_stat == TraceBack::M
             if mat[i][v].m_s == 2 {
@@ -884,7 +886,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
                 // mat[i][v].m_prev_m
                 aligned_query.push(qbase);
                 ref_target.push(ref_base as u8);
-                // major_target.push(major_base);
                 i -= 1;
                 u -= 1;
                 trace_back_stat = 1;
@@ -898,15 +899,19 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
                 // mat[i][v].ix_prev_ix
                 aligned_query.push(b'-');
                 ref_target.push(ref_base as u8);
-                // major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = 2;
                 // trace_back_stat = TraceBack::IX;
             } else if mat[i][v].ix_s == 1 {
                 //mat[i][v].ix_prev_m
-                aligned_query.push(b'-');
-                ref_target.push(ref_base as u8);
-                // major_target.push(major_base);
+                if ref_base == '-' {
+                    // current position is in the insertion region
+                    aligned_query.push(b'*');
+                    ref_target.push(ref_base as u8);
+                } else {
+                    aligned_query.push(b'-');
+                    ref_target.push(ref_base as u8);
+                }
                 i -= 1;
                 trace_back_stat = 1;
                 // trace_back_stat = TraceBack::M;
@@ -927,7 +932,6 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
                 // mat[i][v].ix2_prev_m
                 aligned_query.push(b'N');
                 ref_target.push(ref_base as u8);
-                // major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = 1;
                 // trace_back_stat = TraceBack::M;
@@ -942,8 +946,13 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize) -> (f64, Vec<
     while i > 0 {
         let ref_base = profile.freq_vec[i - 1].ref_base;
         // let major_base = profile[i - 1].get_major_base();
-        aligned_query.push(b'-');
-        ref_target.push(ref_base as u8);
+        if ref_base == '-' {
+            aligned_query.push(b'*');
+            ref_target.push(ref_base as u8);
+        } else {
+            aligned_query.push(b'-');
+            ref_target.push(ref_base as u8);
+        }
         // major_target.push(major_base);
         i -= 1;
     }
@@ -973,6 +982,7 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
         let rp = pr.pos_on_profile + pr.parsed_seq.len() as i64;
         let (s, e, read_without_intron, profile_without_intron) = profile.generate_read_profile_for_realign(pr);
         println!("s = {}, e = {}, rname = {}", s, e, rname);
-        banded_nw(&read_without_intron, &profile_without_intron, 10);
+        banded_nw(&read_without_intron, &profile_without_intron, 10, false);
+        banded_nw(&read_without_intron, &profile_without_intron, 10, true);
     }
 }
