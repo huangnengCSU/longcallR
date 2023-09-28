@@ -11,7 +11,9 @@ pub struct ParsedRead {
     // read from bam file
     pub parsed_seq: Vec<u8>,
     // parsed sequence, expand insertion
-    pub pos_on_profile: i64, // start position of the first aligned base on the profile, 0-based
+    pub pos_on_profile: i64,
+    // start position of the first aligned base on the profile, 0-based
+    pub alignment_score: f64,
 }
 
 impl ParsedRead {
@@ -126,21 +128,27 @@ impl BaseFreq {
     pub fn subtract(&mut self, base: u8) {
         match base {
             b'A' => {
+                assert!(self.a > 0);
                 self.a -= 1;
             }
             b'C' => {
+                assert!(self.c > 0);
                 self.c -= 1;
             }
             b'G' => {
+                assert!(self.g > 0);
                 self.g -= 1;
             }
             b'T' => {
+                assert!(self.t > 0);
                 self.t -= 1;
             }
             b'N' => {
+                assert!(self.n > 0);
                 self.n -= 1;
             }
             b'-' => {
+                assert!(self.d > 0);
                 self.d -= 1;
             }
             b'*' => {
@@ -655,7 +663,7 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
     for r in bam.records() {
         let record = r.unwrap();
         let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-        let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), pos_on_profile: -1 };
+        let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), pos_on_profile: -1, alignment_score: 0.0 };
         parsed_reads.insert(qname, parsed_read);
     }
     return parsed_reads;
@@ -1038,23 +1046,44 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
     parsed_reads: parsed reads without any removal
     readnames: read names to be realigned
     */
-    for rname in readnames.iter() {
-        // query: parsed_seq
-        // target: profile
-        // alignment: query remove intron_intervals, profile remove intron_intervals
-        let pr = parsed_reads.get(rname).unwrap();
-        let lp = pr.pos_on_profile;
-        let rp = pr.pos_on_profile + pr.parsed_seq.len() as i64;
-        let (s, e, read_without_intron, profile_without_intron) = profile.generate_read_profile_for_realign(pr);
-        println!("s = {}, e = {}, rname = {}", s, e, rname);
-        let (f_score, f_query, f_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, false);
-        let (r_score, r_query, r_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, true);
-        if r_score > f_score {
-            println!("reverse strand");
-            update_profile_parsed_reads(profile, parsed_reads, &rname, &r_query, &r_target);
+    let mut prev_score: f64 = f64::NEG_INFINITY;
+    let mut max_iter = 10;
+    while max_iter > 0 {
+        let mut total_score = 0.0;
+        for rname in readnames.iter() {
+            let pr = parsed_reads.get(rname).unwrap();
+            let (s, e, read_without_intron, profile_without_intron) = profile.generate_read_profile_for_realign(pr);
+            let (f_score, f_query, f_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, false);
+            let (r_score, r_query, r_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, true);
+            println!("s = {}, e = {}, rname = {}, f_score = {}, r_score = {}", s, e, rname, f_score, r_score);
+            if r_score > f_score {
+                println!("reverse strand");
+                if r_score > pr.alignment_score || pr.alignment_score == 0.0 {
+                    update_profile_parsed_reads(profile, parsed_reads, &rname, &r_query, &r_target);
+                    parsed_reads.get_mut(rname).unwrap().alignment_score = r_score;
+                } else {
+                    println!("update profile with original parsed seq");
+                    update_profile_parsed_reads(profile, parsed_reads, &rname, &read_without_intron, &r_target);
+                }
+                total_score += r_score;
+            } else {
+                println!("forward strand");
+                if f_score > pr.alignment_score || pr.alignment_score == 0.0 {
+                    update_profile_parsed_reads(profile, parsed_reads, &rname, &f_query, &f_target);
+                    parsed_reads.get_mut(rname).unwrap().alignment_score = f_score;
+                } else {
+                    println!("update profile with original parsed seq");
+                    update_profile_parsed_reads(profile, parsed_reads, &rname, &read_without_intron, &r_target);
+                }
+                total_score += f_score;
+            }
+        }
+        max_iter -= 1;
+        println!("iteration = {}, total_score = {}, prev_score = {}", 10 - max_iter, total_score, prev_score);
+        if total_score <= prev_score {
+            break;
         } else {
-            println!("forward strand");
-            update_profile_parsed_reads(profile, parsed_reads, &rname, &f_query, &f_target);
+            prev_score = total_score;
         }
     }
 }
@@ -1128,9 +1157,9 @@ pub fn update_profile_parsed_reads(profile: &mut Profile, parsed_reads: &mut Has
             }
         }
     }
-    if front_gap_num > 0 {
-        parsed_reads.get_mut(qname).unwrap().pos_on_profile = p + front_gap_num;
-        println!("read = {} front_gap_num = {}", qname, front_gap_num);
-    }
+    // if front_gap_num > 0 {
+    //     parsed_reads.get_mut(qname).unwrap().pos_on_profile = p + front_gap_num;
+    //     println!("read = {} front_gap_num = {}", qname, front_gap_num);
+    // }
     parsed_reads.get_mut(qname).unwrap().parsed_seq = new_parsed_seq;
 }
