@@ -1,6 +1,7 @@
+use std::process;
 use std::collections::HashMap;
 use crate::bam_reader::Region;
-use rust_htslib::{bam, bam::Read};
+use rust_htslib::{bam, bam::Read, bam::record::Cigar, bam::record::CigarString, bam::Format};
 use seq_io::fasta::{Reader, Record};
 use rust_lapper::{Interval, Lapper};
 use crate::align2::SpliceMatrixElement;
@@ -104,6 +105,245 @@ impl ParsedRead {
                 }
             }
         }
+    }
+
+    pub fn update_bam_record(&mut self, profile: &Profile) {
+        /*
+        Update the bam record with the parsed sequence after realignment
+        profile: profile without any removal
+        */
+        let mut qb: char;
+        let mut tb: char;
+        let p = self.pos_on_profile;
+        let mut shift = 0;
+        let mut head_flag = true;
+        let mut pre_state: u8 = 0;  // 1: M, 2:I, 3:D, 4:N
+        let mut op_len = 0;
+
+        let mut left_soft_clip = 0;
+        let mut right_soft_clip = 0;
+        let mut left_hard_clip = 0;
+        let mut right_hard_clip = 0;
+        let mut new_cigar: Vec<Cigar> = Vec::new();
+
+        let cg = self.bam_record.cigar().iter().next().unwrap().clone();
+        if cg.char() == 'S' {
+            left_soft_clip = cg.len();
+            new_cigar.push(Cigar::SoftClip(left_soft_clip));
+        } else if cg.char() == 'H' {
+            left_hard_clip = cg.len();
+            new_cigar.push(Cigar::HardClip(left_hard_clip));
+        }
+
+        let cg = self.bam_record.cigar().iter().last().unwrap().clone();
+        if cg.char() == 'S' {
+            right_soft_clip = cg.len();
+        } else if cg.char() == 'H' {
+            right_hard_clip = cg.len();
+        }
+
+        for i in 0..self.parsed_seq.len() {
+            qb = self.parsed_seq[i] as char;
+            tb = profile.freq_vec[p as usize + i].ref_base;
+            if qb != '-' && qb != '*' {
+                head_flag = false;
+            }
+            if head_flag {
+                if tb != '-' {
+                    // non insertion
+                    shift += 1;
+                }
+            } else {
+                // M
+                let mut cur_state: u8;  // 1: M, 2:I, 3:D, 4:N
+
+                if qb == '*' {
+                    continue;
+                }
+
+                // 1: M
+                if qb != '-' && qb != 'N' && tb != '-' && tb != 'N' {
+                    cur_state = 1;
+                    if pre_state == 0 {
+                        pre_state = cur_state;
+                        op_len += 1;
+                    } else {
+                        if cur_state == pre_state {
+                            op_len += 1;
+                        } else {
+                            match pre_state {
+                                1 => {
+                                    new_cigar.push(Cigar::Match(op_len));
+                                }
+                                2 => {
+                                    new_cigar.push(Cigar::Ins(op_len));
+                                }
+                                3 => {
+                                    new_cigar.push(Cigar::Del(op_len));
+                                }
+                                4 => {
+                                    new_cigar.push(Cigar::RefSkip(op_len));
+                                }
+                                _ => {
+                                    panic!("Invalid pre_state: {}", pre_state);
+                                }
+                            }
+                            pre_state = cur_state;
+                            op_len = 1;
+                        }
+                    }
+                }
+                // 2: I
+                if tb == '-' {
+                    if qb != 'N' && qb != '-' {
+                        cur_state = 2;
+                        if cur_state == pre_state {
+                            op_len += 1;
+                        } else {
+                            match pre_state {
+                                1 => {
+                                    new_cigar.push(Cigar::Match(op_len));
+                                }
+                                2 => {
+                                    new_cigar.push(Cigar::Ins(op_len));
+                                }
+                                3 => {
+                                    new_cigar.push(Cigar::Del(op_len));
+                                }
+                                4 => {
+                                    new_cigar.push(Cigar::RefSkip(op_len));
+                                }
+                                _ => {
+                                    panic!("Invalid pre_state: {}", pre_state);
+                                }
+                            }
+                            pre_state = cur_state;
+                            op_len = 1;
+                        }
+                    } else if qb == 'N' {
+                        // insertion in intron
+                        continue;
+                    } else {
+                        panic!("Unknow state: qb = {}, tb = {}", qb, tb);
+                    }
+                }
+
+                // 3: D
+                if qb == '-' && tb != '-' {
+                    cur_state = 3;
+                    if cur_state == pre_state {
+                        op_len += 1;
+                    } else {
+                        match pre_state {
+                            1 => {
+                                new_cigar.push(Cigar::Match(op_len));
+                            }
+                            2 => {
+                                new_cigar.push(Cigar::Ins(op_len));
+                            }
+                            3 => {
+                                new_cigar.push(Cigar::Del(op_len));
+                            }
+                            4 => {
+                                new_cigar.push(Cigar::RefSkip(op_len));
+                            }
+                            _ => {
+                                panic!("Invalid pre_state: {}", pre_state);
+                            }
+                        }
+                        pre_state = cur_state;
+                        op_len = 1;
+                    }
+                }
+
+                // 4: N
+                if qb == 'N' {
+                    if tb == '-' {
+                        continue;
+                    } else {
+                        cur_state = 4;
+                        if cur_state == pre_state {
+                            op_len += 1;
+                        } else {
+                            match pre_state {
+                                1 => {
+                                    new_cigar.push(Cigar::Match(op_len));
+                                }
+                                2 => {
+                                    new_cigar.push(Cigar::Ins(op_len));
+                                }
+                                3 => {
+                                    new_cigar.push(Cigar::Del(op_len));
+                                }
+                                4 => {
+                                    new_cigar.push(Cigar::RefSkip(op_len));
+                                }
+                                _ => {
+                                    panic!("Invalid pre_state: {}", pre_state);
+                                }
+                            }
+                            pre_state = cur_state;
+                            op_len = 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        match pre_state {
+            1 => {
+                new_cigar.push(Cigar::Match(op_len));
+            }
+            2 => {
+                new_cigar.push(Cigar::Ins(op_len));
+            }
+            3 => {
+                new_cigar.push(Cigar::Del(op_len));
+            }
+            4 => {
+                new_cigar.push(Cigar::RefSkip(op_len));
+            }
+            _ => {
+                panic!("Invalid pre_state: {}", pre_state);
+            }
+        }
+
+        if right_hard_clip > 0 {
+            new_cigar.push(Cigar::HardClip(right_hard_clip));
+        } else if right_soft_clip > 0 {
+            new_cigar.push(Cigar::SoftClip(right_soft_clip));
+        }
+
+        let new_cigar_string = CigarString(new_cigar);
+        let mut cglen = 0;
+        for cg in new_cigar_string.iter() {
+            if cg.char() == 'M' || cg.char() == 'I' {
+                cglen += cg.len();
+            }
+        }
+        let num_base = std::str::from_utf8(self.parsed_seq.as_slice()).unwrap()
+            .replace("*", "")
+            .replace("N", "")
+            .replace("-", "").len() as u32; // does not contain left and right soft clip, intron.
+
+        // println!();
+        // println!("readname: {}, cigar len: {} read len: {}",
+        //          std::str::from_utf8(self.bam_record.qname()).unwrap(),
+        //          cglen,
+        //          num_base
+        // );
+        if cglen != num_base {
+            println!("cglen error: {}, cigar len: {}, num base: {}", std::str::from_utf8(self.bam_record.qname()).unwrap(), cglen, num_base);
+            println!("{}", new_cigar_string.to_string());
+        }
+        assert!(cglen == num_base);
+
+        let record = bam::Record::from(self.bam_record.clone());
+        self.bam_record.set_pos(record.pos() + shift as i64);
+        self.bam_record.set(record.qname(),
+                            Some(&new_cigar_string),
+                            record.seq().as_bytes().as_slice(),
+                            record.qual());
     }
 }
 
@@ -669,6 +909,22 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
     return parsed_reads;
 }
 
+pub fn get_bam_header(input_bam: &str) -> bam::header::Header {
+    let bam: bam::IndexedReader = bam::IndexedReader::from_path(input_bam).unwrap();
+    bam::Header::from_template(bam.header())
+}
+
+pub fn write_bam(out_bam_path: &str, parsed_reads: &HashMap<String, ParsedRead>, bam_header: &bam::header::Header) {
+    let mut bam_writer = bam::Writer::from_path(out_bam_path, bam_header, Format::Bam).unwrap();
+    for (_, pr) in parsed_reads.iter() {
+        let re = bam_writer.write(&pr.bam_record);
+        if re != Ok(()) {
+            println!("write failed");
+            process::exit(1);
+        }
+    }
+}
+
 pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_strand: bool) -> (f64, Vec<u8>, Vec<u8>) {
     /*
     Needleman-Wunsch alignment with banding.
@@ -1085,6 +1341,11 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
         } else {
             prev_score = total_score;
         }
+    }
+
+    for rname in readnames.iter() {
+        let mpr = parsed_reads.get_mut(rname).unwrap();
+        mpr.update_bam_record(&profile);
     }
 }
 
