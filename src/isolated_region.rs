@@ -1,10 +1,13 @@
 use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read};
 
-pub fn find_isolated_regions(bam_path: &str, min_depth: u32) -> Vec<Region> {
-    // Output the region of each isolated block: 1-based, left-closed, right-closed
+pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) -> Vec<Region> {
+    // Output the region of each isolated block: 1-based, left-closed, right-open
     let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
     let header = bam.header().clone();
+    if chr.is_some() {
+        bam.fetch(chr.unwrap()).unwrap();
+    }
     let mut isolated_regions: Vec<Region> = Vec::new();
     let mut pre_tid: u32 = 0;
     let mut start_pos: u32 = 0;
@@ -33,7 +36,7 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32) -> Vec<Region> {
                         .unwrap()
                         .to_string(),
                     start: start_pos + 1,
-                    end: end_pos + 1,
+                    end: end_pos + 2,
                 };
                 isolated_regions.push(region);
             }
@@ -51,7 +54,7 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32) -> Vec<Region> {
                         .unwrap()
                         .to_string(),
                     start: start_pos + 1,
-                    end: end_pos + 1,
+                    end: end_pos + 2,
                 };
                 isolated_regions.push(region);
             }
@@ -73,7 +76,7 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32) -> Vec<Region> {
                 .unwrap()
                 .to_string(),
             start: start_pos + 1,
-            end: end_pos + 1,
+            end: end_pos + 2,
         };
         isolated_regions.push(region);
     }
