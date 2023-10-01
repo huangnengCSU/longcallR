@@ -609,9 +609,12 @@ impl Profile {
                     }
                 }
             }
+            // update the number of dash in insertion position
+            let cur_depth_with_intron = bf.get_depth_include_intron();
             self.freq_vec.push(bf);
             if insert_bf.len() > 0 {
                 for tmpi in 0..insert_bf.len() {
+                    insert_bf[tmpi].d = cur_depth_with_intron - insert_bf[tmpi].get_depth_include_intron();
                     self.freq_vec.push(insert_bf[tmpi].clone());
                 }
             }
