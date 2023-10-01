@@ -75,7 +75,7 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
             for (_, record) in base_matrix.bam_records {
                 queue.push_back(record);
             }
-            if queue.len() > 10000 {
+            if queue.len() > 100000 {
                 for record in queue.iter() {
                     let re = bam_writer_clone.lock().unwrap().write(&record);
                     if re != Ok(()) {
