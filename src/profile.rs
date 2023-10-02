@@ -503,7 +503,9 @@ impl Profile {
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
         let mut read_positions: HashMap<String, u32> = HashMap::new();  // store offset on profile of each read
-        for p in bam.pileup() {
+        let mut pileups = bam.pileup();
+        pileups.set_max_depth(1000000);
+        for p in pileups {
             let pileup = p.unwrap();
             let pos = pileup.pos(); // 0-based
             if pos + 1 < region.start || pos + 1 >= region.end {
