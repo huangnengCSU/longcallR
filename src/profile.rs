@@ -70,7 +70,7 @@ impl ParsedRead {
                     let mut k = cg.len() as i32;
                     while k > 0 {
                         self.parsed_seq.push(seq[pos_on_read as usize]);
-                        assert_eq!(profile.freq_vec[i].i, true, "{},{},{}", std::str::from_utf8(self.bam_record.qname()).unwrap(), self.bam_record.pos(), i);
+                        assert_eq!(profile.freq_vec[i].i, true, "qname = {}, ref_pos = {}, i = {}, region = {}-{}", std::str::from_utf8(self.bam_record.qname()).unwrap(), self.bam_record.pos(), i, profile.region.start, profile.region.end);
                         k -= 1;
                         i += 1;
                         pos_on_read += 1;
@@ -558,6 +558,41 @@ impl Profile {
                     }
                 } else if alignment.is_del() {
                     bf.d += 1;
+                    // insertion following deletion
+                    match alignment.indel() {
+                        bam::pileup::Indel::Ins(len) => {
+                            let record = alignment.record();
+                            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                            let seq = record.seq();
+                            if len > insert_bf.len() as u32 {
+                                for _ in 0..(len - insert_bf.len() as u32) {
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
+                                }
+                            }
+                            let q_pos = read_positions.get(&qname).unwrap();
+                            for tmpi in 1..=len {
+                                // insert_segment.push(seq[q_pos.unwrap() + tmpi as usize] as char);
+                                let base = seq[(q_pos + tmpi) as usize] as char;
+                                let bf = &mut insert_bf[tmpi as usize - 1];
+                                match base {
+                                    'A' => bf.a += 1,
+                                    'a' => bf.a += 1,
+                                    'C' => bf.c += 1,
+                                    'c' => bf.c += 1,
+                                    'G' => bf.g += 1,
+                                    'g' => bf.g += 1,
+                                    'T' => bf.t += 1,
+                                    't' => bf.t += 1,
+                                    _ => {
+                                        panic!("Invalid nucleotide base: {}", base);
+                                    }
+                                }
+                            }
+                            read_positions.insert(qname.clone(), *q_pos + len);
+                        }
+                        bam::pileup::Indel::Del(_len) => {}
+                        bam::pileup::Indel::None => {}
+                    }
                 } else {
                     let q_pos = alignment.qpos().unwrap();
                     let record = alignment.record();
