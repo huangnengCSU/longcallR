@@ -13,8 +13,10 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
     let mut start_pos: u32 = 0;
     let mut end_pos: u32 = 0;
     let mut max_depth: u32 = 0;
+    let mut pileups = bam.pileup();
+    pileups.set_max_depth(1000000);
 
-    for p in bam.pileup() {
+    for p in pileups {
         let pileup = p.unwrap();
         let pos = pileup.pos(); // 0-based
         let tid = pileup.tid();
