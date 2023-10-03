@@ -9,6 +9,7 @@ mod util;
 mod profile;
 
 // extern crate bio;
+use clap::Parser;
 use bam_reader::{BamReader, Region};
 use rust_htslib::{bam, bam::Read};
 use std::time::{Duration, Instant};
@@ -144,12 +145,12 @@ fn main7() {
 
 fn main5() {
     let main_s = Instant::now();
-    let bam_path = "/Users/nh661/postdoc/htslib_rs/wtc11_ont_grch38.chr22.bam";
+    let bam_path = "wtc11_ont_grch38.chr22.bam";
     // let input_region = "chr22:37009116-37030993";
     // let input_region = "chr22:22286543-22324648";
     // let input_region = "chr22:46241321-46357341";
     let input_region = "chr22:23180087-23456092";
-    let ref_path = "/Users/nh661/postdoc/htslib_rs/GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
+    let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let reader_s = Instant::now();
 
     let mut base_matrix = BaseMatrix::new();
@@ -234,7 +235,7 @@ fn main6() {
 }
 
 
-fn main8() {
+fn main9() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     let out_bam = "test.bam";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
@@ -242,7 +243,7 @@ fn main8() {
     // let input_region = "chr22:37009116-37030993";
     // let input_region = "chr22:37010862-37029825";
     // let input_region = "chr22:21567545-21640503";
-    let input_region = "chr22:37010862-37029825";
+    let input_region = "chr22:39130763-39595076";
     let region = Region::new(input_region.to_string());
     let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
     let header = bam.header().clone();
@@ -255,14 +256,14 @@ fn main8() {
     for bf in profile.freq_vec.iter() {
         println!("{:?}", bf);
     }
-    println!("profile freq_vec len: {}", profile.freq_vec.len());
+    // println!("profile freq_vec len: {}", profile.freq_vec.len());
 
     let mut parsed_reads = read_bam(bam_path, &region);
-    println!("parsed_reads size: {}", parsed_reads.len());
+    // println!("parsed_reads size: {}", parsed_reads.len());
     for (rname, pr) in parsed_reads.iter_mut() {
         // println!("{}:{}:{}", rname, parsed_reads.get(rname).unwrap().bam_record.pos(), parsed_reads.get(rname).unwrap().bam_record.cigar_len());
         pr.init_parsed_seq(&profile);
-        println!("readname: {}\n {:?}", rname, std::str::from_utf8(pr.parsed_seq.as_slice()).unwrap());
+        // println!("readname: {}\n {:?}", rname, std::str::from_utf8(pr.parsed_seq.as_slice()).unwrap());
         readnames.push(rname.clone());
     }
 
@@ -303,7 +304,7 @@ fn main8() {
     // }
     // println!();
     for iv in profile.intron_intervals.iter() {
-        println!("{}-{}", iv.start, iv.stop);
+        // println!("{}-{}", iv.start, iv.stop);
         // println!("before:");
         // for i in iv.start - 2..=iv.start + 2 {
         //     println!("{:?}", profile.freq_vec[i]);
@@ -332,11 +333,70 @@ fn main8() {
     write_bam(out_bam, &parsed_reads, &header);
 }
 
-fn main() {
-    let bam_path = "wtc11_ont_grch38.chr22_37010861_37072284.bam";
+fn main8() {
+    let bam_path = "wtc11_ont_grch38.chr22.bam";
     let out_bam = "test_threads.bam";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
     let (tx_isolated_regions, rx_isolated_regions) = mpsc::channel();
-    multithread_produce2(bam_path.to_string().clone(), 3, tx_isolated_regions);
-    multithread_work2(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), 3, rx_isolated_regions);
+    multithread_produce2(bam_path.to_string().clone(), 4, tx_isolated_regions);
+    multithread_work2(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), 4, rx_isolated_regions);
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to input bam file
+    #[arg(short = 'b', long)]
+    bam_path: String,
+
+    /// Path to reference file
+    #[arg(short = 'f', long)]
+    ref_path: String,
+
+    /// Output bam file path
+    #[arg(short = 'o', long)]
+    output: String,
+
+    /// Region to realign (Optional). Format: chr:start-end, left-closed, right-open.
+    #[arg(short = 'r', long)]
+    region: Option<String>,
+
+    /// Number of threads, default 1
+    #[arg(short = 't', long, default_value_t = 1)]
+    threads: usize,
+}
+
+fn main() {
+    let arg = Args::parse();
+    let bam_path = arg.bam_path.as_str();
+    let out_bam = arg.output.as_str();
+    let ref_path = arg.ref_path.as_str();
+    let input_region = arg.region;
+    let threads = arg.threads;
+    if input_region.is_some() {
+        let region = Region::new(input_region.unwrap());
+        let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
+        let mut profile = Profile::default();
+        let mut readnames: Vec<String> = Vec::new();
+        let ref_seqs = read_references(ref_path);
+        profile.init_with_pileup(bam_path, &region);
+        profile.append_reference(&ref_seqs);
+        for bf in profile.freq_vec.iter() {
+            println!("{:?}", bf);
+        }
+        let mut parsed_reads = read_bam(bam_path, &region);
+        for (rname, pr) in parsed_reads.iter_mut() {
+            pr.init_parsed_seq(&profile);
+            readnames.push(rname.clone());
+        }
+        profile.cal_intron_penalty();
+        profile.cal_intron_intervals();
+        realign(&mut profile, &mut parsed_reads, &readnames);
+        let header = get_bam_header(bam_path);
+        write_bam(out_bam, &parsed_reads, &header);
+    } else {
+        let (tx_isolated_regions, rx_isolated_regions) = mpsc::channel();
+        multithread_produce2(bam_path.to_string().clone(), threads, tx_isolated_regions);
+        multithread_work2(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, rx_isolated_regions);
+    }
 }
