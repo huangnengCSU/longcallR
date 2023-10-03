@@ -193,6 +193,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
         let bam_records_queue = Arc::clone(&bam_records_queue);
         let bam_writer_clone = Arc::clone(&bam_writer);
         pool.execute(move || {
+            println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let mut readnames: Vec<String> = Vec::new();
             profile.init_with_pileup(bam_file_clone.clone().as_str(), &reg);
@@ -205,7 +206,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
             profile.cal_intron_penalty();
             profile.cal_intron_intervals();
             realign(&mut profile, &mut parsed_reads, &readnames);
-            let header = get_bam_header(bam_file_clone.clone().as_str());
+            // let header = get_bam_header(bam_file_clone.clone().as_str());
             // write_bam(out_bam, &parsed_reads, &header);
             {
                 let mut queue = bam_records_queue.lock().unwrap();
@@ -223,6 +224,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
                     queue.clear();
                 }
             }
+            println!("End {:?}", reg);
         });
     }
     pool.join();
