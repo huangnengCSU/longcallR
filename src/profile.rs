@@ -1375,7 +1375,7 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
             }
         }
         max_iter -= 1;
-        // println!("iteration = {}, total_score = {}, prev_score = {}", 10 - max_iter, total_score, prev_score);
+        println!("Region = {:?}, iteration = {}, total_score = {}, prev_score = {}", profile.region, 10 - max_iter, total_score, prev_score);
         if total_score <= prev_score {
             break;
         } else {
