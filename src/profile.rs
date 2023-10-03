@@ -1343,7 +1343,7 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
     readnames: read names to be realigned
     */
     let mut prev_score: f64 = f64::NEG_INFINITY;
-    let mut max_iter = 10;
+    let mut max_iter = 3;
     while max_iter > 0 {
         let mut total_score = 0.0;
         for rname in readnames.iter() {
