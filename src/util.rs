@@ -213,7 +213,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
                 for (_, pr) in parsed_reads.iter() {
                     queue.push_back(pr.bam_record.clone());
                 }
-                if queue.len() > 10000 {
+                if queue.len() > 100000 {
                     for record in queue.iter() {
                         let re = bam_writer_clone.lock().unwrap().write(&record);
                         if re != Ok(()) {
