@@ -162,7 +162,8 @@ impl ParsedRead {
                 }
 
                 // 1: M
-                if qb != '-' && qb != 'N' && tb != '-' && tb != 'N' {
+                if qb != '-' && qb != 'N' && tb != '-' {
+                    // when reference base is "N", if query base is not "-", it is still a match
                     cur_state = 1;
                     if pre_state == 0 {
                         pre_state = cur_state;
