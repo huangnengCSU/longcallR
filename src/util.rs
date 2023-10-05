@@ -203,8 +203,12 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
                 pr.init_parsed_seq(&profile);
                 readnames.push(rname.clone());
             }
+            // println!("Total number of reads: {}", &parsed_reads.len());
             profile.cal_intron_penalty();
             profile.cal_intron_intervals();
+            // for bf in profile.freq_vec.iter() {
+            //     println!("{:?}", bf);
+            // }
             realign(&mut profile, &mut parsed_reads, &readnames);
             // let header = get_bam_header(bam_file_clone.clone().as_str());
             // write_bam(out_bam, &parsed_reads, &header);

@@ -521,6 +521,9 @@ impl Profile {
             let mut bf = BaseFreq::default();
             let mut insert_bf: Vec<BaseFreq> = Vec::new();
             for alignment in pileup.alignments() {
+                if alignment.record().is_unmapped() || alignment.record().is_secondary() || alignment.record().is_supplementary() {
+                    continue;
+                }
                 if alignment.is_refskip() {
                     bf.n += 1;
                     match alignment.indel() {
@@ -909,6 +912,7 @@ impl Profile {
                     s = j as i64;
                 }
                 parsed_seq_without_intron.push(parsed_read.parsed_seq[i]);
+                // println!("j = {}, i = {}, {:?}, {}", j, i, self.freq_vec[j], std::str::from_utf8(parsed_read.bam_record.qname()).unwrap());
                 self.freq_vec[j].subtract(parsed_read.parsed_seq[i]);   // minus parsed base from freq_vec
                 profile_without_intron.freq_vec.push(self.freq_vec[j].clone());
                 profile_without_intron.forward_acceptor_penalty.push(self.forward_acceptor_penalty[j]);
@@ -943,6 +947,9 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
     bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
     for r in bam.records() {
         let record = r.unwrap();
+        if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+            continue;
+        }
         let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
         let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), pos_on_profile: -1, alignment_score: 0.0 };
         parsed_reads.insert(qname, parsed_read);
@@ -1459,6 +1466,7 @@ pub fn update_profile_parsed_reads(profile: &mut Profile, parsed_reads: &mut Has
             }
         }
     }
+    assert!(front_gap_num == 0);
     // if front_gap_num > 0 {
     //     parsed_reads.get_mut(qname).unwrap().pos_on_profile = p + front_gap_num;
     //     println!("read = {} front_gap_num = {}", qname, front_gap_num);
