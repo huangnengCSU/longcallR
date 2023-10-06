@@ -1,5 +1,5 @@
 use rust_htslib::{bam, bam::Record, bam::Format, bam::{Read, ext::BamRecordExtensions}};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, Condvar};
 use std::thread;
 use std::process;
 use std::collections::{VecDeque, HashMap};
@@ -156,7 +156,8 @@ pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thr
 
 
 pub fn multithread_produce2(bam_file: String, thread_size: usize, tx_isolated_regions: mpsc::Sender<Region>) {
-    let pool = ThreadPool::new(thread_size);
+    let pool = ThreadPool::new(&thread_size - 1);
+    let cond = Arc::new((Mutex::new(()), Condvar::new()));
     let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
     let bam_header = bam.header().clone();
     let mut contig_names: VecDeque<String> = VecDeque::new();
@@ -164,21 +165,34 @@ pub fn multithread_produce2(bam_file: String, thread_size: usize, tx_isolated_re
         contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
     }
     while !contig_names.is_empty() {
+        let c = cond.clone();
         let ctg = contig_names.pop_front().unwrap();
         let tx_ir = tx_isolated_regions.clone();
         let bam_file_clone = bam_file.clone();
         pool.execute(move || {
+            {
+                let (lock, cvar) = &*c;
+                let _guard = lock.lock().unwrap();
+                cvar.notify_one();
+            }
             let isolated_regions = find_isolated_regions(bam_file_clone.clone().as_str(), 1, Some(ctg.as_str()));
             for region in isolated_regions {
                 tx_ir.send(region).unwrap();
             }
+            std::thread::sleep(std::time::Duration::from_millis(1));
         });
+        let (lock, cvar) = &*cond;
+        let guard = lock.lock().unwrap();
+        if pool.queued_count() >= &thread_size - 1 {
+            let tt = cvar.wait(guard).unwrap();
+        }
     }
     pool.join();
 }
 
 pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_isolated_regions: mpsc::Receiver<Region>) {
-    let pool = ThreadPool::new(thread_size);
+    let pool = ThreadPool::new(&thread_size - 1);
+    let cond = Arc::new((Mutex::new(()), Condvar::new()));
     let bam_records_queue: Arc<Mutex<VecDeque<bam::Record>>> = Arc::new(Mutex::new(VecDeque::new()));
     let bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
     let header = bam::Header::from_template(bam.header());
@@ -188,11 +202,17 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
 
     // multiplethreads for low coverage regions
     for reg in rx_isolated_regions {
+        let c = cond.clone();
         let bam_file_clone = bam_file.clone();
         let ref_seqs_clone = ref_seqs.clone();
         let bam_records_queue = Arc::clone(&bam_records_queue);
         let bam_writer_clone = Arc::clone(&bam_writer);
         pool.execute(move || {
+            {
+                let (lock, cvar) = &*c;
+                let _guard = lock.lock().unwrap();
+                cvar.notify_one();
+            }
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let mut readnames: Vec<String> = Vec::new();
@@ -229,7 +249,13 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
                 }
             }
             println!("End {:?}", reg);
+            std::thread::sleep(std::time::Duration::from_millis(1));
         });
+        let (lock, cvar) = &*cond;
+        let guard = lock.lock().unwrap();
+        if pool.queued_count() >= &thread_size - 1 {
+            let tt = cvar.wait(guard).unwrap();
+        }
     }
     pool.join();
     if bam_records_queue.lock().unwrap().len() > 0 {
