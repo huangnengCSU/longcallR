@@ -136,8 +136,8 @@ fn main2() {
 }
 
 fn main7() {
-    let bam_path = "wtc11_ont_grch38.chr22.bam";
-    let regions = find_isolated_regions(bam_path, 1, Some("chr22"));
+    let bam_path = "SIRV_cdna_r10.SIRV4.bam";
+    let regions = find_isolated_regions(bam_path, 1, None);
     for region in regions.iter() {
         println!("{}:{}-{}", region.chr, region.start, region.end);
     }
@@ -337,9 +337,8 @@ fn main8() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     let out_bam = "test_threads.bam";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
-    let (tx_isolated_regions, rx_isolated_regions) = mpsc::channel();
-    multithread_produce2(bam_path.to_string().clone(), 4, tx_isolated_regions);
-    multithread_work2(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), 4, rx_isolated_regions);
+    let regions = multithread_produce3(bam_path.to_string().clone(), 4);
+    multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), 4, regions);
 }
 
 #[derive(Parser, Debug)]
@@ -375,7 +374,6 @@ fn main() {
     let threads = arg.threads;
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
-        let mut bam = bam::IndexedReader::from_path(bam_path).unwrap();
         let mut profile = Profile::default();
         let mut readnames: Vec<String> = Vec::new();
         let ref_seqs = read_references(ref_path);
@@ -395,8 +393,7 @@ fn main() {
         let header = get_bam_header(bam_path);
         write_bam(out_bam, &parsed_reads, &header);
     } else {
-        let (tx_isolated_regions, rx_isolated_regions) = mpsc::channel();
-        multithread_produce2(bam_path.to_string().clone(), threads, tx_isolated_regions);
-        multithread_work2(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, rx_isolated_regions);
+        let regions = multithread_produce3(bam_path.to_string().clone(), threads);
+        multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
     }
 }

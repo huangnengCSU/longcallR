@@ -1,6 +1,6 @@
 use rust_htslib::{bam, bam::Record, bam::Format, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
-use std::thread;
+use rayon::prelude::*;
 use std::process;
 use std::collections::{VecDeque, HashMap};
 use threadpool::ThreadPool;
@@ -190,6 +190,26 @@ pub fn multithread_produce2(bam_file: String, thread_size: usize, tx_isolated_re
     pool.join();
 }
 
+pub fn multithread_produce3(bam_file: String, thread_size: usize) -> Vec<Region> {
+    let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
+    let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
+    let bam_header = bam.header().clone();
+    let mut contig_names: VecDeque<String> = VecDeque::new();
+    for ctg in bam_header.target_names() {
+        contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
+    }
+    pool.install(|| {
+        contig_names.par_iter().for_each(|ctg| {
+            let isolated_regions = find_isolated_regions(bam_file.as_str(), 1, Some(ctg.as_str()));
+            for region in isolated_regions {
+                results.lock().unwrap().push(region);
+            }
+        });
+    });
+    return results.into_inner().unwrap().clone();
+}
+
 pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_isolated_regions: mpsc::Receiver<Region>) {
     let pool = ThreadPool::new(&thread_size - 1);
     let cond = Arc::new((Mutex::new(()), Condvar::new()));
@@ -258,6 +278,63 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
         }
     }
     pool.join();
+    if bam_records_queue.lock().unwrap().len() > 0 {
+        for record in bam_records_queue.lock().unwrap().iter() {
+            let re = bam_writer.lock().unwrap().write(&record);
+            if re != Ok(()) {
+                println!("write failed");
+                process::exit(1);
+            }
+        }
+        bam_records_queue.lock().unwrap().clear();
+    }
+}
+
+
+pub fn multithread_work3(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, isolated_regions: Vec<Region>) {
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
+    let bam_records_queue = Mutex::new(VecDeque::new());
+    let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
+    let header = bam::Header::from_template(bam.header());
+    let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
+    let ref_seqs = load_reference(ref_file);
+
+    // multiplethreads for low coverage regions
+    pool.install(|| {
+        isolated_regions.par_iter().for_each(|reg| {
+            println!("Start {:?}", reg);
+            let mut profile = Profile::default();
+            let mut readnames: Vec<String> = Vec::new();
+            profile.init_with_pileup(&bam_file.as_str(), &reg);
+            profile.append_reference(&ref_seqs);
+            let mut parsed_reads = read_bam(&bam_file.as_str(), &reg);
+            for (rname, pr) in parsed_reads.iter_mut() {
+                pr.init_parsed_seq(&profile);
+                readnames.push(rname.clone());
+            }
+            profile.cal_intron_penalty();
+            profile.cal_intron_intervals();
+            realign(&mut profile, &mut parsed_reads, &readnames);
+            {
+                let mut queue = bam_records_queue.lock().unwrap();
+                for (_, pr) in parsed_reads.iter() {
+                    queue.push_back(pr.bam_record.clone());
+                }
+                if queue.len() > 100000 {
+                    for record in queue.iter() {
+                        let re = bam_writer.lock().unwrap().write(&record);
+                        if re != Ok(()) {
+                            println!("write failed");
+                            process::exit(1);
+                        }
+                    }
+                    queue.clear();
+                }
+            }
+            println!("End {:?}", reg);
+        });
+    });
+
     if bam_records_queue.lock().unwrap().len() > 0 {
         for record in bam_records_queue.lock().unwrap().iter() {
             let re = bam_writer.lock().unwrap().write(&record);
