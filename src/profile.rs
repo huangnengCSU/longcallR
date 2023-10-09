@@ -431,7 +431,8 @@ impl BaseFreq {
     }
 
     pub fn get_score1(&self, query: u8) -> i32 {
-        let max_cnt = self.a.max(self.c.max(self.g.max(self.t.max(self.n.max(self.d)))));
+        // let max_cnt = self.a.max(self.c.max(self.g.max(self.t.max(self.n.max(self.d)))));
+        let max_cnt = self.a.max(self.c.max(self.g.max(self.t.max(self.d))));
         match query {
             b'A' => if self.a == max_cnt { 0 } else { 1 },
             b'C' => if self.c == max_cnt { 0 } else { 1 },
@@ -445,7 +446,8 @@ impl BaseFreq {
         }
     }
     pub fn get_score2(&self, query: u8) -> f64 {
-        let s = (self.a + self.c + self.g + self.t + self.d + self.n) as f64;
+        // let s = (self.a + self.c + self.g + self.t + self.d + self.n) as f64;
+        let s = (self.a + self.c + self.g + self.t + self.d) as f64;
         if s == 0.0 {
             return 0.0;
         }
