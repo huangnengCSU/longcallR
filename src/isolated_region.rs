@@ -9,7 +9,7 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
         bam.fetch(chr.unwrap()).unwrap();
     }
     let mut isolated_regions: Vec<Region> = Vec::new();
-    let mut pre_tid: u32 = 0;
+    let mut pre_tid: i32 = -1;
     let mut start_pos: u32 = 0;
     let mut end_pos: u32 = 0;
     let mut max_depth: u32 = 0;
@@ -23,15 +23,15 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
         let depth = pileup.depth();
         // println!("{} {} {}", pos, tid, depth);
 
-        if pre_tid == 0 {
-            pre_tid = tid;
+        if pre_tid == -1 {
+            pre_tid = tid as i32;
             start_pos = pos;
             end_pos = pos;
             max_depth = depth;
             continue;
         }
 
-        if tid != pre_tid && pre_tid != 0 {
+        if tid as i32 != pre_tid && pre_tid != -1 {
             if end_pos > start_pos && max_depth >= min_depth {
                 let region = Region {
                     chr: std::str::from_utf8(&header.tid2name(pre_tid as u32))
@@ -44,7 +44,7 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
             }
             start_pos = pos;
             end_pos = pos;
-            pre_tid = tid;
+            pre_tid = tid as i32;
             max_depth = depth;
             continue;
         }
@@ -62,7 +62,7 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
             }
             start_pos = pos;
             end_pos = pos;
-            pre_tid = tid;
+            pre_tid = tid as i32;
             max_depth = depth;
         } else {
             end_pos = pos;
