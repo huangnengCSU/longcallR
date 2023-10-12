@@ -6,6 +6,10 @@ use seq_io::fasta::{Reader, Record};
 use rust_lapper::{Interval, Lapper};
 use crate::align2::SpliceMatrixElement;
 use ndarray::Array2;
+use crate::runt::Runtime;
+use std::time::{Instant};
+
+const MAX_INS: u32 = 100;
 
 #[derive(Debug, Clone)]
 pub struct ParsedRead {
@@ -531,6 +535,9 @@ impl Profile {
                     bf.n += 1;
                     match alignment.indel() {
                         bam::pileup::Indel::Ins(len) => {
+                            if len > MAX_INS {
+                                continue;
+                            }
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
@@ -568,6 +575,9 @@ impl Profile {
                     // insertion following deletion
                     match alignment.indel() {
                         bam::pileup::Indel::Ins(len) => {
+                            if len > MAX_INS {
+                                continue;
+                            }
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
@@ -623,6 +633,9 @@ impl Profile {
 
                     match alignment.indel() {
                         bam::pileup::Indel::Ins(len) => {
+                            if len > MAX_INS {
+                                continue;
+                            }
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
                                     insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
@@ -954,6 +967,18 @@ pub fn read_bam(bam_path: &str, region: &Region) -> HashMap<String, ParsedRead> 
             continue;
         }
         let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+        // parse the cigar string
+        let mut ins_len = 0;
+        for cg in record.cigar().iter() {
+            if cg.char() == 'I' {
+                if cg.len() > ins_len {
+                    ins_len = cg.len();
+                }
+            }
+        }
+        if ins_len > MAX_INS {
+            continue;
+        }
         let parsed_read = ParsedRead { bam_record: record.clone(), parsed_seq: Vec::new(), pos_on_profile: -1, alignment_score: 0.0 };
         parsed_reads.insert(qname, parsed_read);
     }
@@ -1368,9 +1393,11 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
     */
     let mut prev_score: f64 = f64::NEG_INFINITY;
     let mut max_iter = 3;
+    // let mut rt: Vec<Runtime> = Vec::new();
     while max_iter > 0 {
         let mut total_score = 0.0;
         for rname in readnames.iter() {
+            // let ss = Instant::now();
             let pr = parsed_reads.get(rname).unwrap();
             let (s, e, read_without_intron, profile_without_intron) = profile.generate_read_profile_for_realign(pr);
             let (f_score, f_query, f_target) = banded_nw(&read_without_intron, &profile_without_intron, 10, false);
@@ -1397,7 +1424,11 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
                 }
                 total_score += f_score;
             }
+            // let ee = ss.elapsed();
+            // rt.push(Runtime { readname: rname.clone(), length: f_query.len() as u32, runtime: ee.as_millis() as u64 });
         }
+        // println!("total reads: {}", readnames.len());
+        // break;
         max_iter -= 1;
         println!("Region = {:?}, iteration = {}, total_score = {}, prev_score = {}", profile.region, 3 - max_iter, total_score, prev_score);
         if total_score <= prev_score {
@@ -1406,6 +1437,9 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
             prev_score = total_score;
         }
     }
+    // for r in rt.iter() {
+    //     println!("{}\t{}\t{}", r.readname, r.length, r.runtime);
+    // }
     for rname in readnames.iter() {
         let mpr = parsed_reads.get_mut(rname).unwrap();
         mpr.update_bam_record(&profile);
