@@ -7,6 +7,7 @@ mod matrix;
 mod pileup2matrix;
 mod util;
 mod profile;
+mod runt;
 
 // extern crate bio;
 use clap::Parser;
@@ -379,9 +380,9 @@ fn main() {
         let ref_seqs = read_references(ref_path);
         profile.init_with_pileup(bam_path, &region);
         profile.append_reference(&ref_seqs);
-        for bf in profile.freq_vec.iter() {
-            println!("{:?}", bf);
-        }
+        // for bf in profile.freq_vec.iter() {
+        //     println!("{:?}", bf);
+        // }
         let mut parsed_reads = read_bam(bam_path, &region);
         for (rname, pr) in parsed_reads.iter_mut() {
             pr.init_parsed_seq(&profile);
