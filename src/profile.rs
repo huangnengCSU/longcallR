@@ -5,6 +5,7 @@ use rust_htslib::{bam, bam::Read, bam::record::Cigar, bam::record::CigarString, 
 use seq_io::fasta::{Reader, Record};
 use rust_lapper::{Interval, Lapper};
 use crate::align2::SpliceMatrixElement;
+use ndarray::Array2;
 
 #[derive(Debug, Clone)]
 pub struct ParsedRead {
@@ -1034,15 +1035,19 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     // println!();
 
 
-    let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
+    // let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
+    let mut mat = Array2::<SpliceMatrixElement>::default((t_len + 1, (2 * width) + 3));
     // println!("mat size: {} x {}", mat.len(), mat[0].len());
 
     let mut k_vec: Vec<usize> = vec![0; t_len + 1];
 
     // Initialize first row
-    mat[0][width + 1].ix = -h - g;
-    mat[0][width + 1].ix2 = -f64::INFINITY;
-    mat[0][width + 1].m = mat[0][width + 1].ix;
+    // mat[0][width + 1].ix = -h - g;
+    // mat[0][width + 1].ix2 = -f64::INFINITY;
+    // mat[0][width + 1].m = mat[0][width + 1].ix;
+    mat[[0, width + 1]].ix = -h - g;
+    mat[[0, width + 1]].ix2 = -f64::INFINITY;
+    mat[[0, width + 1]].m = mat[[0, width + 1]].ix;
 
     let mut i = 1; // index on target
     let mut j = 1; // index on query
@@ -1052,7 +1057,10 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     let mut right_bound: usize; // exclude this index
     while i < t_len + 1 && k < q_len + 1 {
         let mut offset: usize;
-        if query[j - 1] != b'*' && query[j - 1] != b'-' && query[j - 1] != b'N' {
+
+        let q_j = query[j - 1]; // precompute value
+
+        if q_j != b'*' && q_j != b'-' && q_j != b'N' {
             k += 1;
             offset = 0;
         } else {
@@ -1144,53 +1152,59 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                 }
             }
 
+            let m_lu = mat[[i - 1, v + 1 - offset]].m;  // precompute value
+            let ix_lu = mat[[i - 1, v + 1 - offset]].ix;    // precompute value
+            let m_u = mat[[i - 1, v - offset]].m;   // precompute value
+            let ix2_ru = mat[[i - 1, v + 1 - offset]].ix2;  // precompute value
+
+
             // println!("dp_f: {}, ap_f: {}", dp_f, ap_f);
             if col.i || col.ref_base == 'N' {
-                if mat[i - 1][v + 1 - offset].m >= mat[i - 1][v + 1 - offset].ix {
-                    mat[i][v].ix = mat[i - 1][v + 1 - offset].m;
-                    mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                if m_lu >= ix_lu {
+                    mat[[i, v]].ix = m_lu;
+                    mat[[i, v]].ix_s = 1; //mat[[i,v]].ix_prev_m = true;
                 } else {
-                    mat[i][v].ix = mat[i - 1][v + 1 - offset].ix;
-                    mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                    mat[[i, v]].ix = ix_lu;
+                    mat[[i, v]].ix_s = 2; //mat[[i,v]].ix_prev_ix = true;
                 }
             } else {
                 if !col.i && i as i32 - 2 >= 0 && profile.freq_vec[i - 2].i {
-                    if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - h - g {
-                        mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
-                        mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                    if m_lu - h - g >= ix_lu - h - g {
+                        mat[[i, v]].ix = m_lu - h - g;
+                        mat[[i, v]].ix_s = 1; //mat[[i,v]].ix_prev_m = true;
                     } else {
-                        mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - h - g;
-                        mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                        mat[[i, v]].ix = ix_lu - h - g;
+                        mat[[i, v]].ix_s = 2; //mat[[i,v]].ix_prev_ix = true;
                     }
                 } else {
-                    if mat[i - 1][v + 1 - offset].m - h - g >= mat[i - 1][v + 1 - offset].ix - g {
-                        mat[i][v].ix = mat[i - 1][v + 1 - offset].m - h - g;
-                        mat[i][v].ix_s = 1; //mat[i][v].ix_prev_m = true;
+                    if m_lu - h - g >= ix_lu - g {
+                        mat[[i, v]].ix = m_lu - h - g;
+                        mat[[i, v]].ix_s = 1; //mat[[i,v]].ix_prev_m = true;
                     } else {
-                        mat[i][v].ix = mat[i - 1][v + 1 - offset].ix - g;
-                        mat[i][v].ix_s = 2; //mat[i][v].ix_prev_ix = true;
+                        mat[[i, v]].ix = ix_lu - g;
+                        mat[[i, v]].ix_s = 2; //mat[[i,v]].ix_prev_ix = true;
                     }
                 }
             }
 
-            if mat[i - 1][v + 1 - offset].m - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= mat[i - 1][v + 1 - offset].ix2 {
-                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].m - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0;
-                mat[i][v].ix2_s = 1; //mat[i][v].ix2_prev_m = true;
+            if m_lu - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= ix2_ru {
+                mat[[i, v]].ix2 = m_lu - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0;
+                mat[[i, v]].ix2_s = 1; //mat[[i,v]].ix2_prev_m = true;
             } else {
-                mat[i][v].ix2 = mat[i - 1][v + 1 - offset].ix2;
-                mat[i][v].ix2_s = 3; //mat[i][v].ix2_prev_ix2 = true;
+                mat[[i, v]].ix2 = ix2_ru;
+                mat[[i, v]].ix2_s = 3; //mat[[i,v]].ix2_prev_ix2 = true;
             }
 
+            let ix_cur = mat[[i, v]].ix;    // precompute value
+            let ix2_cur = mat[[i, v]].ix2;  // precompute value
 
-            mat[i][v].m = (mat[i - 1][v - offset].m + sij)
-                .max(mat[i][v].ix)
-                .max(mat[i][v].ix2 - standard_acceptor_penalty[i] - ap_f * 28.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
-            if mat[i][v].m == mat[i - 1][v - offset].m + sij {
-                mat[i][v].m_s = 1; //mat[i][v].m_prev_m = true;
-            } else if mat[i][v].m == mat[i][v].ix {
-                mat[i][v].m_s = 2; //mat[i][v].m_prev_ix = true;
-            } else if mat[i][v].m == mat[i][v].ix2 - standard_acceptor_penalty[i] - ap_f * 28.0 {
-                mat[i][v].m_s = 3; //mat[i][v].m_prev_ix2 = true;
+            mat[[i, v]].m = (m_u + sij).max(ix_cur).max(ix2_cur - standard_acceptor_penalty[i] - ap_f * 28.0);
+            if mat[[i, v]].m == m_u + sij {
+                mat[[i, v]].m_s = 1; //mat[[i,v]].m_prev_m = true;
+            } else if mat[[i, v]].m == ix_cur {
+                mat[[i, v]].m_s = 2; //mat[[i,v]].m_prev_ix = true;
+            } else if mat[[i, v]].m == ix2_cur - standard_acceptor_penalty[i] - ap_f * 28.0 {
+                mat[[i, v]].m_s = 3; //mat[[i,v]].m_prev_ix2 = true;
             }
         }
         i += 1;
@@ -1209,12 +1223,12 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
 
     // let mut score_vec = Vec::new();
     // for vv in 0..2 * width + 3 {
-    //     score_vec.push(mat[i][vv].m);
+    //     score_vec.push(mat[[i,vv]].m);
     // }
     // find max value and index in score_vec
     // let (max_score, max_index) = find_max_value_and_index(&score_vec);
     let vv = (width as i32 + 1 + (q_len as i32 - k_vec[i] as i32)) as usize;
-    let max_score = mat[i][vv].m;
+    let max_score = mat[[i, vv]].m;
 
     alignment_score = max_score;
     v = vv;
@@ -1222,16 +1236,16 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     u = (v as i32 - (width as i32 + 1) + k as i32) as usize; // index on query_without_gap
 
     let mut trace_back_stat: u8 = 0;
-    if mat[i][v].m_s == 2 {
-        //mat[i][v].m_prev_ix
+    if mat[[i, v]].m_s == 2 {
+        //mat[[i,v]].m_prev_ix
         trace_back_stat = 2;
         // trace_back_stat = TraceBack::IX;
-    } else if mat[i][v].m_s == 3 {
-        //mat[i][v].m_prev_ix2
+    } else if mat[[i, v]].m_s == 3 {
+        //mat[[i,v]].m_prev_ix2
         trace_back_stat = 3;
         // trace_back_stat = TraceBack::IX2;
-    } else if mat[i][v].m_s == 1 {
-        // mat[i][v].m_prev_m
+    } else if mat[[i, v]].m_s == 1 {
+        // mat[[i,v]].m_prev_m
         trace_back_stat = 1;
         // trace_back_stat = TraceBack::M;
     } else {
@@ -1246,16 +1260,16 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
         let ref_base = profile.freq_vec[i - 1].ref_base;
         if trace_back_stat == 1 {
             // trace_back_stat == TraceBack::M
-            if mat[i][v].m_s == 2 {
-                //mat[i][v].m_prev_ix
+            if mat[[i, v]].m_s == 2 {
+                //mat[[i,v]].m_prev_ix
                 trace_back_stat = 2;
                 // trace_back_stat = TraceBack::IX;
-            } else if mat[i][v].m_s == 3 {
-                // mat[i][v].m_prev_ix2
+            } else if mat[[i, v]].m_s == 3 {
+                // mat[[i,v]].m_prev_ix2
                 trace_back_stat = 3;
                 // trace_back_stat = TraceBack::IX2;
-            } else if mat[i][v].m_s == 1 {
-                // mat[i][v].m_prev_m
+            } else if mat[[i, v]].m_s == 1 {
+                // mat[[i,v]].m_prev_m
                 aligned_query.push(qbase);
                 ref_target.push(ref_base as u8);
                 i -= 1;
@@ -1267,15 +1281,15 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
             }
         } else if trace_back_stat == 2 {
             // trace_back_stat == TraceBack::IX
-            if mat[i][v].ix_s == 2 {
-                // mat[i][v].ix_prev_ix
+            if mat[[i, v]].ix_s == 2 {
+                // mat[[i,v]].ix_prev_ix
                 aligned_query.push(b'-');
                 ref_target.push(ref_base as u8);
                 i -= 1;
                 trace_back_stat = 2;
                 // trace_back_stat = TraceBack::IX;
-            } else if mat[i][v].ix_s == 1 {
-                //mat[i][v].ix_prev_m
+            } else if mat[[i, v]].ix_s == 1 {
+                //mat[[i,v]].ix_prev_m
                 if ref_base == '-' {
                     // current position is in the insertion region
                     aligned_query.push(b'*');
@@ -1292,16 +1306,16 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
             }
         } else if trace_back_stat == 3 {
             // trace_back_stat == TraceBack::IX2
-            if mat[i][v].ix2_s == 3 {
-                // mat[i][v].ix2_prev_ix2
+            if mat[[i, v]].ix2_s == 3 {
+                // mat[[i,v]].ix2_prev_ix2
                 aligned_query.push(b'N');
                 ref_target.push(ref_base as u8);
                 // major_target.push(major_base);
                 i -= 1;
                 trace_back_stat = 3;
                 // trace_back_stat = TraceBack::IX2;
-            } else if mat[i][v].ix2_s == 1 {
-                // mat[i][v].ix2_prev_m
+            } else if mat[[i, v]].ix2_s == 1 {
+                // mat[[i,v]].ix2_prev_m
                 aligned_query.push(b'N');
                 ref_target.push(ref_base as u8);
                 i -= 1;
@@ -1392,7 +1406,6 @@ pub fn realign(profile: &mut Profile, parsed_reads: &mut HashMap<String, ParsedR
             prev_score = total_score;
         }
     }
-
     for rname in readnames.iter() {
         let mpr = parsed_reads.get_mut(rname).unwrap();
         mpr.update_bam_record(&profile);
