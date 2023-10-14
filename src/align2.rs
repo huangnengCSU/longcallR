@@ -1,6 +1,6 @@
 use crate::matrix::ColumnBaseCount;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SpliceMatrixElement {
     pub m: f64,
     // not matching
