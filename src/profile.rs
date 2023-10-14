@@ -1013,7 +1013,7 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     let g = 1.0; // short gap extend, e in minimap2
     let h2 = 32.0; // long gap open, q hat in minimap2
     // let p = 9.0; // splice junction site penalty
-    let b: f64 = 34.0; // splice junction site penalty
+    // let b: f64 = 34.0; // splice junction site penalty
     let match_score = 2.0;
     let mismatch_score = -2.0;
     let standard_donor_penalty: &Vec<f64>;
@@ -1177,58 +1177,60 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                 }
             }
 
-            let m_lu = mat[[i - 1, v + 1 - offset]].m;  // precompute value
-            let ix_lu = mat[[i - 1, v + 1 - offset]].ix;    // precompute value
-            let m_u = mat[[i - 1, v - offset]].m;   // precompute value
-            let ix2_ru = mat[[i - 1, v + 1 - offset]].ix2;  // precompute value
+            // let m_lu = mat[[i - 1, v + 1 - offset]].m;  // precompute value
+            // let ix_lu = mat[[i - 1, v + 1 - offset]].ix;    // precompute value
+            // let m_u = mat[[i - 1, v - offset]].m;   // precompute value
+            // let ix2_ru = mat[[i - 1, v + 1 - offset]].ix2;  // precompute value
 
 
             // println!("dp_f: {}, ap_f: {}", dp_f, ap_f);
             if col.i || col.ref_base == 'N' {
-                if m_lu >= ix_lu {
-                    mat[[i, v]].ix = m_lu;
+                if mat[[i - 1, v + 1 - offset]].m >= mat[[i - 1, v + 1 - offset]].ix {
+                    mat[[i, v]].ix = mat[[i - 1, v + 1 - offset]].m;
                     mat[[i, v]].ix_s = 1; //mat[[i,v]].ix_prev_m = true;
                 } else {
-                    mat[[i, v]].ix = ix_lu;
+                    mat[[i, v]].ix = mat[[i - 1, v + 1 - offset]].ix;
                     mat[[i, v]].ix_s = 2; //mat[[i,v]].ix_prev_ix = true;
                 }
             } else {
                 if !col.i && i as i32 - 2 >= 0 && profile.freq_vec[i - 2].i {
-                    if m_lu - h - g >= ix_lu - h - g {
-                        mat[[i, v]].ix = m_lu - h - g;
+                    if mat[[i - 1, v + 1 - offset]].m - h - g >= mat[[i - 1, v + 1 - offset]].ix - h - g {
+                        mat[[i, v]].ix = mat[[i - 1, v + 1 - offset]].m - h - g;
                         mat[[i, v]].ix_s = 1; //mat[[i,v]].ix_prev_m = true;
                     } else {
-                        mat[[i, v]].ix = ix_lu - h - g;
+                        mat[[i, v]].ix = mat[[i - 1, v + 1 - offset]].ix - h - g;
                         mat[[i, v]].ix_s = 2; //mat[[i,v]].ix_prev_ix = true;
                     }
                 } else {
-                    if m_lu - h - g >= ix_lu - g {
-                        mat[[i, v]].ix = m_lu - h - g;
+                    if mat[[i - 1, v + 1 - offset]].m - h - g >= mat[[i - 1, v + 1 - offset]].ix - g {
+                        mat[[i, v]].ix = mat[[i - 1, v + 1 - offset]].m - h - g;
                         mat[[i, v]].ix_s = 1; //mat[[i,v]].ix_prev_m = true;
                     } else {
-                        mat[[i, v]].ix = ix_lu - g;
+                        mat[[i, v]].ix = mat[[i - 1, v + 1 - offset]].ix - g;
                         mat[[i, v]].ix_s = 2; //mat[[i,v]].ix_prev_ix = true;
                     }
                 }
             }
 
-            if m_lu - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= ix2_ru {
-                mat[[i, v]].ix2 = m_lu - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0;
+            if mat[[i - 1, v + 1 - offset]].m - standard_donor_penalty[i - 1] - h2 - dp_f * 0.0 >= mat[[i - 1, v + 1 - offset]].ix2 {
+                mat[[i, v]].ix2 = mat[[i - 1, v + 1 - offset]].m - standard_donor_penalty[i - 1] - h2 - dp_f * 0.0;
                 mat[[i, v]].ix2_s = 1; //mat[[i,v]].ix2_prev_m = true;
             } else {
-                mat[[i, v]].ix2 = ix2_ru;
+                mat[[i, v]].ix2 = mat[[i - 1, v + 1 - offset]].ix2;
                 mat[[i, v]].ix2_s = 3; //mat[[i,v]].ix2_prev_ix2 = true;
             }
 
-            let ix_cur = mat[[i, v]].ix;    // precompute value
-            let ix2_cur = mat[[i, v]].ix2;  // precompute value
+            // let ix_cur = mat[[i, v]].ix;    // precompute value
+            // let ix2_cur = mat[[i, v]].ix2;  // precompute value
 
-            mat[[i, v]].m = (m_u + sij).max(ix_cur).max(ix2_cur - standard_acceptor_penalty[i] - ap_f * 28.0);
-            if mat[[i, v]].m == m_u + sij {
+            mat[[i, v]].m = (mat[[i - 1, v - offset]].m + sij)
+                .max(mat[[i, v]].ix)
+                .max(mat[[i, v]].ix2 - standard_acceptor_penalty[i] - ap_f * 0.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+            if mat[[i, v]].m == mat[[i - 1, v - offset]].m + sij {
                 mat[[i, v]].m_s = 1; //mat[[i,v]].m_prev_m = true;
-            } else if mat[[i, v]].m == ix_cur {
+            } else if mat[[i, v]].m == mat[[i, v]].ix {
                 mat[[i, v]].m_s = 2; //mat[[i,v]].m_prev_ix = true;
-            } else if mat[[i, v]].m == ix2_cur - standard_acceptor_penalty[i] - ap_f * 28.0 {
+            } else if mat[[i, v]].m == mat[[i, v]].ix2 - standard_acceptor_penalty[i] - ap_f * 0.0 {
                 mat[[i, v]].m_s = 3; //mat[[i,v]].m_prev_ix2 = true;
             }
         }
