@@ -480,8 +480,12 @@ impl BaseFreq {
         self.a + self.c + self.g + self.t + self.d + self.n
     }
 
-    pub fn get_intron_ratio(&self) -> (u32, f64) {
-        (self.n, (self.n as f64) / (self.get_depth_include_intron() as f64))
+    pub fn get_intron_ratio(&self) -> (u32, f64, u32) {
+        let d = self.get_depth_include_intron();
+        if d == 0 {
+            return (0, 0.0, 0);
+        }
+        (self.n, (self.n as f64) / (d as f64), d)
     }
 }
 
@@ -1034,30 +1038,38 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     let q_len = query_without_gap.len();
     let t_len = profile.freq_vec.len();
 
-    // for d in reduced_donor_penalty.iter() {
-    //     print!("{}\t", d);
-    // }
-    // println!();
-    //
-    // for d in reduced_acceptor_penalty.iter() {
-    //     print!("{}\t", d);
-    // }
-    // println!();
-    //
-    // for d in 0..t_len {
-    //     print!("{}\t", profile[d].get_ref_base() as char);
-    // }
-    // println!();
-    //
-    // for i in 0..t_len {
-    //     print!("{}\t", profile[i].n_n);
-    // }
-    // println!();
-    //
-    // for i in 0..t_len {
-    //     print!("{}\t", profile[i].get_depth() + profile[i].n_n);
-    // }
-    // println!();
+    // When debug, uncomment the following code
+    /*if reverse_strand {
+        println!("reverse strand:");
+    } else {
+        println!("forward strand:");
+    }
+    println!();
+    println!("donor penalty:");
+    for d in standard_donor_penalty.iter() {
+        print!("{}\t", d);
+    }
+    println!();
+    println!("acceptor penalty:");
+    for d in standard_acceptor_penalty.iter() {
+        print!("{}\t", d);
+    }
+    println!();
+    println!("ref_base:");
+    for d in 0..t_len {
+        print!("{}\t", profile.freq_vec[d].ref_base);
+    }
+    println!();
+    println!("number of N:");
+    for i in 0..t_len {
+        print!("{}\t", profile.freq_vec[i].n);
+    }
+    println!();
+    println!("depth with intron:");
+    for i in 0..t_len {
+        print!("{}\t", profile.freq_vec[i].get_depth_include_intron());
+    }
+    println!();*/
 
 
     // let mut mat: Vec<Vec<SpliceMatrixElement>> = vec![vec![SpliceMatrixElement { ..Default::default() }; (2 * width) + 3]; t_len + 1];
@@ -1130,7 +1142,7 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                 if profile.freq_vec[i - 1].i {
                     dp_f = 1.0;
                 } else {
-                    let (curr_intron_cnt, curr_intron_percentage) = profile.freq_vec[i - 1].get_intron_ratio();
+                    let (curr_intron_cnt, curr_intron_percentage, curr_depth_include_intron) = profile.freq_vec[i - 1].get_intron_ratio();
                     let mut ai = i as i32 - 2;
                     while ai >= 0 {
                         if profile.freq_vec[ai as usize].i {
@@ -1140,13 +1152,20 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                         }
                     }
                     if ai >= 0 {
-                        let (prev_intron_cnt, prev_intron_percentage) = profile.freq_vec[ai as usize].get_intron_ratio();
+                        let (prev_intron_cnt, prev_intron_percentage, prev_depth_include_intron) = profile.freq_vec[ai as usize].get_intron_ratio();
                         // if (curr_intron_cnt as i32 - prev_intron_cnt as i32).abs() > 10 {
                         //     dp_f = 0.0;
                         // } else {
                         //     dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
                         // }
-                        dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
+                        if prev_depth_include_intron == 0 {
+                            dp_f = 1.0;
+                        } else {
+                            dp_f = 1.0 - (curr_intron_percentage - prev_intron_percentage).abs();
+                        }
+                    }
+                    if curr_depth_include_intron == 0 {
+                        dp_f = 1.0;
                     }
                 }
             }
@@ -1156,7 +1175,7 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                 if profile.freq_vec[i - 1].i {
                     ap_f = 1.0;
                 } else {
-                    let (curr_intron_cnt, curr_intron_percentage) = profile.freq_vec[i - 1].get_intron_ratio();
+                    let (curr_intron_cnt, curr_intron_percentage, curr_depth_include_intron) = profile.freq_vec[i - 1].get_intron_ratio();
                     let mut ai = i;
                     while ai < t_len {
                         if profile.freq_vec[ai].i {
@@ -1166,13 +1185,20 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                         }
                     }
                     if ai < t_len {
-                        let (later_intron_cnt, later_intron_percentage) = profile.freq_vec[ai].get_intron_ratio();
+                        let (later_intron_cnt, later_intron_percentage, later_depth_include_intron) = profile.freq_vec[ai].get_intron_ratio();
                         // if (later_intron_cnt as i32 - curr_intron_cnt as i32).abs() > 10 {
                         //     ap_f = 0.0;
                         // } else {
                         //     ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
                         // }
-                        ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
+                        if later_depth_include_intron == 0 {
+                            ap_f = 1.0;
+                        } else {
+                            ap_f = 1.0 - (later_intron_percentage - curr_intron_percentage).abs();
+                        }
+                    }
+                    if curr_depth_include_intron == 0 {
+                        ap_f = 1.0;
                     }
                 }
             }
@@ -1212,8 +1238,9 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                 }
             }
 
-            if mat[[i - 1, v + 1 - offset]].m - standard_donor_penalty[i - 1] - h2 - dp_f * 0.0 >= mat[[i - 1, v + 1 - offset]].ix2 {
-                mat[[i, v]].ix2 = mat[[i - 1, v + 1 - offset]].m - standard_donor_penalty[i - 1] - h2 - dp_f * 0.0;
+
+            if mat[[i - 1, v + 1 - offset]].m - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0 >= mat[[i - 1, v + 1 - offset]].ix2 {
+                mat[[i, v]].ix2 = mat[[i - 1, v + 1 - offset]].m - standard_donor_penalty[i - 1] - h2 - dp_f * 28.0;
                 mat[[i, v]].ix2_s = 1; //mat[[i,v]].ix2_prev_m = true;
             } else {
                 mat[[i, v]].ix2 = mat[[i - 1, v + 1 - offset]].ix2;
@@ -1225,12 +1252,12 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
 
             mat[[i, v]].m = (mat[[i - 1, v - offset]].m + sij)
                 .max(mat[[i, v]].ix)
-                .max(mat[[i, v]].ix2 - standard_acceptor_penalty[i] - ap_f * 0.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
+                .max(mat[[i, v]].ix2 - standard_acceptor_penalty[i] - ap_f * 28.0); // index i in matrix is corresponding to the index i-1 in reference (donor penalty and acceptor penalty)
             if mat[[i, v]].m == mat[[i - 1, v - offset]].m + sij {
                 mat[[i, v]].m_s = 1; //mat[[i,v]].m_prev_m = true;
             } else if mat[[i, v]].m == mat[[i, v]].ix {
                 mat[[i, v]].m_s = 2; //mat[[i,v]].m_prev_ix = true;
-            } else if mat[[i, v]].m == mat[[i, v]].ix2 - standard_acceptor_penalty[i] - ap_f * 0.0 {
+            } else if mat[[i, v]].m == mat[[i, v]].ix2 - standard_acceptor_penalty[i] - ap_f * 28.0 {
                 mat[[i, v]].m_s = 3; //mat[[i,v]].m_prev_ix2 = true;
             }
         }
@@ -1376,6 +1403,47 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
         // major_target.push(b'-');
         u -= 1;
     }
+
+    // When debug, uncomment the following code
+    /*// println!("{:?}", mat);
+    for i in 0..t_len + 1 {
+        let k = k_vec[i];
+        if i == 0 {
+            print!("******\t");
+            for j in 1..(2 * width) + 2 {
+                if j == width + 1 {
+                    print!("[{:?}\t{:?}\t{:?}\t{:?}\t{:?}\t{:?}\t*)\t", mat[[i, j]].ix, mat[[i, j]].ix2, mat[[i, j]].m, mat[[i, j]].ix_s, mat[[i, j]].ix2_s, mat[[i, j]].m_s);
+                } else {
+                    print!("({:?}\t{:?}\t{:?}\t{:?}\t{:?}\t{:?}\t*)\t", mat[[i, j]].ix, mat[[i, j]].ix2, mat[[i, j]].m, mat[[i, j]].ix_s, mat[[i, j]].ix2_s, mat[[i, j]].m_s);
+                }
+            }
+            println!();
+        } else {
+            for ii in i..i + 6 {
+                if ii <= t_len {
+                    print!("{}", profile.freq_vec[ii - 1].ref_base);
+                } else {
+                    print!("*");
+                }
+            }
+            print!("\t");
+            for j in 1..(2 * width) + 2 {
+                let u = (k as i32 + (j as i32 - width as i32 - 1)) as usize - 1;
+                let qbase;
+                if u >= 0 && u < query_without_gap.len() {
+                    qbase = query_without_gap[u] as char;
+                } else {
+                    qbase = '*';
+                }
+                if j == width + 1 {
+                    print!("[{:?}\t{:?}\t{:?}\t{:?}\t{:?}\t{:?}\t{:?}]\t", mat[[i, j]].ix, mat[[i, j]].ix2, mat[[i, j]].m, mat[[i, j]].ix_s, mat[[i, j]].ix2_s, mat[[i, j]].m_s, qbase);
+                } else {
+                    print!("({:?}\t{:?}\t{:?}\t{:?}\t{:?}\t{:?}\t{:?})\t", mat[[i, j]].ix, mat[[i, j]].ix2, mat[[i, j]].m, mat[[i, j]].ix_s, mat[[i, j]].ix2_s, mat[[i, j]].m_s, qbase);
+                }
+            }
+            println!();
+        }
+    }*/
 
     aligned_query.reverse();
     ref_target.reverse();
