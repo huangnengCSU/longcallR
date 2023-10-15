@@ -1013,13 +1013,13 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
     width: band width
     reverse_strand: use forward donor/acceptor penalty or reverse donor/acceptor penalty
     */
-    let h = 2.0; // short gap open, q in minimap2
-    let g = 1.0; // short gap extend, e in minimap2
+    let h = 4.0; // short gap open, q in minimap2
+    let g = 3.0; // short gap extend, e in minimap2
     let h2 = 32.0; // long gap open, q hat in minimap2
     // let p = 9.0; // splice junction site penalty
     // let b: f64 = 34.0; // splice junction site penalty
     let match_score = 2.0;
-    let mismatch_score = -2.0;
+    let mismatch_score = -3.0;
     let standard_donor_penalty: &Vec<f64>;
     let standard_acceptor_penalty: &Vec<f64>;
 
@@ -1131,7 +1131,7 @@ pub fn banded_nw(query: &Vec<u8>, profile: &Profile, width: usize, reverse_stran
                     sij = mismatch_score;
                 }
             } else {
-                sij = 2.0 - 4.0 * col.get_score(qbase);
+                sij = 2.0 - 5.0 * col.get_score(qbase);
             }
 
             // position specific donor penalty (mat[i], taget[i-1], profile[i-1])
