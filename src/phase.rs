@@ -1,5 +1,6 @@
 use crate::bam_reader::Region;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
+use rust_htslib::htslib::drand48;
 
 #[derive(Debug, Clone, Default)]
 struct CandidateSNP {
@@ -13,14 +14,14 @@ struct CandidateSNP {
 
 #[derive(Debug, Clone, Default)]
 struct Edge {
-    snp_idx: usize,
-    // index of candidate SNPs(SNPFrag.snps)
+    snp_idx: [usize; 2],
+    // index of candidate SNPs(SNPFrag.snps), start node and end node
     fragment_idx: usize,
     // index of multiple fragments(SNPFrag.fragments)
     p: [u8; 2],
     // haplotype of base of start node and end node from the ternary matrix on the alphabet {0, 1, -}(SNPFrag.reads_matrix)
-    w: f32,
-    // weight of edge
+    w: [f64; 2],
+    // weight of edge, w[0] is the weight consisitent with haplotype, w[1] is the weight inconsistent with haplotype.
 }
 
 #[derive(Debug, Clone, Default)]
@@ -65,8 +66,15 @@ impl SNPFrag {
         // get candidate SNPs
     }
 
-    fn init_haplotypes(&mut self) {
+    unsafe fn init_haplotypes(&mut self) {
         // initialize haplotypes
+        for i in 0..self.snps.len() {
+            if drand48() < 0.5 {
+                self.haplotype.push(0);
+            } else {
+                self.haplotype.push(1);
+            }
+        }
     }
 
     fn get_fragments(&mut self, bam_path: &str, region: &Region) {
@@ -133,6 +141,18 @@ impl SNPFrag {
                                 } else {
                                     frag_elem.p = 2;
                                 }
+                                if fragment.list.len() > 0 {
+                                    let mut edge = Edge::default();
+                                    edge.snp_idx = [fragment.list.last().unwrap().snp_idx, frag_elem.snp_idx];
+                                    edge.fragment_idx = fragment.fragment_idx;
+                                    edge.p = [fragment.list.last().unwrap().p, frag_elem.p];
+                                    let q1 = 0.1_f64.powf((fragment.list.last().unwrap().baseq as f64 - 33.0) / 10.0);
+                                    let q2 = 0.1_f64.powf((frag_elem.baseq as f64 - 33.0) / 10.0);
+                                    let w1 = q1 * q2 + (1.0 - q1) * (1.0 - q2);
+                                    let w2 = q1 * (1.0 - q2) + (1.0 - q1) * q2;
+                                    edge.w = [(w1 / w2).log10(), (w2 / w1).log10()];
+                                    self.edges.push(edge);
+                                }
                                 fragment.list.push(frag_elem);
                                 snp_offset += 1;
                                 snp_pos = self.snps[snp_offset].pos;
@@ -155,6 +175,18 @@ impl SNPFrag {
                                 frag_elem.base = b'-';
                                 frag_elem.baseq = 0;
                                 frag_elem.p = 2;
+                                if fragment.list.len() > 0 {
+                                    let mut edge = Edge::default();
+                                    edge.snp_idx = [fragment.list.last().unwrap().snp_idx, frag_elem.snp_idx];
+                                    edge.fragment_idx = fragment.fragment_idx;
+                                    edge.p = [fragment.list.last().unwrap().p, frag_elem.p];
+                                    let q1 = 0.1_f64.powf((fragment.list.last().unwrap().baseq as f64 - 33.0) / 10.0);
+                                    let q2 = 0.1_f64.powf((frag_elem.baseq as f64 - 33.0) / 10.0);
+                                    let w1 = q1 * q2 + (1.0 - q1) * (1.0 - q2);
+                                    let w2 = q1 * (1.0 - q2) + (1.0 - q1) * q2;
+                                    edge.w = [(w1 / w2).log10(), (w2 / w1).log10()];
+                                    self.edges.push(edge);
+                                }
                                 fragment.list.push(frag_elem);
                                 snp_offset += 1;
                                 snp_pos = self.snps[snp_offset].pos;
@@ -173,6 +205,18 @@ impl SNPFrag {
                                 frag_elem.base = b'-';
                                 frag_elem.baseq = 0;
                                 frag_elem.p = 2;
+                                if fragment.list.len() > 0 {
+                                    let mut edge = Edge::default();
+                                    edge.snp_idx = [fragment.list.last().unwrap().snp_idx, frag_elem.snp_idx];
+                                    edge.fragment_idx = fragment.fragment_idx;
+                                    edge.p = [fragment.list.last().unwrap().p, frag_elem.p];
+                                    let q1 = 0.1_f64.powf((fragment.list.last().unwrap().baseq as f64 - 33.0) / 10.0);
+                                    let q2 = 0.1_f64.powf((frag_elem.baseq as f64 - 33.0) / 10.0);
+                                    let w1 = q1 * q2 + (1.0 - q1) * (1.0 - q2);
+                                    let w2 = q1 * (1.0 - q2) + (1.0 - q1) * q2;
+                                    edge.w = [(w1 / w2).log10(), (w2 / w1).log10()];
+                                    self.edges.push(edge);
+                                }
                                 fragment.list.push(frag_elem);
                                 snp_offset += 1;
                                 snp_pos = self.snps[snp_offset].pos;
@@ -190,6 +234,11 @@ impl SNPFrag {
                 self.fragments.push(fragment);
             }
         }
+    }
+
+    fn optimization_using_maxcut(&mut self) {
+        // optimization using maxcut
+
     }
 }
 
