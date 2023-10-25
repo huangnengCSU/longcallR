@@ -487,6 +487,13 @@ impl BaseFreq {
         }
         (self.n, (self.n as f64) / (d as f64), d)
     }
+
+    pub fn get_two_major_alleles(&self) -> (char, u32, char, u32) {
+        let mut x: Vec<(char, u32)> = [('A', self.a), ('C', self.c), ('G', self.g), ('T', self.t)].iter().cloned().collect();
+        // sort by count: u32
+        x.sort_by(|a, b| b.1.cmp(&a.1));
+        (x[0].0, x[0].1, x[1].0, x[1].1)
+    }
 }
 
 #[derive(Default, Debug, Clone)]
