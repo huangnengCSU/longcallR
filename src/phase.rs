@@ -93,7 +93,7 @@ impl SNPFrag {
         }
     }
 
-    unsafe fn init_haplotypes(&mut self) {
+    pub unsafe fn init_haplotypes(&mut self) {
         // initialize haplotypes
         for i in 0..self.snps.len() {
             if drand48() < 0.5 {
@@ -316,79 +316,152 @@ impl SNPFrag {
         }
     }
 
-    pub fn optimization_using_maxcut(&self) {
+    pub fn optimization_using_maxcut(&mut self) {
         // optimization using maxcut
-
-        // Sort edges by weight in ascending order
-        let mut sorted_edges: Vec<&Edge> = self.edges.values().collect();
-        sorted_edges.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
-        // print all edges
-        for e in sorted_edges.iter() {
-            println!("{:?}", e);
-        }
-
-        // initial select the lowest weight edge
-        let mut s1: HashSet<usize> = HashSet::new();
-        let mut s2: HashSet<usize> = HashSet::new();
-        let mut allnodes: HashSet<usize> = HashSet::new();
-        for edge in self.edges.iter() {
-            allnodes.insert(edge.0[0]);
-            allnodes.insert(edge.0[1]);
-        }
-
-        s1.insert(sorted_edges[0].snp_idxes[0]);
-        s2.insert(sorted_edges[0].snp_idxes[1]);
-
-        // TODO: max iteration
-        // TODO: connected component
-
-        while s1.len() + s2.len() < allnodes.len() {
-            let union_s1_s2 = s1.union(&s2).cloned().collect();
-            let mut max_abs_weight: f64 = 0.0;
-            let mut max_weight_node: i32 = -1;
-            // Find the vertex maximizes the absolute difference probability
-            for node1 in allnodes.difference(&union_s1_s2) {
-                println!("{:?}", node1);
-                let mut s1_weight: f64 = 0.0;
-                let mut s2_weight: f64 = 0.0;
-
-                // calculate the sum of weight for all edges from node to set s1
-                for node2 in s1.iter() {
-                    if self.edges.contains_key(&[*node1, *node2]) {
-                        s1_weight += self.edges.get(&[*node1, *node2]).unwrap().w;
-                    } else if self.edges.contains_key(&[*node2, *node1]) {
-                        s1_weight += self.edges.get(&[*node2, *node1]).unwrap().w;
-                    }
-                }
-
-                // calculate the sum of weight for all edges from node to set s2
-                for node2 in s2.iter() {
-                    if self.edges.contains_key(&[*node1, *node2]) {
-                        s2_weight += self.edges.get(&[*node1, *node2]).unwrap().w;
-                    } else if self.edges.contains_key(&[*node2, *node1]) {
-                        s2_weight += self.edges.get(&[*node2, *node1]).unwrap().w;
-                    }
-                }
-
-                // maximum value
-                if (s1_weight - s2_weight).abs() > max_abs_weight.abs() {
-                    max_abs_weight = s1_weight - s2_weight;
-                    max_weight_node = *node1 as i32;
-                }
+        let mut MAX_ITER = 3;
+        while MAX_ITER > 0 {
+            MAX_ITER -= 1;
+            println!("haplotype: {:?}", self.haplotype);
+            let mut haplotype_weights: Vec<Edge> = Vec::new();
+            let mut nodeset: HashSet<usize> = HashSet::new(); // all SNP nodes
+            let mut sum_hap_wts = 0.0;
+            for edge in self.edges.iter() {
+                let mut te = edge.1.clone();
+                nodeset.insert(te.snp_idxes[0]);
+                nodeset.insert(te.snp_idxes[1]);
+                // Haplotype weight = \delta_{i}\delta_{j}W_{ij}, \delta_{i} (\delta_{j}) is haplotype of node i (j), W_{ij} is the weight of edge ij.
+                te.w = te.w * self.haplotype[te.snp_idxes[0]] as f64 * self.haplotype[te.snp_idxes[1]] as f64;
+                sum_hap_wts += te.w;
+                haplotype_weights.push(te);
             }
-
-            // TODO: if max_weight_node is None
-            if max_weight_node == -1 {
+            // Sort haplotype weights in ascending order to get the lowest value
+            haplotype_weights.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
+            if haplotype_weights.first().unwrap().w >= 0.0 {
+                println!("All edges have positive haplotype weights. Phasing is done. Haplotype = {:?}", self.haplotype);
                 break;
             }
+            let mut S1: HashSet<usize> = HashSet::new();    // whole S1
+            let mut S2: HashSet<usize> = HashSet::new();    // whole S2
+            let mut s1: HashSet<usize> = HashSet::new();    // s1 in current connected component
+            let mut s2: HashSet<usize> = HashSet::new();    // s2 in current connected component
+            // initial select the lowest weight edge
+            s1.insert(haplotype_weights[0].snp_idxes[0]);
+            s2.insert(haplotype_weights[0].snp_idxes[1]);
 
-            if max_abs_weight > 0.0 {
-                s1.insert(max_weight_node as usize);
-                println!("{:?} move to s1 {:?}", max_weight_node as usize, s1);
-            } else {
-                s2.insert(max_weight_node as usize);
-                println!("{:?} move to s2 {:?}", max_weight_node as usize, s2);
+            while s1.len() + s2.len() < nodeset.len() {
+                let union_s1_s2 = s1.union(&s2).cloned().collect();
+                let mut max_abs_weight: f64 = 0.0;
+                let mut max_weight_node: i32 = -1;
+                // Find the vertex maximizes the haplotype weights
+                for cand_node in nodeset.difference(&union_s1_s2) {
+                    // candidate node is from V-(s1+s2)
+                    let mut s1_weights: f64 = 0.0;
+                    let mut s2_weights: f64 = 0.0;
+
+                    // calculate the sum of weight for all edges from cand_node to set s1
+                    for s1_node in s1.iter() {
+                        if self.edges.contains_key(&[*cand_node, *s1_node]) {
+                            let tn = self.edges.get(&[*cand_node, *s1_node]).unwrap();
+                            s1_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
+                        } else if self.edges.contains_key(&[*s1_node, *cand_node]) {
+                            let tn = self.edges.get(&[*s1_node, *cand_node]).unwrap();
+                            s1_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
+                        }
+                    }
+
+                    // calculate the sum of weight for all edges from cand_node to set s2
+                    for s2_node in s2.iter() {
+                        if self.edges.contains_key(&[*cand_node, *s2_node]) {
+                            let tn = self.edges.get(&[*cand_node, *s2_node]).unwrap();
+                            s2_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
+                        } else if self.edges.contains_key(&[*s2_node, *cand_node]) {
+                            let tn = self.edges.get(&[*s2_node, *cand_node]).unwrap();
+                            s2_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
+                        }
+                    }
+
+                    // println!("s1_weights = {:?}", s1_weights);
+                    // println!("s2_weights = {:?}", s2_weights);
+
+                    // maximum value
+                    if (s1_weights - s2_weights).abs() > max_abs_weight.abs() {
+                        max_abs_weight = s1_weights - s2_weights;
+                        max_weight_node = *cand_node as i32;
+                    }
+                }
+
+                // disconnected component
+                if max_abs_weight.abs() == 0.0 && max_weight_node == -1 {
+                    // remove s1 and s2 nodes from nodeset and re-init s1 and s2 for next connected component
+                    for node in s1.union(&s2) {
+                        nodeset.remove(node);
+                    }
+                    // change the weight of processed edges to INF to avoid been selected in next connected component
+                    for edge in haplotype_weights.iter_mut() {
+                        if !nodeset.contains(&edge.snp_idxes[0]) || !nodeset.contains(&edge.snp_idxes[1]) {
+                            edge.w = f64::INFINITY;
+                        }
+                    }
+
+                    haplotype_weights.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
+                    if haplotype_weights.first().unwrap().w >= 0.0 {
+                        break;
+                    }
+
+                    // clear s1/s2 for current connected component and add the edge with the lowest haplotype weight of next connected component to s1/s2
+                    println!("Clear s1 and s2 for next connected component");
+                    println!("Current component s1 = {:?}", s1);
+                    println!("Current component s2 = {:?}", s2);
+                    for node in s1.iter() {
+                        S1.insert(*node);
+                    }
+                    for node in s2.iter() {
+                        S2.insert(*node);
+                    }
+                    s1.clear();
+                    s2.clear();
+                    s1.insert(haplotype_weights[0].snp_idxes[0]);
+                    s2.insert(haplotype_weights[0].snp_idxes[1]);
+                    continue;
+                }
+
+                if max_abs_weight > 0.0 {
+                    s1.insert(max_weight_node as usize);
+                    // println!("{:?} move to s1 {:?}", max_weight_node as usize, s1);
+                } else {
+                    s2.insert(max_weight_node as usize);
+                    // println!("{:?} move to s2 {:?}", max_weight_node as usize, s2);
+                }
             }
+            println!("Current component s1 = {:?}", s1);
+            println!("Current component s2 = {:?}", s2);
+            for node in s1.iter() {
+                S1.insert(*node);
+            }
+            for node in s2.iter() {
+                S2.insert(*node);
+            }
+
+            // check sum of haplotype weight increase
+            let mut t_haplotype = self.haplotype.clone();
+            for i in S1.iter() {
+                if t_haplotype[*i] == 1 {
+                    t_haplotype[*i] = -1;
+                } else {
+                    t_haplotype[*i] = 1;
+                }
+            }
+            let mut t_sum_hap_wts = 0.0;
+            for edge in self.edges.iter() {
+                let mut te = edge.1.clone();
+                te.w = te.w * t_haplotype[te.snp_idxes[0]] as f64 * t_haplotype[te.snp_idxes[1]] as f64;
+                t_sum_hap_wts += te.w;
+            }
+            println!("latest haplotype weight: {:?}, previous haplotype weight: {:?}", t_sum_hap_wts, sum_hap_wts);
+            if t_sum_hap_wts > sum_hap_wts {
+                self.haplotype = t_haplotype;
+            }
+            println!("haplotype: {:?}", self.haplotype);
         }
     }
 }
