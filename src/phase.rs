@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
@@ -316,8 +316,80 @@ impl SNPFrag {
         }
     }
 
-    fn optimization_using_maxcut(&mut self) {
+    pub fn optimization_using_maxcut(&self) {
         // optimization using maxcut
+
+        // Sort edges by weight in ascending order
+        let mut sorted_edges: Vec<&Edge> = self.edges.values().collect();
+        sorted_edges.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
+        // print all edges
+        for e in sorted_edges.iter() {
+            println!("{:?}", e);
+        }
+
+        // initial select the lowest weight edge
+        let mut s1: HashSet<usize> = HashSet::new();
+        let mut s2: HashSet<usize> = HashSet::new();
+        let mut allnodes: HashSet<usize> = HashSet::new();
+        for edge in self.edges.iter() {
+            allnodes.insert(edge.0[0]);
+            allnodes.insert(edge.0[1]);
+        }
+
+        s1.insert(sorted_edges[0].snp_idxes[0]);
+        s2.insert(sorted_edges[0].snp_idxes[1]);
+
+        // TODO: max iteration
+        // TODO: connected component
+
+        while s1.len() + s2.len() < allnodes.len() {
+            let union_s1_s2 = s1.union(&s2).cloned().collect();
+            let mut max_abs_weight: f64 = 0.0;
+            let mut max_weight_node: i32 = -1;
+            // Find the vertex maximizes the absolute difference probability
+            for node1 in allnodes.difference(&union_s1_s2) {
+                println!("{:?}", node1);
+                let mut s1_weight: f64 = 0.0;
+                let mut s2_weight: f64 = 0.0;
+
+                // calculate the sum of weight for all edges from node to set s1
+                for node2 in s1.iter() {
+                    if self.edges.contains_key(&[*node1, *node2]) {
+                        s1_weight += self.edges.get(&[*node1, *node2]).unwrap().w;
+                    } else if self.edges.contains_key(&[*node2, *node1]) {
+                        s1_weight += self.edges.get(&[*node2, *node1]).unwrap().w;
+                    }
+                }
+
+                // calculate the sum of weight for all edges from node to set s2
+                for node2 in s2.iter() {
+                    if self.edges.contains_key(&[*node1, *node2]) {
+                        s2_weight += self.edges.get(&[*node1, *node2]).unwrap().w;
+                    } else if self.edges.contains_key(&[*node2, *node1]) {
+                        s2_weight += self.edges.get(&[*node2, *node1]).unwrap().w;
+                    }
+                }
+
+                // maximum value
+                if (s1_weight - s2_weight).abs() > max_abs_weight.abs() {
+                    max_abs_weight = s1_weight - s2_weight;
+                    max_weight_node = *node1 as i32;
+                }
+            }
+
+            // TODO: if max_weight_node is None
+            if max_weight_node == -1 {
+                break;
+            }
+
+            if max_abs_weight > 0.0 {
+                s1.insert(max_weight_node as usize);
+                println!("{:?} move to s1 {:?}", max_weight_node as usize, s1);
+            } else {
+                s2.insert(max_weight_node as usize);
+                println!("{:?} move to s2 {:?}", max_weight_node as usize, s2);
+            }
+        }
     }
 }
 
