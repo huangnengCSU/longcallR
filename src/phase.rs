@@ -1,4 +1,8 @@
+use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::format;
+use std::fs::File;
+use std::io::Write;
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
@@ -6,16 +10,20 @@ use rust_htslib::htslib::drand48;
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
 use crate::base_matrix::load_reference;
+use crate::vcf::VCFRecord;
 
 
 #[derive(Debug, Clone, Default)]
 pub struct CandidateSNP {
+    chromosome: Vec<u8>,
     pos: i64,
     // position on the reference, 0-based
     alleles: [char; 2],
     // major and minor alleles
     allele_freqs: [f32; 2],
     // major and minor allele frequencies
+    reference: char,
+    depth: u32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -89,10 +97,13 @@ impl SNPFrag {
             if allele2_freq > min_allele_freq {
                 // candidate SNP
                 let mut candidate_snp = CandidateSNP::default();
+                candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
                 candidate_snp.pos = position as i64;
                 // candidate_snp.ref_base = allele1 as u8;
                 candidate_snp.alleles = [allele1, allele2];
                 candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
+                candidate_snp.reference = bf.ref_base;
+                candidate_snp.depth = depth;
                 self.snps.push(candidate_snp);
             }
             position += 1;
@@ -473,11 +484,54 @@ impl SNPFrag {
             println!("haplotype: {:?}", self.haplotype);
         }
     }
+
+    pub fn output_vcf(&self) -> Vec<VCFRecord> {
+        let mut records: Vec<VCFRecord> = Vec::new();
+        assert_eq!(self.haplotype.len(), self.snps.len());
+        for i in 0..self.haplotype.len() {
+            let snp = &self.snps[i];
+            let hp = self.haplotype[i];
+            let mut rd: VCFRecord = VCFRecord::default();
+            rd.chromosome = snp.chromosome.clone();
+            rd.position = snp.pos as u64;
+            rd.reference = vec![snp.reference as u8];
+            rd.id = vec!['.' as u8];
+            if snp.alleles[0] == snp.reference {
+                rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[1]).abs() / 0.5);
+                if hp == -1 {
+                    rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[1]);
+                } else {
+                    rd.genotype = format!("{}:{}:{}:{}", "1|0", 10.0, snp.depth, snp.allele_freqs[1]);
+                }
+            } else if snp.alleles[1] == snp.reference {
+                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
+                if hp == -1 {
+                    rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[0]);
+                } else {
+                    rd.genotype = format!("{}:{}:{}:{}", "1|0", 10.0, snp.depth, snp.allele_freqs[0]);
+                }
+            } else {
+                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                let q1 = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
+                let q2 = -10.0 * f32::log10((0.5 - snp.allele_freqs[1]).abs() / 0.5);
+                if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                rd.genotype = format!("{}:{}:{}:{},{}", "1|2", 10.0, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+            }
+
+            rd.filter = "PASS".to_string().into_bytes();
+            rd.info = ".".to_string().into_bytes();
+            rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+            records.push(rd);
+        }
+        return records;
+    }
 }
 
-pub fn multithread_phase(bam_file: String, ref_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
+pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
-    // let bam_records_queue = Mutex::new(VecDeque::new());
+    let vcf_records_queue = Mutex::new(VecDeque::new());
     let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
     // let header = bam::Header::from_template(bam.header());
     // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
@@ -500,7 +554,42 @@ pub fn multithread_phase(bam_file: String, ref_file: String, thread_size: usize,
             snpfrag.get_fragments(&bam_file, &reg);
             unsafe { snpfrag.init_haplotypes(); }
             snpfrag.optimization_using_maxcut();
+            let vcf_records = snpfrag.output_vcf();
+            {
+                let mut queue = vcf_records_queue.lock().unwrap();
+                for rd in vcf_records.iter() {
+                    queue.push_back(rd.clone());
+                }
+            }
         });
     });
+
+    let mut vf = File::create(vcf_file).unwrap();
+    for rd in vcf_records_queue.lock().unwrap().iter() {
+        if rd.alternative.len() == 1 {
+            vf.write(format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
+                             rd.position,
+                             std::str::from_utf8(&rd.id).unwrap(),
+                             std::str::from_utf8(&rd.reference).unwrap(),
+                             std::str::from_utf8(&rd.alternative[0]).unwrap(),
+                             rd.qual,
+                             std::str::from_utf8(&rd.filter).unwrap(),
+                             std::str::from_utf8(&rd.info).unwrap(),
+                             std::str::from_utf8(&rd.format).unwrap(),
+                             rd.genotype).as_bytes()).unwrap();
+        } else if rd.alternative.len() == 2 {
+            vf.write(format!("{}\t{}\t{}\t{},{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
+                             rd.position,
+                             std::str::from_utf8(&rd.id).unwrap(),
+                             std::str::from_utf8(&rd.reference).unwrap(),
+                             std::str::from_utf8(&rd.alternative[0]).unwrap(),
+                             std::str::from_utf8(&rd.alternative[1]).unwrap(),
+                             rd.qual,
+                             std::str::from_utf8(&rd.filter).unwrap(),
+                             std::str::from_utf8(&rd.info).unwrap(),
+                             std::str::from_utf8(&rd.format).unwrap(),
+                             rd.genotype).as_bytes()).unwrap();
+        }
+    }
 }
 
