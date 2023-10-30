@@ -1,8 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 use rust_htslib::htslib::drand48;
+use std::sync::{mpsc, Arc, Mutex, Condvar};
+use rayon::prelude::*;
+use crate::base_matrix::load_reference;
+
 
 #[derive(Debug, Clone, Default)]
 pub struct CandidateSNP {
@@ -57,6 +61,8 @@ pub struct SNPFrag {
     // multiple fragments
     pub haplotype: Vec<i32>,
     // hap1. hap2 is bitwised complement of hap1
+    pub phased: bool,
+    // haplotype is phased or not
     pub edges: HashMap<[usize; 2], Edge>,
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
 }
@@ -334,8 +340,10 @@ impl SNPFrag {
                 sum_hap_wts += te.w;
                 haplotype_weights.push(te);
             }
+            if haplotype_weights.len() == 0 { break; }
             // Sort haplotype weights in ascending order to get the lowest value
             haplotype_weights.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
+            // TODO: select k lowest value for calculation.
             if haplotype_weights.first().unwrap().w >= 0.0 {
                 println!("All edges have positive haplotype weights. Phasing is done. Haplotype = {:?}", self.haplotype);
                 break;
@@ -460,9 +468,39 @@ impl SNPFrag {
             println!("latest haplotype weight: {:?}, previous haplotype weight: {:?}", t_sum_hap_wts, sum_hap_wts);
             if t_sum_hap_wts > sum_hap_wts {
                 self.haplotype = t_haplotype;
+                self.phased = true;
             }
             println!("haplotype: {:?}", self.haplotype);
         }
     }
+}
+
+pub fn multithread_phase(bam_file: String, ref_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
+    // let bam_records_queue = Mutex::new(VecDeque::new());
+    let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
+    // let header = bam::Header::from_template(bam.header());
+    // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
+    let ref_seqs = load_reference(ref_file);
+
+    // multiplethreads for low coverage regions
+    pool.install(|| {
+        isolated_regions.par_iter().for_each(|reg| {
+            println!("Start {:?}", reg);
+            let mut profile = Profile::default();
+            let mut readnames: Vec<String> = Vec::new();
+            profile.init_with_pileup(&bam_file.as_str(), &reg);
+            profile.append_reference(&ref_seqs);
+            let mut snpfrag = SNPFrag::default();
+            snpfrag.get_candidate_snps(&profile, 0.3, 10);
+            if snpfrag.snps.len() == 0 { return; }
+            for snp in snpfrag.snps.iter() {
+                println!("snp: {:?}", snp);
+            }
+            snpfrag.get_fragments(&bam_file, &reg);
+            unsafe { snpfrag.init_haplotypes(); }
+            snpfrag.optimization_using_maxcut();
+        });
+    });
 }
 
