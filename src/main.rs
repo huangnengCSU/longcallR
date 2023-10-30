@@ -8,6 +8,8 @@ mod pileup2matrix;
 mod util;
 mod profile;
 mod runt;
+mod phase;
+mod vcf;
 
 // extern crate bio;
 use clap::Parser;
@@ -30,6 +32,7 @@ use std::process::exit;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use crate::profile::{*};
+use crate::phase::{*};
 
 fn main2() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
@@ -366,7 +369,7 @@ struct Args {
     threads: usize,
 }
 
-fn main() {
+fn main10() {
     let arg = Args::parse();
     let bam_path = arg.bam_path.as_str();
     let out_bam = arg.output.as_str();
@@ -396,5 +399,45 @@ fn main() {
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads);
         multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
+    }
+}
+
+fn main() {
+    let arg = Args::parse();
+    let bam_path = arg.bam_path.as_str();
+    let out_bam = arg.output.as_str();
+    let ref_path = arg.ref_path.as_str();
+    let input_region = arg.region;
+    let threads = arg.threads;
+    if input_region.is_some() {
+        let region = Region::new(input_region.unwrap());
+        let mut profile = Profile::default();
+        let mut readnames: Vec<String> = Vec::new();
+        let ref_seqs = read_references(ref_path);
+        profile.init_with_pileup(bam_path, &region);
+        profile.append_reference(&ref_seqs);
+        let mut snpfrag = SNPFrag::default();
+        snpfrag.get_candidate_snps(&profile, 0.3, 10);
+        for snp in snpfrag.snps.iter() {
+            println!("snp: {:?}", snp);
+        }
+        snpfrag.get_fragments(bam_path, &region);
+        // for elem in snpfrag.fragments.iter() {
+        //     println!("fragment: {:?}", elem);
+        // }
+
+        let mut v: Vec<_> = snpfrag.edges.iter().collect();
+        v.sort_by(|x, y| x.0[0].cmp(&y.0[0]));
+        for edge in v.iter() {
+            println!("edge: {:?}", edge);
+            // for idx in edge.1.frag_idxes.iter() {
+            //     println!("fragment: {:?}", snpfrag.fragments[*idx]);
+            // }
+        }
+        unsafe { snpfrag.init_haplotypes(); }
+        snpfrag.optimization_using_maxcut();
+    } else {
+        let regions = multithread_produce3(bam_path.to_string().clone(), threads);
+        multithread_phase(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
     }
 }
