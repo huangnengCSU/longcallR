@@ -570,7 +570,7 @@ pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, t
     for ctg in ref_seqs.keys() {
         let chromosome = ctg.clone();
         let chromosome_len = ref_seqs.get(ctg).unwrap().len();
-        vf.write(format!("##contig=<ID={},length=>{}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
+        vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
     }
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
