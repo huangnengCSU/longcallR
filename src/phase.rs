@@ -565,6 +565,18 @@ pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, t
     });
 
     let mut vf = File::create(vcf_file).unwrap();
+    vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
+    for ctg in ref_seqs.keys() {
+        let chromosome = ctg.clone();
+        let chromosome_len = ref_seqs.get(ctg).unwrap().len();
+        vf.write(format!("##contig=<ID={},length=>{}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
+    }
+    vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
+    vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
     for rd in vcf_records_queue.lock().unwrap().iter() {
         if rd.alternative.len() == 1 {
             vf.write(format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
