@@ -5,7 +5,7 @@ pub struct VCFRecord {
     pub id: Vec<u8>,
     pub reference: Vec<u8>,
     pub alternative: Vec<Vec<u8>>,
-    pub qual: f32,
+    pub qual: i32,
     pub filter: Vec<u8>,
     pub info: Vec<u8>,
     pub format: Vec<u8>,

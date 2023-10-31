@@ -1,7 +1,5 @@
-use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt::format;
-use std::fs;
+use std::{cmp, fs};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
@@ -499,8 +497,7 @@ impl SNPFrag {
             rd.id = vec!['.' as u8];
             if snp.alleles[0] == snp.reference {
                 rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                // TODO: SNP quality should be fixed
-                rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[1]).abs() / 0.5);
+                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
                 // TODO: genotype quality should be fixed
                 if hp == -1 {
                     rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[1]);
@@ -509,7 +506,8 @@ impl SNPFrag {
                 }
             } else if snp.alleles[1] == snp.reference {
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
+                // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
+                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
                 if hp == -1 {
                     rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[0]);
                 } else {
@@ -517,9 +515,10 @@ impl SNPFrag {
                 }
             } else {
                 rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                let q1 = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
-                let q2 = -10.0 * f32::log10((0.5 - snp.allele_freqs[1]).abs() / 0.5);
-                if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                rd.qual = cmp::min(q1, q2);
                 rd.genotype = format!("{}:{}:{}:{},{}", "1|2", 10.0, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
             }
 
