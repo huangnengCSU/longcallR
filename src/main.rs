@@ -438,6 +438,7 @@ fn main() {
         snpfrag.optimization_using_maxcut();
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads);
+        println!("{:?}", regions);
         multithread_phase(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
     }
 }
