@@ -16,5 +16,5 @@ ndarray = "0.15.0"
 rayon = "1.8"
 
 [profile.release]
-#debug = true
+debug = true
 opt-level = 3
