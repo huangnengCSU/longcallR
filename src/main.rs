@@ -341,7 +341,7 @@ fn main8() {
     let bam_path = "wtc11_ont_grch38.chr22.bam";
     let out_bam = "test_threads.bam";
     let ref_path = "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.chr22.fna";
-    let regions = multithread_produce3(bam_path.to_string().clone(), 4);
+    let regions = multithread_produce3(bam_path.to_string().clone(), 4, None);
     multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), 4, regions);
 }
 
@@ -363,6 +363,10 @@ struct Args {
     /// Region to realign (Optional). Format: chr:start-end, left-closed, right-open.
     #[arg(short = 'r', long)]
     region: Option<String>,
+
+    /// Contigs to be processed. Example: -x chr1 chr2 chr3
+    #[arg(short = 'x', long, num_args(0..))]
+    contigs: Option<Vec<String>>,
 
     /// Number of threads, default 1
     #[arg(short = 't', long, default_value_t = 1)]
@@ -397,7 +401,7 @@ fn main10() {
         let header = get_bam_header(bam_path);
         write_bam(out_bam, &parsed_reads, &header);
     } else {
-        let regions = multithread_produce3(bam_path.to_string().clone(), threads);
+        let regions = multithread_produce3(bam_path.to_string().clone(), threads, None);
         multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
     }
 }
@@ -405,9 +409,10 @@ fn main10() {
 fn main() {
     let arg = Args::parse();
     let bam_path = arg.bam_path.as_str();
-    let out_bam = arg.output.as_str();
+    let output_file = arg.output.as_str();
     let ref_path = arg.ref_path.as_str();
     let input_region = arg.region;
+    let input_contigs = arg.contigs;
     let threads = arg.threads;
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
@@ -437,8 +442,7 @@ fn main() {
         unsafe { snpfrag.init_haplotypes(); }
         snpfrag.optimization_using_maxcut();
     } else {
-        let regions = multithread_produce3(bam_path.to_string().clone(), threads);
-        println!("{:?}", regions);
-        multithread_phase(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
+        let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
+        multithread_phase(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
     }
 }
