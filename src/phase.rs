@@ -493,7 +493,7 @@ impl SNPFrag {
             let hp = self.haplotype[i];
             let mut rd: VCFRecord = VCFRecord::default();
             rd.chromosome = snp.chromosome.clone();
-            rd.position = snp.pos as u64;
+            rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
             rd.reference = vec![snp.reference as u8];
             rd.id = vec!['.' as u8];
             if snp.alleles[0] == snp.reference {
