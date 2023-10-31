@@ -1,12 +1,13 @@
 use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::format;
+use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
-use rust_htslib::htslib::drand48;
+use rust_htslib::htslib::{drand48};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
 use crate::base_matrix::load_reference;
@@ -531,13 +532,30 @@ impl SNPFrag {
     }
 }
 
+fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
+    let mut contig_lengths: Vec<(String, u32)> = Vec::new();
+    let file = File::open(fai_path).unwrap();
+    let reader = BufReader::new(file);
+    for r in reader.lines() {
+        let line = r.unwrap().clone();
+        let parts: Vec<&str> = line.split('\t').collect();
+        contig_lengths.push((parts[0].clone().to_string(), parts[1].clone().parse().unwrap()));
+    }
+    return contig_lengths;
+}
+
 pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
     // let header = bam::Header::from_template(bam.header());
     // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
-    let ref_seqs = load_reference(ref_file);
+    let ref_seqs = load_reference(ref_file.clone());
+    let fai_path = ref_file + ".fai";
+    if fs::metadata(&fai_path).is_err() {
+        panic!("Reference index file .fai does not exist.");
+    }
+    let contig_lengths = parse_fai(fai_path.as_str());
 
     // multiplethreads for low coverage regions
     pool.install(|| {
@@ -569,10 +587,9 @@ pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, t
     let mut vf = File::create(vcf_file).unwrap();
     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
-    // TODO: may be sort the contigs
-    for ctg in ref_seqs.keys() {
-        let chromosome = ctg.clone();
-        let chromosome_len = ref_seqs.get(ctg).unwrap().len();
+    for ctglen in contig_lengths.iter() {
+        let chromosome = ctglen.0.clone();
+        let chromosome_len = ctglen.1.clone();
         vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
     }
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
