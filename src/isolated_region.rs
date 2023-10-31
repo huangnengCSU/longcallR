@@ -3,7 +3,6 @@ use rust_htslib::{bam, bam::Read};
 
 pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) -> Vec<Region> {
     // Output the region of each isolated block: 1-based, left-closed, right-open
-    println!("chr:{:?}", chr);
     let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
     let header = bam.header().clone();
     if chr.is_some() {
@@ -83,6 +82,6 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
         };
         isolated_regions.push(region);
     }
-
+    println!("chr:{:?}", chr);
     return isolated_regions;
 }
