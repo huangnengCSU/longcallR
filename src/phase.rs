@@ -498,7 +498,9 @@ impl SNPFrag {
             rd.id = vec!['.' as u8];
             if snp.alleles[0] == snp.reference {
                 rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                // TODO: SNP quality should be fixed
                 rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[1]).abs() / 0.5);
+                // TODO: genotype quality should be fixed
                 if hp == -1 {
                     rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[1]);
                 } else {
@@ -567,6 +569,7 @@ pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, t
     let mut vf = File::create(vcf_file).unwrap();
     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
+    // TODO: may be sort the contigs
     for ctg in ref_seqs.keys() {
         let chromosome = ctg.clone();
         let chromosome_len = ref_seqs.get(ctg).unwrap().len();
