@@ -490,6 +490,13 @@ impl SNPFrag {
         for i in 0..self.haplotype.len() {
             let snp = &self.snps[i];
             let hp = self.haplotype[i];
+            let mut phase_score = 0;
+            // use \delta_{i}\delta_{j}W_{ij} as phased score
+            for edge in self.edges.iter() {
+                if edge.0[0] == i || edge.0[1] == i {
+                    phase_score += (edge.1.w as i32) * self.haplotype[edge.0[0]] * self.haplotype[edge.0[1]];
+                }
+            }
             let mut rd: VCFRecord = VCFRecord::default();
             rd.chromosome = snp.chromosome.clone();
             rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
@@ -498,20 +505,19 @@ impl SNPFrag {
             if snp.alleles[0] == snp.reference {
                 rd.alternative = vec![vec![snp.alleles[1] as u8]];
                 rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                // TODO: genotype quality should be fixed
                 if hp == -1 {
-                    rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[1]);
+                    rd.genotype = format!("{}:{}:{}:{}:{}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
                 } else {
-                    rd.genotype = format!("{}:{}:{}:{}", "1|0", 10.0, snp.depth, snp.allele_freqs[1]);
+                    rd.genotype = format!("{}:{}:{}:{}:{}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
                 }
             } else if snp.alleles[1] == snp.reference {
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
                 rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
                 if hp == -1 {
-                    rd.genotype = format!("{}:{}:{}:{}", "0|1", 10.0, snp.depth, snp.allele_freqs[0]);
+                    rd.genotype = format!("{}:{}:{}:{}:{}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
                 } else {
-                    rd.genotype = format!("{}:{}:{}:{}", "1|0", 10.0, snp.depth, snp.allele_freqs[0]);
+                    rd.genotype = format!("{}:{}:{}:{}:{}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
                 }
             } else {
                 rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
@@ -519,12 +525,12 @@ impl SNPFrag {
                 let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
                 // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
                 rd.qual = cmp::min(q1, q2);
-                rd.genotype = format!("{}:{}:{}:{},{}", "1|2", 10.0, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                rd.genotype = format!("{}:{}:{}:{},{}:{}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], phase_score);
             }
 
             rd.filter = "PASS".to_string().into_bytes();
             rd.info = ".".to_string().into_bytes();
-            rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+            rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
             records.push(rd);
         }
         return records;
@@ -595,6 +601,7 @@ pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, t
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=PQ,Number=1,Type=Integer,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
     vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
     for rd in vcf_records_queue.lock().unwrap().iter() {
         if rd.alternative.len() == 1 {
