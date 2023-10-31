@@ -3,6 +3,7 @@ use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
 use std::process;
 use std::collections::{VecDeque, HashMap};
+use clap::builder::Str;
 use threadpool::ThreadPool;
 use crate::bam_reader::Region;
 use crate::base_matrix::BaseMatrix;
@@ -190,14 +191,20 @@ pub fn multithread_produce2(bam_file: String, thread_size: usize, tx_isolated_re
     pool.join();
 }
 
-pub fn multithread_produce3(bam_file: String, thread_size: usize) -> Vec<Region> {
+pub fn multithread_produce3(bam_file: String, thread_size: usize, contigs: Option<Vec<String>>) -> Vec<Region> {
     let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
     let bam_header = bam.header().clone();
     let mut contig_names: VecDeque<String> = VecDeque::new();
-    for ctg in bam_header.target_names() {
-        contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
+    if contigs.is_some() {
+        for ctg in contigs.unwrap().iter() {
+            contig_names.push_back(ctg.clone());
+        }
+    } else {
+        for ctg in bam_header.target_names() {
+            contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
+        }
     }
     pool.install(|| {
         contig_names.par_iter().for_each(|ctg| {
