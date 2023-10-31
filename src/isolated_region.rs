@@ -82,6 +82,5 @@ pub fn find_isolated_regions(bam_path: &str, min_depth: u32, chr: Option<&str>) 
         };
         isolated_regions.push(region);
     }
-    println!("chr:{:?}", chr);
     return isolated_regions;
 }
