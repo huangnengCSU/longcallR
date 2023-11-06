@@ -36,26 +36,28 @@ pub struct Edge {
 }
 
 #[derive(Debug, Clone, Default)]
-struct FragElem {
-    snp_idx: usize,
+pub struct FragElem {
+    pub snp_idx: usize,
     // index of candidate SNPs(SNPFrag.snps)
-    pos: i64,
+    pub pos: i64,
     // position on the reference, 0-based
-    base: char,
+    pub base: char,
     // base pair
-    baseq: u8,
+    pub baseq: u8,
     // base quality
-    p: i32,
+    pub p: i32,
     // haplotype of base on the alphabet {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered
+    pub prob: f64,
+    // probability of observe base
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Fragment {
-    fragment_idx: usize,
+    pub fragment_idx: usize,
     // index of multiple fragments(SNPFrag.fragments)
-    read_id: String,
+    pub read_id: String,
     // read name
-    list: Vec<FragElem>,
+    pub list: Vec<FragElem>,
     // single fragment
 }
 
@@ -72,6 +74,8 @@ pub struct SNPFrag {
     // haplotype is phased or not
     pub edges: HashMap<[usize; 2], Edge>,
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
+    pub haplotag: Vec<i32>,
+    // the haplotype assignment (hap1 or hap2) of each read.
 }
 
 impl SNPFrag {
@@ -116,6 +120,16 @@ impl SNPFrag {
                 self.haplotype.push(-1);
             } else {
                 self.haplotype.push(1);
+            }
+        }
+    }
+
+    pub unsafe fn init_assignment(&mut self) {
+        for i in 0..self.fragments.len() {
+            if drand48() < 0.5 {
+                self.haplotag.push(-1);
+            } else {
+                self.haplotag.push(1);
             }
         }
     }
@@ -181,6 +195,7 @@ impl SNPFrag {
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = seq[pos_on_query as usize] as char;
                                 frag_elem.baseq = record.qual()[pos_on_query as usize];
+                                frag_elem.prob = 10.0_f64.powf(-(frag_elem.baseq as f64) / 10.0);
                                 if frag_elem.base == alleles[0] {
                                     frag_elem.p = 1;    // reference allele
                                 } else if frag_elem.base == alleles[1] {
@@ -482,6 +497,102 @@ impl SNPFrag {
             }
             println!("haplotype: {:?}", self.haplotype);
         }
+    }
+
+    pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f32>) -> f64 {
+        // calculate P(sigma_k | delta)
+        // sigma_k: the assignment of read k, 1 or -1.
+        // delta: the haplotypes of the SNPs covered by read k, each haplotype is 1 or -1.
+        // ps: the allele of each base, 1,-1
+        // probs: the probability of observing base at each SNP for read k, related to the base quality.
+        let mut q1: f64 = 1.0;
+        let mut q2: f64 = 1.0;
+        let mut q3: f64 = 1.0;
+
+        for i in 0..delta.len() {
+            if sigma_k * delta[i] == ps[i] {
+                q1 = q1 * probs[i] as f64;
+            } else {
+                q1 = q1 * (1.0 - probs[i] as f64);
+            }
+        }
+
+        for i in 0..delta.len() {
+            if delta[i] == ps[i] {
+                q2 = q2 * probs[i] as f64;
+                q3 = q3 * (1.0 - probs[i] as f64)
+            } else {
+                q2 = q2 * (1.0 - probs[i] as f64);
+                q3 = q3 * probs[i] as f64;
+            }
+        }
+        return q1 / (q2 + q3);
+    }
+
+    pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f32>) -> f64 {
+        // calculate P(delta_i | sigma)
+        // delta_i: the haplotype of SNP i, 1 or -1.
+        // sigma: the assignments of the reads cover SNP i, each haplotype is 1 or -1.
+        // ps: the allele of each base, 1,-1
+        // probs: the probability of observing base at SNP i for each read, related to the base quality.
+
+        let mut q1: f64 = 1.0;
+        let mut q2: f64 = 1.0;
+        let mut q3: f64 = 1.0;
+
+        for i in 0..sigma.len() {
+            if delta_i * sigma[i] == ps[i] {
+                q1 = q1 * probs[i] as f64;
+            } else {
+                q1 = q1 * (1.0 - probs[i] as f64);
+            }
+        }
+
+        for i in 0..sigma.len() {
+            if sigma[i] == ps[i] {
+                q2 = q2 * probs[i] as f64;
+                q3 = q3 * (1.0 - probs[i] as f64);
+            } else {
+                q2 = q2 * (1.0 - probs[i] as f64);
+                q3 = q3 * probs[i] as f64;
+            }
+        }
+        return q1 / (q2 + q3);
+    }
+
+    pub fn cal_overall_probability(&self) -> f64 {
+        let mut logp = 0.0;
+        let mut iks: Vec<usize> = Vec::new();
+        for k in 0..self.fragments.len() {
+            for i in 0..self.fragments[k].list.len() {
+                if self.fragments[k].list[i].p != 0 {
+                    // covered by read k
+                    iks.push(i);
+                }
+            }
+            for i in iks.iter() {
+                // log10(q_ki(sigma_k * delta_i))
+                if self.haplotag[k] * self.haplotype[*i] == self.fragments[k].list[*i].p {
+                    logp += self.fragments[k].list[*i].prob.log10();
+                } else {
+                    logp += (1.0 - self.fragments[k].list[*i].prob).log10();
+                }
+            }
+        }
+        return logp;
+    }
+
+    pub fn cross_optimize(&mut self) {
+        // Iteration:
+        //     1. evaluate the assignment of each read based on the current SNP haplotype.
+        //     2. evaluate the SNP haplotype based on the read assignment.
+        // If P(sigma, delta) increase, repeat Iteration;
+        // Else break;
+
+        self.optimization_using_maxcut();   // get the initial SNP haplotype, assume most of SNP haplotype is correct.
+
+
+
     }
 
     pub fn output_vcf(&self) -> Vec<VCFRecord> {
