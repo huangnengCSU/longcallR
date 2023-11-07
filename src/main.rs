@@ -439,10 +439,15 @@ fn main() {
             //     println!("fragment: {:?}", snpfrag.fragments[*idx]);
             // }
         }
+        // unsafe { snpfrag.init_haplotypes(); }
+        // unsafe { snpfrag.init_assignment(); }
+        // snpfrag.optimization_using_maxcut();
         unsafe { snpfrag.init_haplotypes(); }
-        snpfrag.optimization_using_maxcut();
+        unsafe { snpfrag.init_assignment(); }
+        snpfrag.cross_optimize();
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
-        multithread_phase(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
+        // multithread_phase_maxcut(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
+        multithread_phase_haplotag(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
     }
 }

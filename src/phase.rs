@@ -68,6 +68,8 @@ pub struct SNPFrag {
     // candidate SNPs
     pub fragments: Vec<Fragment>,
     // multiple fragments
+    pub snp_cover_fragments: Vec<Vec<usize>>,
+    // Since each fragment cover different SNPs, so need to record each SNP is covered by which fragments.
     pub haplotype: Vec<i32>,
     // hap1. hap2 is bitwised complement of hap1
     pub phased: bool,
@@ -114,6 +116,7 @@ impl SNPFrag {
     }
 
     pub unsafe fn init_haplotypes(&mut self) {
+        self.haplotype.clear();
         // initialize haplotypes
         for i in 0..self.snps.len() {
             if drand48() < 0.5 {
@@ -125,6 +128,7 @@ impl SNPFrag {
     }
 
     pub unsafe fn init_assignment(&mut self) {
+        self.haplotag.clear();
         for i in 0..self.fragments.len() {
             if drand48() < 0.5 {
                 self.haplotag.push(-1);
@@ -138,6 +142,9 @@ impl SNPFrag {
         let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let mut record = Record::new();
+        for _ in 0..self.snps.len() {
+            self.snp_cover_fragments.push(Vec::new());
+        }
         while let Some(result) = bam_reader.read(&mut record) {
             if result.is_err() {
                 panic!("BAM parsing failed...");
@@ -341,6 +348,10 @@ impl SNPFrag {
                     }
                 }
             }
+            for snp in fragment.list.iter() {
+                // record each snp cover by which fragments
+                self.snp_cover_fragments[snp.snp_idx].push(fragment.fragment_idx);
+            }
             if fragment.list.len() > 0 {
                 self.fragments.push(fragment);
             }
@@ -495,87 +506,83 @@ impl SNPFrag {
                 self.haplotype = t_haplotype;
                 self.phased = true;
             }
+            println!("MaxCut optimization");
             println!("haplotype: {:?}", self.haplotype);
         }
     }
 
-    pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f32>) -> f64 {
+    pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
         // calculate P(sigma_k | delta)
         // sigma_k: the assignment of read k, 1 or -1.
         // delta: the haplotypes of the SNPs covered by read k, each haplotype is 1 or -1.
         // ps: the allele of each base, 1,-1
-        // probs: the probability of observing base at each SNP for read k, related to the base quality.
+        // probs: the probability of observing base at each SNP for read k, equals to 10^(-Q/10).
         let mut q1: f64 = 1.0;
         let mut q2: f64 = 1.0;
         let mut q3: f64 = 1.0;
 
         for i in 0..delta.len() {
             if sigma_k * delta[i] == ps[i] {
-                q1 = q1 * probs[i] as f64;
+                q1 = q1 * probs[i];
             } else {
-                q1 = q1 * (1.0 - probs[i] as f64);
+                q1 = q1 * (1.0 - probs[i]);
             }
         }
 
         for i in 0..delta.len() {
             if delta[i] == ps[i] {
-                q2 = q2 * probs[i] as f64;
-                q3 = q3 * (1.0 - probs[i] as f64)
+                q2 = q2 * probs[i];
+                q3 = q3 * (1.0 - probs[i])
             } else {
-                q2 = q2 * (1.0 - probs[i] as f64);
-                q3 = q3 * probs[i] as f64;
+                q2 = q2 * (1.0 - probs[i]);
+                q3 = q3 * probs[i];
             }
         }
         return q1 / (q2 + q3);
     }
 
-    pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f32>) -> f64 {
+    pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
         // calculate P(delta_i | sigma)
         // delta_i: the haplotype of SNP i, 1 or -1.
         // sigma: the assignments of the reads cover SNP i, each haplotype is 1 or -1.
         // ps: the allele of each base, 1,-1
-        // probs: the probability of observing base at SNP i for each read, related to the base quality.
+        // probs: the probability of observing base at SNP i for each read, equals to 10^(-Q/10).
 
         let mut q1: f64 = 1.0;
         let mut q2: f64 = 1.0;
         let mut q3: f64 = 1.0;
 
-        for i in 0..sigma.len() {
-            if delta_i * sigma[i] == ps[i] {
-                q1 = q1 * probs[i] as f64;
+        for k in 0..sigma.len() {
+            if delta_i * sigma[k] == ps[k] {
+                q1 = q1 * probs[k];
             } else {
-                q1 = q1 * (1.0 - probs[i] as f64);
+                q1 = q1 * (1.0 - probs[k]);
             }
         }
 
-        for i in 0..sigma.len() {
-            if sigma[i] == ps[i] {
-                q2 = q2 * probs[i] as f64;
-                q3 = q3 * (1.0 - probs[i] as f64);
+        for k in 0..sigma.len() {
+            if sigma[k] == ps[k] {
+                q2 = q2 * probs[k];
+                q3 = q3 * (1.0 - probs[k]);
             } else {
-                q2 = q2 * (1.0 - probs[i] as f64);
-                q3 = q3 * probs[i] as f64;
+                q2 = q2 * (1.0 - probs[k]);
+                q3 = q3 * probs[k];
             }
         }
         return q1 / (q2 + q3);
     }
 
-    pub fn cal_overall_probability(&self) -> f64 {
+    pub fn cal_overall_probability(snpfrag: &SNPFrag, sigma: &Vec<i32>, delta: &Vec<i32>) -> f64 {
         let mut logp = 0.0;
-        let mut iks: Vec<usize> = Vec::new();
-        for k in 0..self.fragments.len() {
-            for i in 0..self.fragments[k].list.len() {
-                if self.fragments[k].list[i].p != 0 {
-                    // covered by read k
-                    iks.push(i);
-                }
-            }
-            for i in iks.iter() {
-                // log10(q_ki(sigma_k * delta_i))
-                if self.haplotag[k] * self.haplotype[*i] == self.fragments[k].list[*i].p {
-                    logp += self.fragments[k].list[*i].prob.log10();
-                } else {
-                    logp += (1.0 - self.fragments[k].list[*i].prob).log10();
+        for k in 0..sigma.len() {
+            for fe in snpfrag.fragments[k].list.iter() {
+                if fe.p != 0 {
+                    let i = fe.snp_idx;
+                    if sigma[k] * delta[i] == fe.p {
+                        logp += fe.prob.log10();
+                    } else {
+                        logp += (1.0 - fe.prob).log10();
+                    }
                 }
             }
         }
@@ -589,10 +596,84 @@ impl SNPFrag {
         // If P(sigma, delta) increase, repeat Iteration;
         // Else break;
 
-        self.optimization_using_maxcut();   // get the initial SNP haplotype, assume most of SNP haplotype is correct.
+        // self.optimization_using_maxcut();   // get the initial SNP haplotype, assume most of SNP haplotype is correct.
 
+        let mut phasing_increase: bool = true;
+        let mut haplotag_increase: bool = true;
+        let mut num_iters = 0;
+        while phasing_increase | haplotag_increase {
+            // optimize sigma
+            let mut tmp_haplotag: Vec<i32> = Vec::new();
+            for k in 0..self.haplotag.len() {
+                let sigma_k = self.haplotag[k];
+                let mut delta: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for snp in self.fragments[k].list.iter() {
+                    if snp.p != 0 {
+                        ps.push(snp.p);
+                        probs.push(snp.prob);
+                        delta.push(self.haplotype[snp.snp_idx]);
+                    }
+                }
 
+                if SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs) < SNPFrag::cal_delta_sigma(sigma_k * (-1), &delta, &ps, &probs) {
+                    tmp_haplotag.push(sigma_k * (-1));  // flip sigma_k
+                } else {
+                    tmp_haplotag.push(sigma_k);
+                }
+            }
 
+            assert!(SNPFrag::cal_overall_probability(&self, &tmp_haplotag, &self.haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
+
+            if SNPFrag::cal_overall_probability(&self, &tmp_haplotag, &self.haplotype) > SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype) {
+                // new haplotag increases the probability P(sigma, delta)
+                self.haplotag = tmp_haplotag;
+            } else {
+                haplotag_increase = false;
+            }
+
+            // optimize delta
+            let mut tmp_haplotype: Vec<i32> = Vec::new();
+            for i in 0..self.haplotype.len() {
+                let delta_i = self.haplotype[i];
+                let mut sigma: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for k in self.snp_cover_fragments[i].iter() {
+                    // k is fragment index
+                    for fe in self.fragments[*k].list.iter() {
+                        if fe.snp_idx == i {
+                            // get the FragElem at SNP i
+                            if fe.p != 0 {
+                                ps.push(fe.p);
+                                probs.push(fe.prob);
+                                sigma.push(self.haplotag[*k]);
+                            }
+                        }
+                    }
+                }
+
+                if SNPFrag::cal_delta_sigma(delta_i, &sigma, &ps, &probs) < SNPFrag::cal_delta_sigma(delta_i * (-1), &sigma, &ps, &probs) {
+                    tmp_haplotype.push(delta_i * (-1));
+                } else {
+                    tmp_haplotype.push(delta_i);
+                }
+            }
+
+            assert!(SNPFrag::cal_overall_probability(&self, &self.haplotag, &tmp_haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
+
+            if SNPFrag::cal_overall_probability(&self, &self.haplotag, &tmp_haplotype) > SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype) {
+                // new haplotype increases the probability P(sigma, delta)
+                self.haplotype = tmp_haplotype;
+            } else {
+                phasing_increase = false;
+            }
+            num_iters += 1;
+        }
+        // println!("cross optimization iterations: {}", num_iters);
+        // println!("haplotype: {:?}", self.haplotype);
+        // println!("assignment: {:?}", self.haplotag);
     }
 
     pub fn output_vcf(&self) -> Vec<VCFRecord> {
@@ -660,7 +741,7 @@ fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
     return contig_lengths;
 }
 
-pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
+pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
@@ -690,6 +771,89 @@ pub fn multithread_phase(bam_file: String, ref_file: String, vcf_file: String, t
             snpfrag.get_fragments(&bam_file, &reg);
             unsafe { snpfrag.init_haplotypes(); }
             snpfrag.optimization_using_maxcut();
+            let vcf_records = snpfrag.output_vcf();
+            {
+                let mut queue = vcf_records_queue.lock().unwrap();
+                for rd in vcf_records.iter() {
+                    queue.push_back(rd.clone());
+                }
+            }
+        });
+    });
+
+    let mut vf = File::create(vcf_file).unwrap();
+    vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
+    for ctglen in contig_lengths.iter() {
+        let chromosome = ctglen.0.clone();
+        let chromosome_len = ctglen.1.clone();
+        vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
+    }
+    vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=PQ,Number=1,Type=Integer,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
+    vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
+    for rd in vcf_records_queue.lock().unwrap().iter() {
+        if rd.alternative.len() == 1 {
+            vf.write(format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
+                             rd.position,
+                             std::str::from_utf8(&rd.id).unwrap(),
+                             std::str::from_utf8(&rd.reference).unwrap(),
+                             std::str::from_utf8(&rd.alternative[0]).unwrap(),
+                             rd.qual,
+                             std::str::from_utf8(&rd.filter).unwrap(),
+                             std::str::from_utf8(&rd.info).unwrap(),
+                             std::str::from_utf8(&rd.format).unwrap(),
+                             rd.genotype).as_bytes()).unwrap();
+        } else if rd.alternative.len() == 2 {
+            vf.write(format!("{}\t{}\t{}\t{},{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
+                             rd.position,
+                             std::str::from_utf8(&rd.id).unwrap(),
+                             std::str::from_utf8(&rd.reference).unwrap(),
+                             std::str::from_utf8(&rd.alternative[0]).unwrap(),
+                             std::str::from_utf8(&rd.alternative[1]).unwrap(),
+                             rd.qual,
+                             std::str::from_utf8(&rd.filter).unwrap(),
+                             std::str::from_utf8(&rd.info).unwrap(),
+                             std::str::from_utf8(&rd.format).unwrap(),
+                             rd.genotype).as_bytes()).unwrap();
+        }
+    }
+}
+
+pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
+    let vcf_records_queue = Mutex::new(VecDeque::new());
+    let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
+    // let header = bam::Header::from_template(bam.header());
+    // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
+    let ref_seqs = load_reference(ref_file.clone());
+    let fai_path = ref_file + ".fai";
+    if fs::metadata(&fai_path).is_err() {
+        panic!("Reference index file .fai does not exist.");
+    }
+    let contig_lengths = parse_fai(fai_path.as_str());
+
+    // multiplethreads for low coverage regions
+    pool.install(|| {
+        isolated_regions.par_iter().for_each(|reg| {
+            println!("Start {:?}", reg);
+            let mut profile = Profile::default();
+            let mut readnames: Vec<String> = Vec::new();
+            profile.init_with_pileup(&bam_file.as_str(), &reg);
+            profile.append_reference(&ref_seqs);
+            let mut snpfrag = SNPFrag::default();
+            snpfrag.get_candidate_snps(&profile, 0.3, 10);
+            if snpfrag.snps.len() == 0 { return; }
+            for snp in snpfrag.snps.iter() {
+                println!("snp: {:?}", snp);
+            }
+            snpfrag.get_fragments(&bam_file, &reg);
+            unsafe { snpfrag.init_haplotypes(); }
+            unsafe { snpfrag.init_assignment(); }
+            snpfrag.cross_optimize();
             let vcf_records = snpfrag.output_vcf();
             {
                 let mut queue = vcf_records_queue.lock().unwrap();
