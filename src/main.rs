@@ -377,7 +377,8 @@ struct Args {
 fn main10() {
     let arg = Args::parse();
     let bam_path = arg.bam_path.as_str();
-    let out_bam = arg.output.as_str();
+    let out_bam = (arg.output.clone() + ".phased.bam").clone();
+    let out_vcf = (arg.output.clone() + ".vcf").clone();
     let ref_path = arg.ref_path.as_str();
     let input_region = arg.region;
     let threads = arg.threads;
@@ -400,17 +401,19 @@ fn main10() {
         profile.cal_intron_intervals();
         realign(&mut profile, &mut parsed_reads, &readnames);
         let header = get_bam_header(bam_path);
-        write_bam(out_bam, &parsed_reads, &header);
+        write_bam(out_bam.as_str(), &parsed_reads, &header);
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads, None);
-        multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.to_string().clone(), threads, regions);
+        multithread_work3(bam_path.to_string().clone(), ref_path.to_string().clone(), out_bam.clone(), threads, regions);
     }
 }
 
 fn main() {
     let arg = Args::parse();
     let bam_path = arg.bam_path.as_str();
-    let output_file = arg.output.as_str();
+    let out_bam = (arg.output.clone() + ".phased.bam").clone();
+    let out_vcf = (arg.output.clone() + ".vcf").clone();
+    // let output_file = arg.output.as_str();
     let ref_path = arg.ref_path.as_str();
     let input_region = arg.region;
     let input_contigs = arg.contigs;
@@ -532,6 +535,6 @@ fn main() {
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
         // multithread_phase_maxcut(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
-        multithread_phase_haplotag(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
+        multithread_phase_haplotag(bam_path.to_string().clone(), ref_path.to_string().clone(), out_vcf.clone(), out_bam.clone(), threads, regions);
     }
 }

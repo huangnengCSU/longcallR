@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
-use rust_htslib::{bam, bam::Read, bam::record::Record};
+use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
 use rust_htslib::htslib::{drand48};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
@@ -827,10 +827,11 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
     }
 }
 
-pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
+pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, phased_bam_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
-    let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
+    let read_haplotag_queue = Mutex::new(VecDeque::new());
+    // let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
     // let header = bam::Header::from_template(bam.header());
     // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
     let ref_seqs = load_reference(ref_file.clone());
@@ -860,6 +861,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
             let mut largest_prob = f64::NEG_INFINITY;
             let mut best_haplotype: Vec<i32> = Vec::new();
             let mut best_haplotag: Vec<i32> = Vec::new();
+            let mut read_assignments: HashMap<String, i32> = HashMap::new();
             if snpfrag.snps.len() < 10 {
                 // enumerate the haplotype, then optimize the assignment
                 let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
@@ -941,6 +943,36 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                 println!("best prob: {:?}", largest_prob);
                 println!("best haplotype: {:?}", best_haplotype);
             }
+
+            // assign each read to hp1/hp2/unphased
+            for k in 0..snpfrag.haplotag.len() {
+                let sigma_k = snpfrag.haplotag[k];
+                let mut delta: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for snp in snpfrag.fragments[k].list.iter() {
+                    if snp.p != 0 {
+                        ps.push(snp.p);
+                        probs.push(snp.prob);
+                        delta.push(snpfrag.haplotype[snp.snp_idx]);
+                    }
+                }
+                if SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs) / SNPFrag::cal_delta_sigma(sigma_k * (-1), &delta, &ps, &probs) > 2.0 {
+                    if sigma_k == 1 {
+                        read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 1);
+                    } else {
+                        read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 2);
+                    }
+                } else {
+                    read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 0);
+                }
+            }
+            {
+                let mut queue = read_haplotag_queue.lock().unwrap();
+                for a in read_assignments.iter() {
+                    queue.push_back((a.0.clone(), a.1.clone()));
+                }
+            }
             let vcf_records = snpfrag.output_vcf();
             {
                 let mut queue = vcf_records_queue.lock().unwrap();
@@ -990,6 +1022,29 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                              std::str::from_utf8(&rd.format).unwrap(),
                              rd.genotype).as_bytes()).unwrap();
         }
+    }
+
+    let mut read_assignments: HashMap<String, i32> = HashMap::new();
+    for rd in read_haplotag_queue.lock().unwrap().iter() {
+        read_assignments.insert(rd.0.clone(), rd.1.clone());
+    }
+
+    let mut bam_reader = bam::Reader::from_path(&bam_file).unwrap();
+    let header = bam::Header::from_template(&bam_reader.header());
+    let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
+    for r in bam_reader.records() {
+        let mut record = r.unwrap();
+        if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+            continue;
+        }
+        let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+        if read_assignments.contains_key(&qname) {
+            let asg = read_assignments.get(&qname).unwrap();
+            if *asg != 0 {
+                let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+            }
+        }
+        let _ = bam_writer.write(&record).unwrap();
     }
 }
 
