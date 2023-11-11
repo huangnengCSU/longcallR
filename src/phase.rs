@@ -73,12 +73,16 @@ pub struct SNPFrag {
     // Since each fragment cover different SNPs, so need to record each SNP is covered by which fragments.
     pub haplotype: Vec<i32>,
     // hap1. hap2 is bitwised complement of hap1
+    pub haplotype_probs: Vec<f64>,
+    // probability of the haplotype of each SNP.
     pub phased: bool,
     // haplotype is phased or not
     pub edges: HashMap<[usize; 2], Edge>,
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
     pub haplotag: Vec<i32>,
     // the haplotype assignment (hap1 or hap2) of each read.
+    pub haplotag_probs: Vec<f64>,
+    // probability of each read assignment.
 }
 
 impl SNPFrag {
@@ -539,7 +543,7 @@ impl SNPFrag {
                 q3 = q3 * probs[i];
             }
         }
-        return q1 / (q2 + q3);
+        return 10e-9_f64.max(q1 / (q2 + q3));
     }
 
     pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
@@ -568,6 +572,33 @@ impl SNPFrag {
             } else {
                 q2 = q2 * (1.0 - probs[k]);
                 q3 = q3 * probs[k];
+            }
+        }
+        return 10e-9_f64.max(q1 / (q2 + q3));
+    }
+
+    pub fn cal_delta_sigma_sum(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+        // Similar in cal_delta_sigma. Due to the numerical calculation, we replace the multiply of probabilities with the sum of the logarithms of the probabilities.
+
+        let mut q1: f64 = 0.0;
+        let mut q2: f64 = 0.0;
+        let mut q3: f64 = 0.0;
+
+        for k in 0..sigma.len() {
+            if delta_i * sigma[k] == ps[k] {
+                q1 = q1 + probs[k].log10();
+            } else {
+                q1 = q1 + (1.0 - probs[k]).log10();
+            }
+        }
+
+        for k in 0..sigma.len() {
+            if sigma[k] == ps[k] {
+                q2 = q2 + probs[k].log10();
+                q3 = q3 + (1.0 - probs[k]).log10();
+            } else {
+                q2 = q2 + (1.0 - probs[k]).log10();
+                q3 = q3 + probs[k].log10();
             }
         }
         return q1 / (q2 + q3);
@@ -702,18 +733,18 @@ impl SNPFrag {
                 rd.alternative = vec![vec![snp.alleles[1] as u8]];
                 rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
                 if hp == -1 {
-                    rd.genotype = format!("{}:{}:{}:{}:{}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
                 } else {
-                    rd.genotype = format!("{}:{}:{}:{}:{}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
                 }
             } else if snp.alleles[1] == snp.reference {
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
                 rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
                 if hp == -1 {
-                    rd.genotype = format!("{}:{}:{}:{}:{}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
                 } else {
-                    rd.genotype = format!("{}:{}:{}:{}:{}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
                 }
             } else {
                 rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
@@ -721,7 +752,72 @@ impl SNPFrag {
                 let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
                 // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
                 rd.qual = cmp::min(q1, q2);
-                rd.genotype = format!("{}:{}:{}:{},{}:{}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], phase_score);
+                rd.genotype = format!("{}:{}:{}:{},{:.2}:{:.2}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], phase_score);
+            }
+
+            rd.filter = "PASS".to_string().into_bytes();
+            rd.info = ".".to_string().into_bytes();
+            rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
+            records.push(rd);
+        }
+        return records;
+    }
+
+    pub fn output_vcf2(&self) -> Vec<VCFRecord> {
+        let mut records: Vec<VCFRecord> = Vec::new();
+        assert_eq!(self.haplotype.len(), self.snps.len());
+        for i in 0..self.haplotype.len() {
+            let snp = &self.snps[i];
+            let hp = self.haplotype[i];
+
+            let delta_i = self.haplotype[i];
+            let mut sigma: Vec<i32> = Vec::new();
+            let mut ps: Vec<i32> = Vec::new();
+            let mut probs: Vec<f64> = Vec::new();
+            for k in self.snp_cover_fragments[i].iter() {
+                for fe in self.fragments[*k].list.iter() {
+                    if fe.snp_idx == i {
+                        if fe.p != 0 {
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            sigma.push(self.haplotag[*k]);
+                        }
+                    }
+                }
+            }
+
+            // TODO: may just count the number of inconsistent of delta_i, sigma_k and q_ki as the phase score
+            let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
+
+            let mut rd: VCFRecord = VCFRecord::default();
+            rd.chromosome = snp.chromosome.clone();
+            rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+            rd.reference = vec![snp.reference as u8];
+            rd.id = vec!['.' as u8];
+            if snp.alleles[0] == snp.reference {
+                rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                if hp == -1 {
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                } else {
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                }
+            } else if snp.alleles[1] == snp.reference {
+                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
+                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                if hp == -1 {
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
+                } else {
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
+                }
+            } else {
+                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                rd.qual = cmp::min(q1, q2);
+                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], phase_score);
             }
 
             rd.filter = "PASS".to_string().into_bytes();
@@ -885,8 +981,8 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                 }
                 snpfrag.haplotag = best_haplotag.clone();
                 snpfrag.haplotype = best_haplotype.clone();
-                println!("best prob: {:?}", largest_prob);
-                println!("best haplotype: {:?}", best_haplotype);
+                // println!("best prob: {:?}", largest_prob);
+                // println!("best haplotype: {:?}", best_haplotype);
             } else {
                 // optimize haplotype and read assignment alternatively
                 let prob = snpfrag.cross_optimize();
@@ -940,8 +1036,8 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                 }
                 snpfrag.haplotag = best_haplotag.clone();
                 snpfrag.haplotype = best_haplotype.clone();
-                println!("best prob: {:?}", largest_prob);
-                println!("best haplotype: {:?}", best_haplotype);
+                // println!("best prob: {:?}", largest_prob);
+                // println!("best haplotype: {:?}", best_haplotype);
             }
 
             // assign each read to hp1/hp2/unphased
@@ -973,7 +1069,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                     queue.push_back((a.0.clone(), a.1.clone()));
                 }
             }
-            let vcf_records = snpfrag.output_vcf();
+            let vcf_records = snpfrag.output_vcf2();
             {
                 let mut queue = vcf_records_queue.lock().unwrap();
                 for rd in vcf_records.iter() {

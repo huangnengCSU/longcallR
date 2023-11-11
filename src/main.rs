@@ -531,6 +531,7 @@ fn main() {
             snpfrag.haplotype = best_haplotype.clone();
             println!("best prob: {:?}", largest_prob);
             println!("best haplotype: {:?}", best_haplotype);
+            let vcf_records = snpfrag.output_vcf2();
         }
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
