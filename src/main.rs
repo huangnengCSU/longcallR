@@ -570,6 +570,7 @@ fn main() {
                                    min_allele_freq,
                                    min_depth,
                                    min_homozygous_freq,
-                                   min_phase_score);
+                                   min_phase_score,
+                                   output_phasing);
     }
 }
