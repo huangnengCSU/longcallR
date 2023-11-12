@@ -372,6 +372,22 @@ struct Args {
     /// Number of threads, default 1
     #[arg(short = 't', long, default_value_t = 1)]
     threads: usize,
+
+    /// Minimum allele frequency for candidate SNPs
+    #[arg(long, default_value_t = 0.3)]
+    min_allele_freq: f32,
+
+    /// Minimum allele frequency for homozygous SNPs
+    #[arg(long, default_value_t = 0.8)]
+    min_homozygous_freq: f32,
+
+    /// Minimum phase score to filter SNPs
+    #[arg(long, default_value_t = 8.0)]
+    min_phase_score: f32,
+
+    /// Minimum depth to filter SNPs
+    #[arg(long, default_value_t = 10)]
+    min_depth: u32,
 }
 
 fn main10() {
@@ -418,6 +434,10 @@ fn main() {
     let input_region = arg.region;
     let input_contigs = arg.contigs;
     let threads = arg.threads;
+    let min_allele_freq = arg.min_allele_freq;
+    let min_phase_score = arg.min_phase_score;
+    let min_depth = arg.min_depth;
+    let min_homozygous_freq = arg.min_homozygous_freq;
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
@@ -426,7 +446,7 @@ fn main() {
         profile.init_with_pileup(bam_path, &region);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, 0.3, 10);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
         for snp in snpfrag.snps.iter() {
             println!("snp: {:?}", snp);
         }
@@ -531,11 +551,20 @@ fn main() {
             snpfrag.haplotype = best_haplotype.clone();
             println!("best prob: {:?}", largest_prob);
             println!("best haplotype: {:?}", best_haplotype);
-            let vcf_records = snpfrag.output_vcf2();
+            let vcf_records = snpfrag.output_vcf2(min_phase_score);
         }
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
         // multithread_phase_maxcut(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
-        multithread_phase_haplotag(bam_path.to_string().clone(), ref_path.to_string().clone(), out_vcf.clone(), out_bam.clone(), threads, regions);
+        multithread_phase_haplotag(bam_path.to_string().clone(),
+                                   ref_path.to_string().clone(),
+                                   out_vcf.clone(),
+                                   out_bam.clone(),
+                                   threads,
+                                   regions,
+                                   min_allele_freq,
+                                   min_depth,
+                                   min_homozygous_freq,
+                                   min_phase_score);
     }
 }

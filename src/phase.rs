@@ -66,7 +66,9 @@ pub struct Fragment {
 pub struct SNPFrag {
     pub region: Region,
     pub snps: Vec<CandidateSNP>,
-    // candidate SNPs
+    // candidate heterozygous SNPs
+    pub homo_snps: Vec<CandidateSNP>,
+    // candidate homozygous SNPs
     pub fragments: Vec<Fragment>,
     // multiple fragments
     pub snp_cover_fragments: Vec<Vec<usize>>,
@@ -86,7 +88,7 @@ pub struct SNPFrag {
 }
 
 impl SNPFrag {
-    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_coverage: u32) {
+    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_coverage: u32, min_homozygous_freq: f32) {
         // get candidate SNPs
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
@@ -105,7 +107,7 @@ impl SNPFrag {
             let allele1_freq = (allele1_cnt as f32) / (depth as f32);
             let allele2_freq = (allele2_cnt as f32) / (depth as f32);
             if allele2_freq > min_allele_freq {
-                // candidate SNP
+                // candidate heterozgous SNP
                 let mut candidate_snp = CandidateSNP::default();
                 candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
                 candidate_snp.pos = position as i64;
@@ -115,6 +117,19 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 self.snps.push(candidate_snp);
+            }
+
+            if allele1_freq >= min_homozygous_freq && allele1 != bf.ref_base {
+                // candidate homozygous SNP
+                let mut candidate_snp = CandidateSNP::default();
+                candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
+                candidate_snp.pos = position as i64;
+                // candidate_snp.ref_base = allele1 as u8;
+                candidate_snp.alleles = [allele1, allele2];
+                candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
+                candidate_snp.reference = bf.ref_base;
+                candidate_snp.depth = depth;
+                self.homo_snps.push(candidate_snp);
             }
             position += 1;
         }
@@ -763,8 +778,10 @@ impl SNPFrag {
         return records;
     }
 
-    pub fn output_vcf2(&self) -> Vec<VCFRecord> {
+    pub fn output_vcf2(&self, min_phase_score: f32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
+
+        // output heterozygous SNPs
         assert_eq!(self.haplotype.len(), self.snps.len());
         for i in 0..self.haplotype.len() {
             let snp = &self.snps[i];
@@ -788,6 +805,10 @@ impl SNPFrag {
 
             // TODO: may just count the number of inconsistent of delta_i, sigma_k and q_ki as the phase score
             let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
+            if phase_score < min_phase_score as f64 {
+                // filter phased heterozygous with phasing score lower than min_phase_score.
+                continue;
+            }
 
             let mut rd: VCFRecord = VCFRecord::default();
             rd.chromosome = snp.chromosome.clone();
@@ -823,6 +844,25 @@ impl SNPFrag {
             rd.filter = "PASS".to_string().into_bytes();
             rd.info = ".".to_string().into_bytes();
             rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
+            records.push(rd);
+        }
+
+        // output homozygous SNPs
+        for snp in self.homo_snps.iter() {
+            let mut rd: VCFRecord = VCFRecord::default();
+            rd.chromosome = snp.chromosome.clone();
+            rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+            rd.reference = vec![snp.reference as u8];
+            rd.id = vec!['.' as u8];
+
+
+            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+            rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max(1.0 - snp.allele_freqs[0] as f64))) as i32);
+            rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", rd.qual, snp.depth, snp.allele_freqs[1]);
+
+            rd.filter = "PASS".to_string().into_bytes();
+            rd.info = ".".to_string().into_bytes();
+            rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
             records.push(rd);
         }
         return records;
@@ -863,7 +903,7 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, 0.3, 10);
+            snpfrag.get_candidate_snps(&profile, 0.3, 10, 0.8);
             if snpfrag.snps.len() == 0 { return; }
             for snp in snpfrag.snps.iter() {
                 println!("snp: {:?}", snp);
@@ -923,7 +963,7 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
     }
 }
 
-pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, phased_bam_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
+pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, phased_bam_file: String, thread_size: usize, isolated_regions: Vec<Region>, min_allele_freq: f32, min_depth: u32, min_homozygous_freq: f32, min_phase_score: f32) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
@@ -946,7 +986,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, 0.3, 10);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
             if snpfrag.snps.len() == 0 { return; }
             for snp in snpfrag.snps.iter() {
                 println!("snp: {:?}", snp);
@@ -1069,7 +1109,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                     queue.push_back((a.0.clone(), a.1.clone()));
                 }
             }
-            let vcf_records = snpfrag.output_vcf2();
+            let vcf_records = snpfrag.output_vcf2(min_phase_score);
             {
                 let mut queue = vcf_records_queue.lock().unwrap();
                 for rd in vcf_records.iter() {
