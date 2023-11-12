@@ -391,7 +391,7 @@ struct Args {
 
     /// Output phasing information in vcf format
     #[arg(long, default_value_t = true)]
-    output_phasing: bool,
+    phasing_output: bool,
 }
 
 fn main10() {
@@ -442,7 +442,7 @@ fn main() {
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
     let min_homozygous_freq = arg.min_homozygous_freq;
-    let output_phasing = arg.output_phasing;
+    let phasing_output = arg.phasing_output;
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
@@ -556,7 +556,7 @@ fn main() {
             snpfrag.haplotype = best_haplotype.clone();
             println!("best prob: {:?}", largest_prob);
             println!("best haplotype: {:?}", best_haplotype);
-            let vcf_records = snpfrag.output_vcf2(min_phase_score, output_phasing);
+            let vcf_records = snpfrag.output_vcf2(min_phase_score, phasing_output);
         }
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
@@ -571,6 +571,6 @@ fn main() {
                                    min_depth,
                                    min_homozygous_freq,
                                    min_phase_score,
-                                   output_phasing);
+                                   phasing_output);
     }
 }
