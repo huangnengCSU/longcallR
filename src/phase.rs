@@ -778,7 +778,7 @@ impl SNPFrag {
         return records;
     }
 
-    pub fn output_vcf2(&self, min_phase_score: f32) -> Vec<VCFRecord> {
+    pub fn output_vcf2(&self, min_phase_score: f32, output_phasing: bool) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
         // output heterozygous SNPs
@@ -815,35 +815,58 @@ impl SNPFrag {
             rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
             rd.reference = vec![snp.reference as u8];
             rd.id = vec!['.' as u8];
-            if snp.alleles[0] == snp.reference {
-                rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                if hp == -1 {
-                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+            if output_phasing {
+                if snp.alleles[0] == snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                    if hp == -1 {
+                        rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                    } else {
+                        rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                    }
+                } else if snp.alleles[1] == snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
+                    rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                    if hp == -1 {
+                        rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
+                    } else {
+                        rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
+                    }
                 } else {
-                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], phase_score);
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                    let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                    let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                    // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                    rd.qual = cmp::min(q1, q2);
+                    rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], phase_score);
                 }
-            } else if snp.alleles[1] == snp.reference {
-                rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
-                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
-                if hp == -1 {
-                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
-                } else {
-                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], phase_score);
-                }
-            } else {
-                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
-                let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
-                rd.qual = cmp::min(q1, q2);
-                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], phase_score);
-            }
 
-            rd.filter = "PASS".to_string().into_bytes();
-            rd.info = ".".to_string().into_bytes();
-            rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
+                rd.filter = "PASS".to_string().into_bytes();
+                rd.info = ".".to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
+            } else {
+                if snp.alleles[0] == snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", rd.qual, snp.depth, snp.allele_freqs[1]);
+                } else if snp.alleles[1] == snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", rd.qual, snp.depth, snp.allele_freqs[0]);
+                } else {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                    let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                    let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                    // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                    rd.qual = cmp::min(q1, q2);
+                    rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                }
+
+                rd.filter = "PASS".to_string().into_bytes();
+                rd.info = ".".to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+            }
             records.push(rd);
         }
 
@@ -963,7 +986,7 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
     }
 }
 
-pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, phased_bam_file: String, thread_size: usize, isolated_regions: Vec<Region>, min_allele_freq: f32, min_depth: u32, min_homozygous_freq: f32, min_phase_score: f32) {
+pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, phased_bam_file: String, thread_size: usize, isolated_regions: Vec<Region>, min_allele_freq: f32, min_depth: u32, min_homozygous_freq: f32, min_phase_score: f32, output_phasing: bool) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
@@ -1109,7 +1132,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                     queue.push_back((a.0.clone(), a.1.clone()));
                 }
             }
-            let vcf_records = snpfrag.output_vcf2(min_phase_score);
+            let vcf_records = snpfrag.output_vcf2(min_phase_score, output_phasing);
             {
                 let mut queue = vcf_records_queue.lock().unwrap();
                 for rd in vcf_records.iter() {
