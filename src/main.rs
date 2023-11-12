@@ -12,7 +12,7 @@ mod phase;
 mod vcf;
 
 // extern crate bio;
-use clap::Parser;
+use clap::{Parser, ArgAction};
 use bam_reader::{BamReader, Region};
 use rust_htslib::{bam, bam::Read};
 use std::time::{Duration, Instant};
@@ -389,9 +389,9 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     min_depth: u32,
 
-    /// Output phasing information in vcf format
-    #[arg(long, default_value_t = true)]
-    phasing_output: bool,
+    /// When set, output vcf file does not contain phase information.
+    #[clap(long, action = ArgAction::SetFalse)]
+    no_phase_vcf: bool,
 }
 
 fn main10() {
@@ -442,7 +442,7 @@ fn main() {
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
     let min_homozygous_freq = arg.min_homozygous_freq;
-    let phasing_output = arg.phasing_output;
+    let phasing_output = arg.no_phase_vcf;  // default=true
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
