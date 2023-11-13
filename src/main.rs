@@ -392,6 +392,10 @@ struct Args {
     /// When set, output vcf file does not contain phase information.
     #[clap(long, action = ArgAction::SetFalse)]
     no_phase_vcf: bool,
+
+    /// debug SNP
+    #[clap(long, action = ArgAction::SetTrue)]
+    debug_snp: bool,
 }
 
 fn main10() {
@@ -443,6 +447,27 @@ fn main() {
     let min_depth = arg.min_depth;
     let min_homozygous_freq = arg.min_homozygous_freq;
     let phasing_output = arg.no_phase_vcf;  // default=true
+    let debug_snp = arg.debug_snp; // default=false
+
+    if debug_snp {
+        let region = Region::new(input_region.unwrap());
+        let mut profile = Profile::default();
+        let mut readnames: Vec<String> = Vec::new();
+        let ref_seqs = read_references(ref_path);
+        profile.init_with_pileup(bam_path, &region);
+        profile.append_reference(&ref_seqs);
+        let mut snpfrag = SNPFrag::default();
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
+        for snp in snpfrag.snps.iter() {
+            println!("hete snp: {:?}", snp);
+        }
+
+        for snp in snpfrag.homo_snps.iter() {
+            println!("homo snp: {:?}", snp);
+        }
+        return;
+    }
+
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
