@@ -480,6 +480,10 @@ impl BaseFreq {
         self.a + self.c + self.g + self.t + self.d + self.n
     }
 
+    pub fn get_depth_exclude_intron_deletion(&self) -> u32 {
+        self.a + self.c + self.g + self.t
+    }
+
     pub fn get_intron_ratio(&self) -> (u32, f64, u32) {
         let d = self.get_depth_include_intron();
         if d == 0 {
