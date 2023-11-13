@@ -98,7 +98,7 @@ impl SNPFrag {
                 continue;
             }
             // check current position is a candidate SNP
-            let depth = bf.get_depth_exclude_intron();
+            let depth = bf.get_depth_exclude_intron_deletion();
             if depth < min_coverage {
                 position += 1;
                 continue;
