@@ -1169,7 +1169,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                              std::str::from_utf8(&rd.format).unwrap(),
                              rd.genotype).as_bytes()).unwrap();
         } else if rd.alternative.len() == 2 {
-            vf.write(format!("{}\t{}\t{}\t{},{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
+            vf.write(format!("{}\t{}\t{}\t{}\t{},{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
                              rd.position,
                              std::str::from_utf8(&rd.id).unwrap(),
                              std::str::from_utf8(&rd.reference).unwrap(),
