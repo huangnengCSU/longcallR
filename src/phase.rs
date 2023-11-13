@@ -1010,126 +1010,138 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
-            if snpfrag.snps.len() == 0 { return; }
-            for snp in snpfrag.snps.iter() {
-                println!("snp: {:?}", snp);
-            }
-            snpfrag.get_fragments(&bam_file, &reg);
-            unsafe { snpfrag.init_haplotypes(); }
-            unsafe { snpfrag.init_assignment(); }
-            let mut largest_prob = f64::NEG_INFINITY;
-            let mut best_haplotype: Vec<i32> = Vec::new();
-            let mut best_haplotag: Vec<i32> = Vec::new();
-            let mut read_assignments: HashMap<String, i32> = HashMap::new();
-            if snpfrag.snps.len() < 10 {
-                // enumerate the haplotype, then optimize the assignment
-                let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
-                let init_hap: Vec<i32> = vec![1; snpfrag.snps.len()];
-                haplotype_enum.push(init_hap.clone());
-                for ti in 0..snpfrag.snps.len() {
-                    for tj in 0..haplotype_enum.len() {
-                        let mut tmp_hap = haplotype_enum[tj].clone();
-                        tmp_hap[ti] = tmp_hap[ti] * (-1);
-                        haplotype_enum.push(tmp_hap);
-                    }
+            // if snpfrag.snps.len() == 0 {
+            //     // No heterozygous snps, just output homozygous snps
+            //     let vcf_records = snpfrag.output_vcf2(min_phase_score, output_phasing);
+            //     {
+            //         let mut queue = vcf_records_queue.lock().unwrap();
+            //         for rd in vcf_records.iter() {
+            //             queue.push_back(rd.clone());
+            //         }
+            //     }
+            //     return;
+            // }
+            if snpfrag.snps.len() > 0 {
+                for snp in snpfrag.snps.iter() {
+                    println!("snp: {:?}", snp);
                 }
-                for hap in haplotype_enum.iter() {
-                    snpfrag.haplotype = hap.clone();
-                    let prob = snpfrag.cross_optimize();
-                    if prob > largest_prob {
-                        largest_prob = prob;
-                        best_haplotype = snpfrag.haplotype.clone();
-                        best_haplotag = snpfrag.haplotag.clone();
-                    }
-                }
-                snpfrag.haplotag = best_haplotag.clone();
-                snpfrag.haplotype = best_haplotype.clone();
-                // println!("best prob: {:?}", largest_prob);
-                // println!("best haplotype: {:?}", best_haplotype);
-            } else {
-                // optimize haplotype and read assignment alternatively
-                let prob = snpfrag.cross_optimize();
-                if prob > largest_prob {
-                    largest_prob = prob;
-                    best_haplotype = snpfrag.haplotype.clone();
-                    best_haplotag = snpfrag.haplotag.clone();
-                }
-                snpfrag.haplotag = best_haplotag.clone();
-                snpfrag.haplotype = best_haplotype.clone();
-
-                // block flip: flip all the snps after a random position to jump local optimization
-                let unflipped_haplotype = best_haplotype.clone();
-                for ti in 0..unflipped_haplotype.len() {
-                    let mut tmp_hap: Vec<i32> = Vec::new();
-                    for tj in 0..unflipped_haplotype.len() {
-                        if tj < ti {
-                            tmp_hap.push(unflipped_haplotype[tj]);
-                        } else {
-                            tmp_hap.push(unflipped_haplotype[tj] * (-1));
+                snpfrag.get_fragments(&bam_file, &reg);
+                unsafe { snpfrag.init_haplotypes(); }
+                unsafe { snpfrag.init_assignment(); }
+                let mut largest_prob = f64::NEG_INFINITY;
+                let mut best_haplotype: Vec<i32> = Vec::new();
+                let mut best_haplotag: Vec<i32> = Vec::new();
+                let mut read_assignments: HashMap<String, i32> = HashMap::new();
+                if snpfrag.snps.len() < 10 {
+                    // enumerate the haplotype, then optimize the assignment
+                    let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
+                    let init_hap: Vec<i32> = vec![1; snpfrag.snps.len()];
+                    haplotype_enum.push(init_hap.clone());
+                    for ti in 0..snpfrag.snps.len() {
+                        for tj in 0..haplotype_enum.len() {
+                            let mut tmp_hap = haplotype_enum[tj].clone();
+                            tmp_hap[ti] = tmp_hap[ti] * (-1);
+                            haplotype_enum.push(tmp_hap);
                         }
                     }
-                    snpfrag.haplotype = tmp_hap.clone();
+                    for hap in haplotype_enum.iter() {
+                        snpfrag.haplotype = hap.clone();
+                        let prob = snpfrag.cross_optimize();
+                        if prob > largest_prob {
+                            largest_prob = prob;
+                            best_haplotype = snpfrag.haplotype.clone();
+                            best_haplotag = snpfrag.haplotag.clone();
+                        }
+                    }
+                    snpfrag.haplotag = best_haplotag.clone();
+                    snpfrag.haplotype = best_haplotype.clone();
+                    // println!("best prob: {:?}", largest_prob);
+                    // println!("best haplotype: {:?}", best_haplotype);
+                } else {
+                    // optimize haplotype and read assignment alternatively
                     let prob = snpfrag.cross_optimize();
                     if prob > largest_prob {
                         largest_prob = prob;
                         best_haplotype = snpfrag.haplotype.clone();
                         best_haplotag = snpfrag.haplotag.clone();
                     }
-                }
-                snpfrag.haplotag = best_haplotag.clone();
-                snpfrag.haplotype = best_haplotype.clone();
+                    snpfrag.haplotag = best_haplotag.clone();
+                    snpfrag.haplotype = best_haplotype.clone();
 
-                // flip a fraction of snps and reads
-                let num_flip_haplotype = snpfrag.haplotype.len() * 0.2 as usize;
-                let num_flip_haplotag = snpfrag.haplotag.len() * 0.2 as usize;
-                let mut rng = rand::thread_rng();
-                let selected_flip_haplotype: Vec<_> = (0..snpfrag.haplotype.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
-                for ti in selected_flip_haplotype.iter() {
-                    snpfrag.haplotype[*ti] = snpfrag.haplotype[*ti] * (-1);
-                }
-                let selected_flip_haplotag: Vec<_> = (0..snpfrag.haplotag.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
-                for tk in selected_flip_haplotag.iter() {
-                    snpfrag.haplotag[*tk] = snpfrag.haplotag[*tk] * (-1);
-                }
-                let prob = snpfrag.cross_optimize();
-                if prob > largest_prob {
-                    largest_prob = prob;
-                    best_haplotype = snpfrag.haplotype.clone();
-                    best_haplotag = snpfrag.haplotag.clone();
-                }
-                snpfrag.haplotag = best_haplotag.clone();
-                snpfrag.haplotype = best_haplotype.clone();
-                // println!("best prob: {:?}", largest_prob);
-                // println!("best haplotype: {:?}", best_haplotype);
-            }
-
-            // assign each read to hp1/hp2/unphased
-            for k in 0..snpfrag.haplotag.len() {
-                let sigma_k = snpfrag.haplotag[k];
-                let mut delta: Vec<i32> = Vec::new();
-                let mut ps: Vec<i32> = Vec::new();
-                let mut probs: Vec<f64> = Vec::new();
-                for snp in snpfrag.fragments[k].list.iter() {
-                    if snp.p != 0 {
-                        ps.push(snp.p);
-                        probs.push(snp.prob);
-                        delta.push(snpfrag.haplotype[snp.snp_idx]);
+                    // block flip: flip all the snps after a random position to jump local optimization
+                    let unflipped_haplotype = best_haplotype.clone();
+                    for ti in 0..unflipped_haplotype.len() {
+                        let mut tmp_hap: Vec<i32> = Vec::new();
+                        for tj in 0..unflipped_haplotype.len() {
+                            if tj < ti {
+                                tmp_hap.push(unflipped_haplotype[tj]);
+                            } else {
+                                tmp_hap.push(unflipped_haplotype[tj] * (-1));
+                            }
+                        }
+                        snpfrag.haplotype = tmp_hap.clone();
+                        let prob = snpfrag.cross_optimize();
+                        if prob > largest_prob {
+                            largest_prob = prob;
+                            best_haplotype = snpfrag.haplotype.clone();
+                            best_haplotag = snpfrag.haplotag.clone();
+                        }
                     }
+                    snpfrag.haplotag = best_haplotag.clone();
+                    snpfrag.haplotype = best_haplotype.clone();
+
+                    // flip a fraction of snps and reads
+                    let num_flip_haplotype = snpfrag.haplotype.len() * 0.2 as usize;
+                    let num_flip_haplotag = snpfrag.haplotag.len() * 0.2 as usize;
+                    let mut rng = rand::thread_rng();
+                    let selected_flip_haplotype: Vec<_> = (0..snpfrag.haplotype.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
+                    for ti in selected_flip_haplotype.iter() {
+                        snpfrag.haplotype[*ti] = snpfrag.haplotype[*ti] * (-1);
+                    }
+                    let selected_flip_haplotag: Vec<_> = (0..snpfrag.haplotag.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
+                    for tk in selected_flip_haplotag.iter() {
+                        snpfrag.haplotag[*tk] = snpfrag.haplotag[*tk] * (-1);
+                    }
+                    let prob = snpfrag.cross_optimize();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        best_haplotype = snpfrag.haplotype.clone();
+                        best_haplotag = snpfrag.haplotag.clone();
+                    }
+                    snpfrag.haplotag = best_haplotag.clone();
+                    snpfrag.haplotype = best_haplotype.clone();
+                    // println!("best prob: {:?}", largest_prob);
+                    // println!("best haplotype: {:?}", best_haplotype);
                 }
-                if SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs) / SNPFrag::cal_delta_sigma(sigma_k * (-1), &delta, &ps, &probs) > 2.0 {
-                    if sigma_k == 1 {
-                        read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 1);
+
+                // assign each read to hp1/hp2/unphased
+                for k in 0..snpfrag.haplotag.len() {
+                    let sigma_k = snpfrag.haplotag[k];
+                    let mut delta: Vec<i32> = Vec::new();
+                    let mut ps: Vec<i32> = Vec::new();
+                    let mut probs: Vec<f64> = Vec::new();
+                    for snp in snpfrag.fragments[k].list.iter() {
+                        if snp.p != 0 {
+                            ps.push(snp.p);
+                            probs.push(snp.prob);
+                            delta.push(snpfrag.haplotype[snp.snp_idx]);
+                        }
+                    }
+                    if SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs) / SNPFrag::cal_delta_sigma(sigma_k * (-1), &delta, &ps, &probs) > 2.0 {
+                        if sigma_k == 1 {
+                            read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 1);
+                        } else {
+                            read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 2);
+                        }
                     } else {
-                        read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 2);
+                        read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 0);
                     }
-                } else {
-                    read_assignments.insert(snpfrag.fragments[k].read_id.clone(), 0);
                 }
-            }
-            {
-                let mut queue = read_haplotag_queue.lock().unwrap();
-                for a in read_assignments.iter() {
-                    queue.push_back((a.0.clone(), a.1.clone()));
+                {
+                    let mut queue = read_haplotag_queue.lock().unwrap();
+                    for a in read_assignments.iter() {
+                        queue.push_back((a.0.clone(), a.1.clone()));
+                    }
                 }
             }
             let vcf_records = snpfrag.output_vcf2(min_phase_score, output_phasing);
