@@ -49,7 +49,7 @@ pub struct FragElem {
     pub p: i32,
     // haplotype of base on the alphabet {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered
     pub prob: f64,
-    // probability of observe base
+    // error rate of observe current base
 }
 
 #[derive(Debug, Clone, Default)]
@@ -543,19 +543,25 @@ impl SNPFrag {
 
         for i in 0..delta.len() {
             if sigma_k * delta[i] == ps[i] {
-                q1 = q1 * probs[i];
-            } else {
+                // q1 = q1 * probs[i];
                 q1 = q1 * (1.0 - probs[i]);
+            } else {
+                // q1 = q1 * (1.0 - probs[i]);
+                q1 = q1 * probs[i];
             }
         }
 
         for i in 0..delta.len() {
             if delta[i] == ps[i] {
-                q2 = q2 * probs[i];
-                q3 = q3 * (1.0 - probs[i])
-            } else {
+                // q2 = q2 * probs[i];
+                // q3 = q3 * (1.0 - probs[i]);
                 q2 = q2 * (1.0 - probs[i]);
                 q3 = q3 * probs[i];
+            } else {
+                // q2 = q2 * (1.0 - probs[i]);
+                // q3 = q3 * probs[i];
+                q2 = q2 * probs[i];
+                q3 = q3 * (1.0 - probs[i]);
             }
         }
         return 10e-9_f64.max(q1 / (q2 + q3));
@@ -574,19 +580,25 @@ impl SNPFrag {
 
         for k in 0..sigma.len() {
             if delta_i * sigma[k] == ps[k] {
-                q1 = q1 * probs[k];
-            } else {
+                // q1 = q1 * probs[k];
                 q1 = q1 * (1.0 - probs[k]);
+            } else {
+                // q1 = q1 * (1.0 - probs[k]);
+                q1 = q1 * probs[k];
             }
         }
 
         for k in 0..sigma.len() {
             if sigma[k] == ps[k] {
-                q2 = q2 * probs[k];
-                q3 = q3 * (1.0 - probs[k]);
-            } else {
+                // q2 = q2 * probs[k];
+                // q3 = q3 * (1.0 - probs[k]);
                 q2 = q2 * (1.0 - probs[k]);
                 q3 = q3 * probs[k];
+            } else {
+                // q2 = q2 * (1.0 - probs[k]);
+                // q3 = q3 * probs[k];
+                q2 = q2 * probs[k];
+                q3 = q3 * (1.0 - probs[k]);
             }
         }
         return 10e-9_f64.max(q1 / (q2 + q3));
@@ -601,22 +613,41 @@ impl SNPFrag {
 
         for k in 0..sigma.len() {
             if delta_i * sigma[k] == ps[k] {
-                q1 = q1 + probs[k].log10();
-            } else {
+                // q1 = q1 + probs[k].log10();
                 q1 = q1 + (1.0 - probs[k]).log10();
+            } else {
+                // q1 = q1 + (1.0 - probs[k]).log10();
+                q1 = q1 + probs[k].log10();
             }
         }
 
         for k in 0..sigma.len() {
             if sigma[k] == ps[k] {
-                q2 = q2 + probs[k].log10();
-                q3 = q3 + (1.0 - probs[k]).log10();
-            } else {
+                // q2 = q2 + probs[k].log10();
+                // q3 = q3 + (1.0 - probs[k]).log10();
                 q2 = q2 + (1.0 - probs[k]).log10();
                 q3 = q3 + probs[k].log10();
+            } else {
+                // q2 = q2 + (1.0 - probs[k]).log10();
+                // q3 = q3 + probs[k].log10();
+                q2 = q2 + probs[k].log10();
+                q3 = q3 + (1.0 - probs[k]).log10();
             }
         }
         return q1 / (q2 + q3);
+    }
+
+    pub fn cal_inconsistent_percentage(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+        let mut consisitent = 0;
+        let mut inconsistent = 0;
+        for k in 0..sigma.len() {
+            if delta_i * sigma[k] == ps[k] {
+                consisitent += 1;
+            } else {
+                inconsistent += 1;
+            }
+        }
+        return 10e-6_f64.max((inconsistent as f64) / ((consisitent + inconsistent) as f64));
     }
 
     pub fn cal_overall_probability(snpfrag: &SNPFrag, sigma: &Vec<i32>, delta: &Vec<i32>) -> f64 {
@@ -626,9 +657,11 @@ impl SNPFrag {
                 if fe.p != 0 {
                     let i = fe.snp_idx;
                     if sigma[k] * delta[i] == fe.p {
-                        logp += fe.prob.log10();
-                    } else {
+                        // logp += fe.prob.log10();
                         logp += (1.0 - fe.prob).log10();
+                    } else {
+                        // logp += (1.0 - fe.prob).log10();
+                        logp += fe.prob.log10();
                     }
                 }
             }
@@ -804,7 +837,8 @@ impl SNPFrag {
             }
 
             // TODO: may just count the number of inconsistent of delta_i, sigma_k and q_ki as the phase score
-            let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
+            let phase_score = -10.0_f64 * SNPFrag::cal_inconsistent_percentage(delta_i, &sigma, &ps, &probs).log10();
+            // let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
             if phase_score < min_phase_score as f64 {
                 // filter phased heterozygous with phasing score lower than min_phase_score.
                 continue;
