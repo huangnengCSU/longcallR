@@ -986,7 +986,19 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
     }
 }
 
-pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: String, phased_bam_file: String, thread_size: usize, isolated_regions: Vec<Region>, min_allele_freq: f32, min_depth: u32, min_homozygous_freq: f32, min_phase_score: f32, output_phasing: bool) {
+pub fn multithread_phase_haplotag(bam_file: String,
+                                  ref_file: String,
+                                  vcf_file: String,
+                                  phased_bam_file: String,
+                                  thread_size: usize,
+                                  isolated_regions: Vec<Region>,
+                                  min_allele_freq: f32,
+                                  min_depth: u32,
+                                  min_homozygous_freq: f32,
+                                  min_phase_score: f32,
+                                  max_enum_snps: usize,
+                                  random_flip_fraction: f32,
+                                  output_phasing: bool) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
@@ -1032,7 +1044,7 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                 let mut best_haplotype: Vec<i32> = Vec::new();
                 let mut best_haplotag: Vec<i32> = Vec::new();
                 let mut read_assignments: HashMap<String, i32> = HashMap::new();
-                if snpfrag.snps.len() < 10 {
+                if snpfrag.snps.len() <= max_enum_snps {
                     // enumerate the haplotype, then optimize the assignment
                     let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
                     let init_hap: Vec<i32> = vec![1; snpfrag.snps.len()];
@@ -1091,8 +1103,8 @@ pub fn multithread_phase_haplotag(bam_file: String, ref_file: String, vcf_file: 
                     snpfrag.haplotype = best_haplotype.clone();
 
                     // flip a fraction of snps and reads
-                    let num_flip_haplotype = snpfrag.haplotype.len() * 0.2 as usize;
-                    let num_flip_haplotag = snpfrag.haplotag.len() * 0.2 as usize;
+                    let num_flip_haplotype = (snpfrag.haplotype.len() as f32 * random_flip_fraction) as usize;
+                    let num_flip_haplotag = (snpfrag.haplotag.len() as f32 * random_flip_fraction) as usize;
                     let mut rng = rand::thread_rng();
                     let selected_flip_haplotype: Vec<_> = (0..snpfrag.haplotype.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
                     for ti in selected_flip_haplotype.iter() {

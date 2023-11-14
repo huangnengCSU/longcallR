@@ -373,6 +373,14 @@ struct Args {
     #[arg(short = 't', long, default_value_t = 1)]
     threads: usize,
 
+    /// Maximum number of SNPs for enumerate haplotypes
+    #[arg(long, default_value_t = 10)]
+    max_enum_snps: usize,
+
+    /// Random flip fraction for snps and fragments
+    #[arg(long, default_value_t = 0.2)]
+    random_flip_fraction: f32,
+
     /// Minimum allele frequency for candidate SNPs
     #[arg(long, default_value_t = 0.3)]
     min_allele_freq: f32,
@@ -446,6 +454,8 @@ fn main() {
     let input_region = arg.region;
     let input_contigs = arg.contigs;
     let threads = arg.threads;
+    let max_enum_snps = arg.max_enum_snps;
+    let random_flip_fraction = arg.random_flip_fraction;
     let min_allele_freq = arg.min_allele_freq;
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
@@ -515,7 +525,7 @@ fn main() {
             let mut largest_prob = f64::NEG_INFINITY;
             let mut best_haplotype: Vec<i32> = Vec::new();
             let mut best_haplotag: Vec<i32> = Vec::new();
-            if snpfrag.snps.len() < 10 {
+            if snpfrag.snps.len() <= max_enum_snps {
                 // enumerate the haplotype, then optimize the assignment
                 let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
                 let init_hap: Vec<i32> = vec![1; snpfrag.snps.len()];
@@ -574,8 +584,8 @@ fn main() {
                 snpfrag.haplotype = best_haplotype.clone();
 
                 // flip a fraction of snps and reads
-                let num_flip_haplotype = snpfrag.haplotype.len() * 0.2 as usize;
-                let num_flip_haplotag = snpfrag.haplotag.len() * 0.2 as usize;
+                let num_flip_haplotype = (snpfrag.haplotype.len() as f32 * random_flip_fraction) as usize;
+                let num_flip_haplotag = (snpfrag.haplotag.len() as f32 * random_flip_fraction) as usize;
                 let mut rng = rand::thread_rng();
                 let selected_flip_haplotype: Vec<_> = (0..snpfrag.haplotype.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
                 for ti in selected_flip_haplotype.iter() {
@@ -637,6 +647,8 @@ fn main() {
                                    min_depth,
                                    min_homozygous_freq,
                                    min_phase_score,
+                                   max_enum_snps,
+                                   random_flip_fraction,
                                    phasing_output);
     }
 }
