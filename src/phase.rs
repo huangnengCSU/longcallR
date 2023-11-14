@@ -837,8 +837,8 @@ impl SNPFrag {
             }
 
             // TODO: may just count the number of inconsistent of delta_i, sigma_k and q_ki as the phase score
-            let phase_score = -10.0_f64 * SNPFrag::cal_inconsistent_percentage(delta_i, &sigma, &ps, &probs).log10();
-            // let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
+            // let phase_score = -10.0_f64 * SNPFrag::cal_inconsistent_percentage(delta_i, &sigma, &ps, &probs).log10();
+            let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
             if phase_score < min_phase_score as f64 {
                 // filter phased heterozygous with phasing score lower than min_phase_score.
                 continue;
