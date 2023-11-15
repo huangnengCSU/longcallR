@@ -870,7 +870,6 @@ impl SNPFrag {
                 }
             } else {
                 read_assignments.insert(self.fragments[k].read_id.clone(), 0);
-                self.haplotag[k] = 0;  // unassigned
             }
         }
         return read_assignments;
@@ -942,10 +941,6 @@ impl SNPFrag {
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for k in self.snp_cover_fragments[i].iter() {
-                if self.haplotag[*k] == 0 {
-                    // unphased fragment does not contribute to the phasing score
-                    continue;
-                }
                 for fe in self.fragments[*k].list.iter() {
                     if fe.snp_idx == i {
                         if fe.p != 0 {
