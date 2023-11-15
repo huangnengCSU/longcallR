@@ -385,6 +385,10 @@ struct Args {
     #[arg(long, default_value_t = 0.3)]
     min_allele_freq: f32,
 
+    /// Minimum allele frequency for candidate SNPs include intron
+    #[arg(long, default_value_t = 0.01)]
+    min_allele_freq_include_intron: f32,
+
     /// Minimum allele frequency for homozygous SNPs
     #[arg(long, default_value_t = 0.8)]
     min_homozygous_freq: f32,
@@ -461,6 +465,7 @@ fn main() {
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
     let min_allele_freq = arg.min_allele_freq;
+    let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
     let read_assignment_cutoff = arg.read_assignment_cutoff;
@@ -485,7 +490,7 @@ fn main() {
         profile.init_with_pileup(bam_path, &region);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq);
         for snp in snpfrag.snps.iter() {
             println!("hete snp: {:?}", snp);
         }
@@ -504,7 +509,7 @@ fn main() {
         profile.init_with_pileup(bam_path, &region);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         if snpfrag.snps.len() > 0 {
             for snp in snpfrag.snps.iter() {
@@ -583,6 +588,7 @@ fn main() {
                                    threads,
                                    regions,
                                    min_allele_freq,
+                                   min_allele_freq_include_intron,
                                    min_depth,
                                    min_homozygous_freq,
                                    min_phase_score,

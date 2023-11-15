@@ -90,7 +90,7 @@ pub struct SNPFrag {
 }
 
 impl SNPFrag {
-    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_coverage: u32, min_homozygous_freq: f32) {
+    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32) {
         // get candidate SNPs
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
@@ -101,6 +101,7 @@ impl SNPFrag {
             }
             // check current position is a candidate SNP
             let depth = bf.get_depth_exclude_intron_deletion();
+            let depth_include_intron = bf.get_depth_include_intron();
             if depth < min_coverage {
                 position += 1;
                 continue;
@@ -108,6 +109,13 @@ impl SNPFrag {
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
             let allele1_freq = (allele1_cnt as f32) / (depth as f32);
             let allele2_freq = (allele2_cnt as f32) / (depth as f32);
+
+            if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
+                // maybe caused by erroneous intron alignment
+                position += 1;
+                continue;
+            }
+
             if allele2_freq > min_allele_freq {
                 // candidate heterozgous SNP
                 let mut candidate_snp = CandidateSNP::default();
@@ -1076,7 +1084,7 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, 0.3, 10, 0.8);
+            snpfrag.get_candidate_snps(&profile, 0.3, 0.01, 10, 0.8);
             if snpfrag.snps.len() == 0 { return; }
             for snp in snpfrag.snps.iter() {
                 println!("snp: {:?}", snp);
@@ -1143,6 +1151,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   thread_size: usize,
                                   isolated_regions: Vec<Region>,
                                   min_allele_freq: f32,
+                                  min_allele_freq_include_intron: f32,
                                   min_depth: u32,
                                   min_homozygous_freq: f32,
                                   min_phase_score: f32,
@@ -1172,7 +1181,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_depth, min_homozygous_freq);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq);
             if snpfrag.snps.len() > 0 {
                 for snp in snpfrag.snps.iter() {
                     println!("snp: {:?}", snp);
@@ -1212,7 +1221,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
-    vf.write("##FORMAT=<ID=PQ,Number=1,Type=Integer,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=PQ,Number=1,Type=Float,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
     vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
     for rd in vcf_records_queue.lock().unwrap().iter() {
         if rd.alternative.len() == 1 {
