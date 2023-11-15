@@ -386,7 +386,7 @@ struct Args {
     min_allele_freq: f32,
 
     /// Minimum allele frequency for candidate SNPs include intron
-    #[arg(long, default_value_t = 0.01)]
+    #[arg(long, default_value_t = 0.05)]
     min_allele_freq_include_intron: f32,
 
     /// Minimum allele frequency for homozygous SNPs
