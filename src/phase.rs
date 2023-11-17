@@ -7,6 +7,7 @@ use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
 use rust_htslib::htslib::{drand48};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
+use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
 use rand::seq::SliceRandom;
 use crate::base_matrix::load_reference;
@@ -46,6 +47,8 @@ pub struct FragElem {
     // base pair
     pub baseq: u8,
     // base quality
+    pub strand: u32,
+    // read strand,  0: forward, 1: reverse
     pub p: i32,
     // haplotype of base on the alphabet {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered
     pub prob: f64,
@@ -188,6 +191,7 @@ impl SNPFrag {
             // println!("{} {} {}", qname, pos, record.cigar());
             let cigar = record.cigar();
             let seq = record.seq().as_bytes();
+            let strand = if record.strand() == Forward { 0 } else { 1 };
             let mut pos_on_ref = pos;   // 0-based
             let mut pos_on_query = cigar.leading_softclips();   // 0-based
             let mut snp_offset = 0; // index of candidate SNPs
@@ -232,6 +236,7 @@ impl SNPFrag {
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = seq[pos_on_query as usize] as char;
                                 frag_elem.baseq = record.qual()[pos_on_query as usize];
+                                frag_elem.strand = strand;
                                 frag_elem.prob = 10.0_f64.powf(-(frag_elem.baseq as f64) / 10.0);
                                 if frag_elem.base == alleles[0] {
                                     frag_elem.p = 1;    // reference allele
@@ -290,6 +295,7 @@ impl SNPFrag {
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = '-';
                                 frag_elem.baseq = 0;
+                                frag_elem.strand = strand;
                                 frag_elem.p = 0;
                                 if fragment.list.len() > 0 {
                                     for prev_frag_elem in fragment.list.iter() {
@@ -336,6 +342,7 @@ impl SNPFrag {
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = b'-' as char;
                                 frag_elem.baseq = 0;
+                                frag_elem.strand = strand;
                                 frag_elem.p = 0;
                                 if fragment.list.len() > 0 {
                                     for prev_frag_elem in fragment.list.iter() {
@@ -384,6 +391,80 @@ impl SNPFrag {
             }
             if fragment.list.len() > 0 {
                 self.fragments.push(fragment);
+            }
+        }
+    }
+
+    pub fn filter_strand_bias(&mut self, strand_bias_threshold: f32) {
+        let mut pass_snp_idxes: Vec<usize> = Vec::new();
+        for i in 0..self.snps.len() {
+            let snp = &self.snps[i];
+            let mut strand_cnt = [0, 0];    // [forward, reverse]
+            for k in self.snp_cover_fragments[i].iter() {
+                for fe in self.fragments[*k].list.iter() {
+                    if fe.snp_idx == i {
+                        if fe.p != 0 {
+                            if fe.base != snp.reference {
+                                if fe.strand == 0 {
+                                    strand_cnt[0] += 1;
+                                } else {
+                                    strand_cnt[1] += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let total_cnt = strand_cnt[0] + strand_cnt[1];
+            if total_cnt > 0 {
+                if strand_cnt[0] as f32 / total_cnt as f32 >= strand_bias_threshold {
+                    continue;
+                } else if strand_cnt[1] as f32 / total_cnt as f32 >= strand_bias_threshold {
+                    continue;
+                }
+            }
+            pass_snp_idxes.push(i);
+        }
+        if pass_snp_idxes.len() == self.snps.len() {
+            return;
+        }
+        let mut snp_idx_transform_map: HashMap<usize, usize> = HashMap::new();  // original snp index: new snp index
+        let mut frag_idx_transform_map: HashMap<usize, usize> = HashMap::new(); // original fragment index: new fragment index
+        let mut filter_snps: Vec<CandidateSNP> = Vec::new();
+        let mut filter_snp_cover_fragments: Vec<Vec<usize>> = Vec::new();
+        for i in pass_snp_idxes.iter() {
+            filter_snps.push(self.snps[*i].clone());
+            snp_idx_transform_map.insert(*i, filter_snps.len() - 1);    // original index is *i, new index is filter_snps.len() - 1
+            filter_snp_cover_fragments.push(self.snp_cover_fragments[*i].clone());
+        }
+        self.snps = filter_snps;
+        self.snp_cover_fragments = filter_snp_cover_fragments;
+        let mut filter_fragments: Vec<Fragment> = Vec::new();
+        for fragment in self.fragments.iter_mut() {
+            let mut new_fragment = Fragment::default();
+            new_fragment.read_id = fragment.read_id.clone();
+            let mut filter_list: Vec<FragElem> = Vec::new();
+            for fe in fragment.list.iter() {
+                if snp_idx_transform_map.contains_key(&fe.snp_idx) {
+                    let new_idx = snp_idx_transform_map[&fe.snp_idx];
+                    let mut new_fragelem = fe.clone();
+                    new_fragelem.snp_idx = new_idx;
+                    filter_list.push(new_fragelem);
+                }
+            }
+            if filter_list.len() > 0 {
+                new_fragment.list = filter_list;
+                frag_idx_transform_map.insert(fragment.fragment_idx, filter_fragments.len());   // original index is fragment.fragment_idx, new index is filter_fragments.len()
+                new_fragment.fragment_idx = filter_fragments.len();
+                filter_fragments.push(new_fragment);
+            }
+        }
+
+        self.fragments = filter_fragments;
+        // update fragment index in snp_cover_fragments
+        for ii in 0..self.snp_cover_fragments.len() {
+            for jj in 0..self.snp_cover_fragments[ii].len() {
+                self.snp_cover_fragments[ii][jj] = frag_idx_transform_map[&self.snp_cover_fragments[ii][jj]];
             }
         }
     }
@@ -1152,6 +1233,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   isolated_regions: Vec<Region>,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
+                                  strand_bias_threshold: f32,
                                   min_depth: u32,
                                   min_homozygous_freq: f32,
                                   min_phase_score: f32,
@@ -1187,15 +1269,18 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     println!("snp: {:?}", snp);
                 }
                 snpfrag.get_fragments(&bam_file, &reg);
-                unsafe { snpfrag.init_haplotypes(); }
-                unsafe { snpfrag.init_assignment(); }
-                snpfrag.phase(max_enum_snps, random_flip_fraction);
-                let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+                snpfrag.filter_strand_bias(strand_bias_threshold);
+                if snpfrag.snps.len() > 0 {
+                    unsafe { snpfrag.init_haplotypes(); }
+                    unsafe { snpfrag.init_assignment(); }
+                    snpfrag.phase(max_enum_snps, random_flip_fraction);
+                    let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
 
-                {
-                    let mut queue = read_haplotag_queue.lock().unwrap();
-                    for a in read_assignments.iter() {
-                        queue.push_back((a.0.clone(), a.1.clone()));
+                    {
+                        let mut queue = read_haplotag_queue.lock().unwrap();
+                        for a in read_assignments.iter() {
+                            queue.push_back((a.0.clone(), a.1.clone()));
+                        }
                     }
                 }
             }

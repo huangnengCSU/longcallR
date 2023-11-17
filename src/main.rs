@@ -393,6 +393,10 @@ struct Args {
     #[arg(long, default_value_t = 0.8)]
     min_homozygous_freq: f32,
 
+    /// Strand bias threshold to filter SNPs, most of the variant allele appear on one strand
+    #[arg(long, default_value_t = 0.90)]
+    strand_bias_threshold: f32,
+
     /// Minimum phase score to filter SNPs
     #[arg(long, default_value_t = 8.0)]
     min_phase_score: f32,
@@ -466,6 +470,7 @@ fn main() {
     let random_flip_fraction = arg.random_flip_fraction;
     let min_allele_freq = arg.min_allele_freq;
     let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
+    let strand_bias_threshold = arg.strand_bias_threshold;
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
     let read_assignment_cutoff = arg.read_assignment_cutoff;
@@ -516,22 +521,25 @@ fn main() {
                 println!("snp: {:?}", snp);
             }
             snpfrag.get_fragments(bam_path, &region);
-            // for elem in snpfrag.fragments.iter() {
-            //     println!("fragment: {:?}", elem);
-            // }
-
-            let mut v: Vec<_> = snpfrag.edges.iter().collect();
-            v.sort_by(|x, y| x.0[0].cmp(&y.0[0]));
-            for edge in v.iter() {
-                println!("edge: {:?}", edge);
-                // for idx in edge.1.frag_idxes.iter() {
-                //     println!("fragment: {:?}", snpfrag.fragments[*idx]);
+            snpfrag.filter_strand_bias(strand_bias_threshold);
+            if snpfrag.snps.len() > 0 {
+                // for elem in snpfrag.fragments.iter() {
+                //     println!("fragment: {:?}", elem);
                 // }
+
+                let mut v: Vec<_> = snpfrag.edges.iter().collect();
+                v.sort_by(|x, y| x.0[0].cmp(&y.0[0]));
+                for edge in v.iter() {
+                    println!("edge: {:?}", edge);
+                    // for idx in edge.1.frag_idxes.iter() {
+                    //     println!("fragment: {:?}", snpfrag.fragments[*idx]);
+                    // }
+                }
+                unsafe { snpfrag.init_haplotypes(); }
+                unsafe { snpfrag.init_assignment(); }
+                snpfrag.phase(max_enum_snps, random_flip_fraction);
+                read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
             }
-            unsafe { snpfrag.init_haplotypes(); }
-            unsafe { snpfrag.init_assignment(); }
-            snpfrag.phase(max_enum_snps, random_flip_fraction);
-            read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
         }
         let vcf_records = snpfrag.output_vcf2(min_phase_score, phasing_output);
         for rd in vcf_records.iter() {
@@ -589,6 +597,7 @@ fn main() {
                                    regions,
                                    min_allele_freq,
                                    min_allele_freq_include_intron,
+                                   strand_bias_threshold,
                                    min_depth,
                                    min_homozygous_freq,
                                    min_phase_score,
