@@ -119,19 +119,6 @@ impl SNPFrag {
                 continue;
             }
 
-            if allele2_freq > min_allele_freq {
-                // candidate heterozgous SNP
-                let mut candidate_snp = CandidateSNP::default();
-                candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
-                candidate_snp.pos = position as i64;
-                // candidate_snp.ref_base = allele1 as u8;
-                candidate_snp.alleles = [allele1, allele2];
-                candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
-                candidate_snp.reference = bf.ref_base;
-                candidate_snp.depth = depth;
-                self.snps.push(candidate_snp);
-            }
-
             if allele1_freq >= min_homozygous_freq && allele1 != bf.ref_base {
                 // candidate homozygous SNP
                 let mut candidate_snp = CandidateSNP::default();
@@ -143,6 +130,17 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 self.homo_snps.push(candidate_snp);
+            } else if allele2_freq > min_allele_freq {
+                // candidate heterozgous SNP
+                let mut candidate_snp = CandidateSNP::default();
+                candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
+                candidate_snp.pos = position as i64;
+                // candidate_snp.ref_base = allele1 as u8;
+                candidate_snp.alleles = [allele1, allele2];
+                candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
+                candidate_snp.reference = bf.ref_base;
+                candidate_snp.depth = depth;
+                self.snps.push(candidate_snp);
             }
             position += 1;
         }
@@ -395,7 +393,10 @@ impl SNPFrag {
         }
     }
 
-    pub fn filter_strand_bias(&mut self, strand_bias_threshold: f32) {
+    pub fn filter_fp_snps(&mut self, strand_bias_threshold: f32) {
+        /*
+        *? Filter false positive SNPs, which may be cause by strand bias or close snps (100bp length has over 3 snps).
+         */
         let mut pass_snp_idxes: Vec<usize> = Vec::new();
         for i in 0..self.snps.len() {
             let snp = &self.snps[i];
@@ -425,6 +426,31 @@ impl SNPFrag {
             }
             pass_snp_idxes.push(i);
         }
+        // within 100bp window, if there are more than 3 SNPs, filtering SNPs in this window.
+        let mut filter_window: HashSet<usize> = HashSet::new();
+        for i in 0..pass_snp_idxes.len() {
+            for j in i..pass_snp_idxes.len() {
+                if self.snps[pass_snp_idxes[j]].pos - self.snps[pass_snp_idxes[i]].pos > 100 {
+                    break;
+                }
+                if (j - 1) - i + 1 >= 3 {
+                    for tk in i..j {
+                        filter_window.insert(pass_snp_idxes[tk]);
+                    }
+                }
+            }
+        }
+
+        if filter_window.len() > 0 {
+            let mut tmp_pass_snp_idxes: Vec<usize> = Vec::new();
+            for i in 0..pass_snp_idxes.len() {
+                if !filter_window.contains(&pass_snp_idxes[i]) {
+                    tmp_pass_snp_idxes.push(pass_snp_idxes[i]);
+                }
+            }
+            pass_snp_idxes = tmp_pass_snp_idxes;
+        }
+
         if pass_snp_idxes.len() == self.snps.len() {
             return;
         }
@@ -1016,7 +1042,7 @@ impl SNPFrag {
         return records;
     }
 
-    pub fn output_vcf2(&self, min_phase_score: f32, output_phasing: bool) -> Vec<VCFRecord> {
+    pub fn output_vcf2(&mut self, min_phase_score: f32, output_phasing: bool) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
         // output heterozygous SNPs
@@ -1046,7 +1072,11 @@ impl SNPFrag {
             // let phase_score = -10.0_f64 * SNPFrag::cal_delta_sigma_sum(delta_i, &sigma, &ps, &probs).log10();
             if phase_score < min_phase_score as f64 {
                 // filter phased heterozygous with phasing score lower than min_phase_score.
-                continue;
+                if snp.allele_freqs[0] > 0.7 && snp.alleles[0] != snp.reference {
+                    self.homo_snps.push(snp.clone());
+                } else {
+                    continue;
+                }
             }
 
             let mut rd: VCFRecord = VCFRecord::default();
@@ -1269,7 +1299,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     println!("snp: {:?}", snp);
                 }
                 snpfrag.get_fragments(&bam_file, &reg);
-                snpfrag.filter_strand_bias(strand_bias_threshold);
+                snpfrag.filter_fp_snps(strand_bias_threshold);
                 if snpfrag.snps.len() > 0 {
                     unsafe { snpfrag.init_haplotypes(); }
                     unsafe { snpfrag.init_assignment(); }

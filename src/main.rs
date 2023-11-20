@@ -521,7 +521,7 @@ fn main() {
                 println!("snp: {:?}", snp);
             }
             snpfrag.get_fragments(bam_path, &region);
-            snpfrag.filter_strand_bias(strand_bias_threshold);
+            snpfrag.filter_fp_snps(strand_bias_threshold);
             if snpfrag.snps.len() > 0 {
                 // for elem in snpfrag.fragments.iter() {
                 //     println!("fragment: {:?}", elem);
