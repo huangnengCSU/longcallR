@@ -426,29 +426,103 @@ impl SNPFrag {
             }
             pass_snp_idxes.push(i);
         }
+
         // within 100bp window, if there are more than 3 SNPs, filtering SNPs in this window.
-        let mut filter_window: HashSet<usize> = HashSet::new();
+        /*let mut homo_hete_snps: Vec<i64> = Vec::new();
         for i in 0..pass_snp_idxes.len() {
-            for j in i..pass_snp_idxes.len() {
-                if self.snps[pass_snp_idxes[j]].pos - self.snps[pass_snp_idxes[i]].pos > 100 {
+            homo_hete_snps.push(self.snps[pass_snp_idxes[i]].pos);
+        }
+
+        for i in 0..self.homo_snps.len() {
+            homo_hete_snps.push(self.homo_snps[i].pos);
+        }
+
+        let mut filter_window: HashSet<i64> = HashSet::new();
+        for i in 0..homo_hete_snps.len() {
+            for j in i..homo_hete_snps.len() {
+                if homo_hete_snps[j] - homo_hete_snps[i] > 200 {
                     break;
                 }
                 if (j - 1) - i + 1 >= 3 {
                     for tk in i..j {
-                        filter_window.insert(pass_snp_idxes[tk]);
+                        filter_window.insert(homo_hete_snps[tk]);
                     }
                 }
             }
         }
 
         if filter_window.len() > 0 {
-            let mut tmp_pass_snp_idxes: Vec<usize> = Vec::new();
+            let mut tmp_hete_snp_idxes: Vec<usize> = Vec::new();
             for i in 0..pass_snp_idxes.len() {
-                if !filter_window.contains(&pass_snp_idxes[i]) {
-                    tmp_pass_snp_idxes.push(pass_snp_idxes[i]);
+                if !filter_window.contains(&self.snps[pass_snp_idxes[i]].pos) {
+                    tmp_hete_snp_idxes.push(pass_snp_idxes[i]);
                 }
             }
-            pass_snp_idxes = tmp_pass_snp_idxes;
+            pass_snp_idxes = tmp_hete_snp_idxes;
+
+            let mut tmp_homo_snp_idxes: Vec<CandidateSNP> = Vec::new();
+            for i in 0..self.homo_snps.len() {
+                if !filter_window.contains(&self.homo_snps[i].pos) {
+                    tmp_homo_snp_idxes.push(self.homo_snps[i].clone());
+                }
+            }
+            self.homo_snps = tmp_homo_snp_idxes;
+        }*/
+
+        // filter close hete snps
+        let mut hete_snp_poses: Vec<i64> = Vec::new();
+        for i in 0..pass_snp_idxes.len() {
+            hete_snp_poses.push(self.snps[pass_snp_idxes[i]].pos);
+        }
+        let mut hete_filter_window: HashSet<i64> = HashSet::new();
+        for i in 0..hete_snp_poses.len() {
+            for j in i..hete_snp_poses.len() {
+                if hete_snp_poses[j] - hete_snp_poses[i] > 200 {
+                    break;
+                }
+                if (j - 1) - i + 1 >= 3 {
+                    for tk in i..j {
+                        hete_filter_window.insert(hete_snp_poses[tk]);
+                    }
+                }
+            }
+        }
+        if hete_filter_window.len() > 0 {
+            let mut tmp_hete_snp_idxes: Vec<usize> = Vec::new();
+            for i in 0..pass_snp_idxes.len() {
+                if !hete_filter_window.contains(&self.snps[pass_snp_idxes[i]].pos) {
+                    tmp_hete_snp_idxes.push(pass_snp_idxes[i]);
+                }
+            }
+            pass_snp_idxes = tmp_hete_snp_idxes;
+        }
+
+        // filter close homo snps
+        let mut homo_snp_poses: Vec<i64> = Vec::new();
+        for i in 0..self.homo_snps.len() {
+            homo_snp_poses.push(self.homo_snps[i].pos);
+        }
+        let mut homo_filter_window: HashSet<i64> = HashSet::new();
+        for i in 0..homo_snp_poses.len() {
+            for j in i..homo_snp_poses.len() {
+                if homo_snp_poses[j] - homo_snp_poses[i] > 200 {
+                    break;
+                }
+                if (j - 1) - i + 1 >= 3 {
+                    for tk in i..j {
+                        homo_filter_window.insert(homo_snp_poses[tk]);
+                    }
+                }
+            }
+        }
+        if homo_filter_window.len() > 0 {
+            let mut tmp_homo_snp_idxes: Vec<CandidateSNP> = Vec::new();
+            for i in 0..self.homo_snps.len() {
+                if !homo_filter_window.contains(&self.homo_snps[i].pos) {
+                    tmp_homo_snp_idxes.push(self.homo_snps[i].clone());
+                }
+            }
+            self.homo_snps = tmp_homo_snp_idxes;
         }
 
         if pass_snp_idxes.len() == self.snps.len() {
