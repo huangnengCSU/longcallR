@@ -6,6 +6,7 @@ use seq_io::fasta::{Reader, Record};
 use rust_lapper::{Interval, Lapper};
 use crate::align2::SpliceMatrixElement;
 use ndarray::Array2;
+use bio::bio_types::strand::ReqStrand::Forward;
 use crate::runt::Runtime;
 use std::time::{Instant};
 
@@ -367,7 +368,12 @@ pub struct BaseFreq {
     // whether this position falls in an insertion
     pub ref_base: char,
     // reference base, A,C,G,T,N,-
-    pub intron: bool, // whether this position is an intron
+    pub intron: bool,
+    // whether this position is an intron
+    pub forward_cnt: u32,
+    // number of forward reads covering this position, excluding intron
+    pub backward_cnt: u32,
+    // number of backward reads covering this position, excluding intron
 }
 
 impl BaseFreq {
@@ -556,9 +562,10 @@ impl Profile {
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
+                            let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0 });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -578,6 +585,11 @@ impl Profile {
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
+                                }
+                                if strand == 0 {
+                                    bf.forward_cnt += 1;
+                                } else {
+                                    bf.backward_cnt += 1;
                                 }
                             }
                             read_positions.insert(qname.clone(), *q_pos + len);
@@ -596,9 +608,10 @@ impl Profile {
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
+                            let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0 });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -619,6 +632,11 @@ impl Profile {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
                                 }
+                                if strand == 0 {
+                                    bf.forward_cnt += 1;
+                                } else {
+                                    bf.backward_cnt += 1;
+                                }
                             }
                             read_positions.insert(qname.clone(), *q_pos + len);
                         }
@@ -631,6 +649,7 @@ impl Profile {
                     let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                     read_positions.insert(qname.clone(), q_pos as u32);
                     let seq = record.seq();
+                    let strand = if record.strand() == Forward { 0 } else { 1 };
                     let base = seq[q_pos] as char;
                     match base {
                         'A' => bf.a += 1,
@@ -645,6 +664,11 @@ impl Profile {
                             panic!("Invalid nucleotide base: {}", base);
                         }
                     }
+                    if strand == 0 {
+                        bf.forward_cnt += 1;
+                    } else {
+                        bf.backward_cnt += 1;
+                    }
 
                     match alignment.indel() {
                         bam::pileup::Indel::Ins(len) => {
@@ -653,7 +677,7 @@ impl Profile {
                             }
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0 });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
@@ -672,6 +696,11 @@ impl Profile {
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
+                                }
+                                if strand == 0 {
+                                    ibf.forward_cnt += 1;
+                                } else {
+                                    ibf.backward_cnt += 1;
                                 }
                             }
                             read_positions.insert(qname.clone(), q_pos as u32 + len);
