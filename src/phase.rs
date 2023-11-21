@@ -93,7 +93,7 @@ pub struct SNPFrag {
 }
 
 impl SNPFrag {
-    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32) {
+    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32, cover_strand_bias_threshold: f32) {
         // get candidate SNPs
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
@@ -115,6 +115,20 @@ impl SNPFrag {
 
             if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // maybe caused by erroneous intron alignment
+                position += 1;
+                continue;
+            }
+
+            // filter snps only covered by one strand reads (may caused by intron alignment error)
+            let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
+            if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
+                // forward strand bias
+                // println!("position: {}, {},{},{}", position, bf.forward_cnt, bf.backward_cnt, total_cnt);
+                position += 1;
+                continue;
+            } else if bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
+                // reverse strand bias
+                // println!("position: {}, {},{},{}", position, bf.forward_cnt, bf.backward_cnt, total_cnt);
                 position += 1;
                 continue;
             }
@@ -173,6 +187,9 @@ impl SNPFrag {
         let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let mut record = Record::new();
+        if self.snps.len() == 0 {
+            return;
+        }
         for _ in 0..self.snps.len() {
             self.snp_cover_fragments.push(Vec::new());
         }
@@ -395,134 +412,78 @@ impl SNPFrag {
 
     pub fn filter_fp_snps(&mut self, strand_bias_threshold: f32) {
         /*
-        *? Filter false positive SNPs, which may be cause by strand bias or close snps (100bp length has over 3 snps).
+        *? Filter false positive SNPs, which may be cause by strand bias or in a dense cluster of variants (100bp length has over 3 snps).
          */
+
+        let mut homo_hete_snps: Vec<i64> = Vec::new();
+        for i in 0..self.snps.len() {
+            homo_hete_snps.push(self.snps[i].pos);
+        }
+        for i in 0..self.homo_snps.len() {
+            homo_hete_snps.push(self.homo_snps[i].pos);
+        }
+        // sort homo_hete_snps in accending order
+        homo_hete_snps.sort();
+
+        let mut filter_window: HashSet<i64> = HashSet::new();   // record the SNP position in a dense cluster of variants
+        for i in 0..homo_hete_snps.len() {
+            for j in i..homo_hete_snps.len() {
+                if homo_hete_snps[j] - homo_hete_snps[i] > 100 {
+                    if (j - 1) - i + 1 >= 3 {
+                        for tk in i..j {
+                            filter_window.insert(homo_hete_snps[tk]);
+                            // println!("j = {}, i = {}, tk = {}, pos = {}", j, i, tk, homo_hete_snps[tk]);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        if filter_window.len() > 0 {
+            // filter homo snps in a dense cluster of variants
+            let mut tmp_homo_snps: Vec<CandidateSNP> = Vec::new();
+            for i in 0..self.homo_snps.len() {
+                if !filter_window.contains(&self.homo_snps[i].pos) {
+                    tmp_homo_snps.push(self.homo_snps[i].clone());
+                }
+            }
+            self.homo_snps = tmp_homo_snps;
+        }
+
         let mut pass_snp_idxes: Vec<usize> = Vec::new();
         for i in 0..self.snps.len() {
             let snp = &self.snps[i];
-            let mut strand_cnt = [0, 0];    // [forward, reverse]
+            let mut variant_strand_cnt = [0, 0];    // variant strand [forward, reverse]
+            if filter_window.contains(&snp.pos) {
+                // In a dense cluster of variants
+                continue;
+            }
             for k in self.snp_cover_fragments[i].iter() {
                 for fe in self.fragments[*k].list.iter() {
                     if fe.snp_idx == i {
                         if fe.p != 0 {
                             if fe.base != snp.reference {
                                 if fe.strand == 0 {
-                                    strand_cnt[0] += 1;
+                                    variant_strand_cnt[0] += 1;
                                 } else {
-                                    strand_cnt[1] += 1;
+                                    variant_strand_cnt[1] += 1;
                                 }
                             }
                         }
                     }
                 }
             }
-            let total_cnt = strand_cnt[0] + strand_cnt[1];
-            if total_cnt > 0 {
-                if strand_cnt[0] as f32 / total_cnt as f32 >= strand_bias_threshold {
+            let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
+            if total_variant_cnt > 0 {
+                // variant strand bias
+                if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
                     continue;
-                } else if strand_cnt[1] as f32 / total_cnt as f32 >= strand_bias_threshold {
+                } else if variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
                     continue;
                 }
             }
             pass_snp_idxes.push(i);
-        }
-
-        // within 100bp window, if there are more than 3 SNPs, filtering SNPs in this window.
-        /*let mut homo_hete_snps: Vec<i64> = Vec::new();
-        for i in 0..pass_snp_idxes.len() {
-            homo_hete_snps.push(self.snps[pass_snp_idxes[i]].pos);
-        }
-
-        for i in 0..self.homo_snps.len() {
-            homo_hete_snps.push(self.homo_snps[i].pos);
-        }
-
-        let mut filter_window: HashSet<i64> = HashSet::new();
-        for i in 0..homo_hete_snps.len() {
-            for j in i..homo_hete_snps.len() {
-                if homo_hete_snps[j] - homo_hete_snps[i] > 200 {
-                    break;
-                }
-                if (j - 1) - i + 1 >= 3 {
-                    for tk in i..j {
-                        filter_window.insert(homo_hete_snps[tk]);
-                    }
-                }
-            }
-        }
-
-        if filter_window.len() > 0 {
-            let mut tmp_hete_snp_idxes: Vec<usize> = Vec::new();
-            for i in 0..pass_snp_idxes.len() {
-                if !filter_window.contains(&self.snps[pass_snp_idxes[i]].pos) {
-                    tmp_hete_snp_idxes.push(pass_snp_idxes[i]);
-                }
-            }
-            pass_snp_idxes = tmp_hete_snp_idxes;
-
-            let mut tmp_homo_snp_idxes: Vec<CandidateSNP> = Vec::new();
-            for i in 0..self.homo_snps.len() {
-                if !filter_window.contains(&self.homo_snps[i].pos) {
-                    tmp_homo_snp_idxes.push(self.homo_snps[i].clone());
-                }
-            }
-            self.homo_snps = tmp_homo_snp_idxes;
-        }*/
-
-        // filter close hete snps
-        let mut hete_snp_poses: Vec<i64> = Vec::new();
-        for i in 0..pass_snp_idxes.len() {
-            hete_snp_poses.push(self.snps[pass_snp_idxes[i]].pos);
-        }
-        let mut hete_filter_window: HashSet<i64> = HashSet::new();
-        for i in 0..hete_snp_poses.len() {
-            for j in i..hete_snp_poses.len() {
-                if hete_snp_poses[j] - hete_snp_poses[i] > 200 {
-                    break;
-                }
-                if (j - 1) - i + 1 >= 3 {
-                    for tk in i..j {
-                        hete_filter_window.insert(hete_snp_poses[tk]);
-                    }
-                }
-            }
-        }
-        if hete_filter_window.len() > 0 {
-            let mut tmp_hete_snp_idxes: Vec<usize> = Vec::new();
-            for i in 0..pass_snp_idxes.len() {
-                if !hete_filter_window.contains(&self.snps[pass_snp_idxes[i]].pos) {
-                    tmp_hete_snp_idxes.push(pass_snp_idxes[i]);
-                }
-            }
-            pass_snp_idxes = tmp_hete_snp_idxes;
-        }
-
-        // filter close homo snps
-        let mut homo_snp_poses: Vec<i64> = Vec::new();
-        for i in 0..self.homo_snps.len() {
-            homo_snp_poses.push(self.homo_snps[i].pos);
-        }
-        let mut homo_filter_window: HashSet<i64> = HashSet::new();
-        for i in 0..homo_snp_poses.len() {
-            for j in i..homo_snp_poses.len() {
-                if homo_snp_poses[j] - homo_snp_poses[i] > 200 {
-                    break;
-                }
-                if (j - 1) - i + 1 >= 3 {
-                    for tk in i..j {
-                        homo_filter_window.insert(homo_snp_poses[tk]);
-                    }
-                }
-            }
-        }
-        if homo_filter_window.len() > 0 {
-            let mut tmp_homo_snp_idxes: Vec<CandidateSNP> = Vec::new();
-            for i in 0..self.homo_snps.len() {
-                if !homo_filter_window.contains(&self.homo_snps[i].pos) {
-                    tmp_homo_snp_idxes.push(self.homo_snps[i].clone());
-                }
-            }
-            self.homo_snps = tmp_homo_snp_idxes;
         }
 
         if pass_snp_idxes.len() == self.snps.len() {
@@ -1269,7 +1230,7 @@ pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: St
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, 0.3, 0.01, 10, 0.8);
+            snpfrag.get_candidate_snps(&profile, 0.3, 0.01, 10, 0.8, 0.9);
             if snpfrag.snps.len() == 0 { return; }
             for snp in snpfrag.snps.iter() {
                 println!("snp: {:?}", snp);
@@ -1338,6 +1299,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
                                   strand_bias_threshold: f32,
+                                  cover_strand_bias_threshold: f32,
                                   min_depth: u32,
                                   min_homozygous_freq: f32,
                                   min_phase_score: f32,
@@ -1367,27 +1329,27 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, cover_strand_bias_threshold);
+            // if snpfrag.snps.len() > 0 {
+            for snp in snpfrag.snps.iter() {
+                println!("snp: {:?}", snp);
+            }
+            snpfrag.get_fragments(&bam_file, &reg);
+            snpfrag.filter_fp_snps(strand_bias_threshold);
             if snpfrag.snps.len() > 0 {
-                for snp in snpfrag.snps.iter() {
-                    println!("snp: {:?}", snp);
-                }
-                snpfrag.get_fragments(&bam_file, &reg);
-                snpfrag.filter_fp_snps(strand_bias_threshold);
-                if snpfrag.snps.len() > 0 {
-                    unsafe { snpfrag.init_haplotypes(); }
-                    unsafe { snpfrag.init_assignment(); }
-                    snpfrag.phase(max_enum_snps, random_flip_fraction);
-                    let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+                unsafe { snpfrag.init_haplotypes(); }
+                unsafe { snpfrag.init_assignment(); }
+                snpfrag.phase(max_enum_snps, random_flip_fraction);
+                let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
 
-                    {
-                        let mut queue = read_haplotag_queue.lock().unwrap();
-                        for a in read_assignments.iter() {
-                            queue.push_back((a.0.clone(), a.1.clone()));
-                        }
+                {
+                    let mut queue = read_haplotag_queue.lock().unwrap();
+                    for a in read_assignments.iter() {
+                        queue.push_back((a.0.clone(), a.1.clone()));
                     }
                 }
             }
+            // }
             let vcf_records = snpfrag.output_vcf2(min_phase_score, output_phasing);
             {
                 let mut queue = vcf_records_queue.lock().unwrap();
