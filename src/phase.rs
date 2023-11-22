@@ -115,6 +115,7 @@ impl SNPFrag {
 
             if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // maybe caused by erroneous intron alignment
+                println!("allele freq include intron: {}, {}, {}, {}", position, allele1_cnt, allele2_cnt, depth_include_intron);
                 position += 1;
                 continue;
             }
@@ -123,12 +124,12 @@ impl SNPFrag {
             let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
             if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
                 // forward strand bias
-                // println!("position: {}, {},{},{}", position, bf.forward_cnt, bf.backward_cnt, total_cnt);
+                println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
                 position += 1;
                 continue;
             } else if bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
                 // reverse strand bias
-                // println!("position: {}, {},{},{}", position, bf.forward_cnt, bf.backward_cnt, total_cnt);
+                println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
                 position += 1;
                 continue;
             }
@@ -144,7 +145,7 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 self.homo_snps.push(candidate_snp);
-            } else if allele2_freq > min_allele_freq {
+            } else if allele2_freq >= min_allele_freq {
                 // candidate heterozgous SNP
                 let mut candidate_snp = CandidateSNP::default();
                 candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
@@ -440,6 +441,8 @@ impl SNPFrag {
             }
         }
 
+        println!("dense cluster filter: {:?}", filter_window);
+
         if filter_window.len() > 0 {
             // filter homo snps in a dense cluster of variants
             let mut tmp_homo_snps: Vec<CandidateSNP> = Vec::new();
@@ -478,8 +481,10 @@ impl SNPFrag {
             if total_variant_cnt > 0 {
                 // variant strand bias
                 if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
+                    println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
                     continue;
                 } else if variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
+                    println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
                     continue;
                 }
             }

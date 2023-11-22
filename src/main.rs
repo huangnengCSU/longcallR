@@ -525,6 +525,9 @@ fn main() {
         for snp in snpfrag.snps.iter() {
             println!("snp: {:?}", snp);
         }
+        for snp in snpfrag.homo_snps.iter() {
+            println!("snp: {:?}", snp);
+        }
         snpfrag.get_fragments(bam_path, &region);
         snpfrag.filter_fp_snps(strand_bias_threshold);
         if snpfrag.snps.len() > 0 {
