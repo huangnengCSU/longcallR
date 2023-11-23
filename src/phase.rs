@@ -145,7 +145,7 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 self.homo_snps.push(candidate_snp);
-            } else if allele2_freq >= min_allele_freq {
+            } else if allele2_freq > min_allele_freq {
                 // candidate heterozgous SNP
                 let mut candidate_snp = CandidateSNP::default();
                 candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
@@ -429,8 +429,8 @@ impl SNPFrag {
         let mut filter_window: HashSet<i64> = HashSet::new();   // record the SNP position in a dense cluster of variants
         for i in 0..homo_hete_snps.len() {
             for j in i..homo_hete_snps.len() {
-                if homo_hete_snps[j] - homo_hete_snps[i] > 100 {
-                    if (j - 1) - i + 1 >= 3 {
+                if homo_hete_snps[j] - homo_hete_snps[i] > 300 {
+                    if (j - 1) - i + 1 >= 9 {
                         for tk in i..j {
                             filter_window.insert(homo_hete_snps[tk]);
                             // println!("j = {}, i = {}, tk = {}, pos = {}", j, i, tk, homo_hete_snps[tk]);

@@ -398,7 +398,7 @@ struct Args {
     strand_bias_threshold: f32,
 
     /// Cover reads strand bias threshold to filter SNPs
-    #[arg(long, default_value_t = 0.90)]
+    #[arg(long, default_value_t = 0.85)]
     cover_strand_bias_threshold: f32,
 
     /// Minimum phase score to filter SNPs
