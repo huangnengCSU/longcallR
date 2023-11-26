@@ -382,7 +382,7 @@ struct Args {
     random_flip_fraction: f32,
 
     /// Minimum allele frequency for candidate SNPs
-    #[arg(long, default_value_t = 0.3)]
+    #[arg(long, default_value_t = 0.25)]
     min_allele_freq: f32,
 
     /// Minimum allele frequency for candidate SNPs include intron
@@ -390,15 +390,19 @@ struct Args {
     min_allele_freq_include_intron: f32,
 
     /// Minimum allele frequency for homozygous SNPs
-    #[arg(long, default_value_t = 0.8)]
+    #[arg(long, default_value_t = 0.75)]
     min_homozygous_freq: f32,
 
+    /// Minimum support number for each allele
+    #[arg(long, default_value_t = 3)]
+    min_allele_cnt: u32,
+
     /// Variants strand bias threshold to filter SNPs, most of the variant allele appear on one strand
-    #[arg(long, default_value_t = 0.90)]
+    #[arg(long, default_value_t = 0.9)]
     strand_bias_threshold: f32,
 
     /// Cover reads strand bias threshold to filter SNPs
-    #[arg(long, default_value_t = 0.85)]
+    #[arg(long, default_value_t = 0.9)]
     cover_strand_bias_threshold: f32,
 
     /// Minimum phase score to filter SNPs
@@ -409,8 +413,8 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     min_depth: u32,
 
-    /// Read assignment cutoff, the read is phased only if the probability of assignment P(hap1)/P(hap2) > cutoff or P(hap2)/P(hap1) > cutoff
-    #[arg(long, default_value_t = 2.0)]
+    /// Read assignment cutoff, the read is phased only if the probability of assignment P(hap1)-P(hap2) > cutoff or P(hap2)-P(hap1) > cutoff
+    #[arg(long, default_value_t = 0.15)]
     read_assignment_cutoff: f64,
 
     /// When set, output vcf file does not contain phase information.
@@ -474,6 +478,7 @@ fn main() {
     let random_flip_fraction = arg.random_flip_fraction;
     let min_allele_freq = arg.min_allele_freq;
     let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
+    let min_allele_cnt = arg.min_allele_cnt;
     let strand_bias_threshold = arg.strand_bias_threshold;
     let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
     let min_phase_score = arg.min_phase_score;
@@ -529,7 +534,7 @@ fn main() {
             println!("snp: {:?}", snp);
         }
         snpfrag.get_fragments(bam_path, &region);
-        snpfrag.filter_fp_snps(strand_bias_threshold);
+        snpfrag.filter_fp_snps(strand_bias_threshold, None);
         if snpfrag.snps.len() > 0 {
             // for elem in snpfrag.fragments.iter() {
             //     println!("fragment: {:?}", elem);
@@ -547,9 +552,23 @@ fn main() {
             unsafe { snpfrag.init_assignment(); }
             snpfrag.phase(max_enum_snps, random_flip_fraction);
             read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+            snpfrag.add_phase_score(min_allele_cnt);
+            // // second round phase
+            // snpfrag.filter_fp_snps(strand_bias_threshold, Some((min_phase_score * 0.8) as f64));
+            // if snpfrag.snps.len() == 0 {
+            //     unsafe { snpfrag.init_haplotypes(); }
+            //     unsafe { snpfrag.init_assignment(); }
+            // }
+            // if snpfrag.snps.len() > 0 {
+            //     unsafe { snpfrag.init_haplotypes(); }
+            //     unsafe { snpfrag.init_assignment(); }
+            //     snpfrag.phase(max_enum_snps, random_flip_fraction);
+            //     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+            //     snpfrag.add_phase_score(min_allele_cnt);
+            // }
         }
         // }
-        let vcf_records = snpfrag.output_vcf2(min_phase_score, phasing_output);
+        let vcf_records = snpfrag.output_vcf2(min_phase_score, min_allele_cnt, phasing_output);
         for rd in vcf_records.iter() {
             if rd.alternative.len() == 1 {
                 println!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", std::str::from_utf8(&rd.chromosome).unwrap(),
@@ -605,6 +624,7 @@ fn main() {
                                    regions,
                                    min_allele_freq,
                                    min_allele_freq_include_intron,
+                                   min_allele_cnt,
                                    strand_bias_threshold,
                                    cover_strand_bias_threshold,
                                    min_depth,
