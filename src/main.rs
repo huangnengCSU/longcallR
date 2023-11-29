@@ -506,12 +506,12 @@ fn main() {
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, cover_strand_bias_threshold);
-        for snp in snpfrag.snps.iter() {
-            println!("hete snp: {:?}", snp);
+        for i in snpfrag.hete_snps.iter() {
+            println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
         }
 
-        for snp in snpfrag.homo_snps.iter() {
-            println!("homo snp: {:?}", snp);
+        for i in snpfrag.homo_snps.iter() {
+            println!("homo snp: {:?}", snpfrag.candidate_snps[*i]);
         }
         return;
     }
@@ -527,15 +527,20 @@ fn main() {
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, cover_strand_bias_threshold);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         // if snpfrag.snps.len() > 0 {
-        for snp in snpfrag.snps.iter() {
-            println!("snp: {:?}", snp);
-        }
-        for snp in snpfrag.homo_snps.iter() {
-            println!("snp: {:?}", snp);
-        }
         snpfrag.get_fragments(bam_path, &region);
+        println!("{:?}", snpfrag.hete_snps);
+        println!("{:?}", snpfrag.homo_snps);
+        for snp in snpfrag.candidate_snps.iter() {
+            println!("{:?}", snp);
+        }
+        for fg in snpfrag.fragments.iter() {
+            println!("{:?}", fg);
+            println!();
+        }
+        // println!("{:?}", snpfrag.fragments);
+        // return;
         snpfrag.filter_fp_snps(strand_bias_threshold, None);
-        if snpfrag.snps.len() > 0 {
+        if snpfrag.hete_snps.len() > 0 {
             // for elem in snpfrag.fragments.iter() {
             //     println!("fragment: {:?}", elem);
             // }
