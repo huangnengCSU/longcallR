@@ -102,7 +102,7 @@ pub struct SNPFrag {
 
 impl SNPFrag {
     pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32, cover_strand_bias_threshold: f32) {
-        // get candidate SNPs
+        // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
         for bf in pileup.iter() {
@@ -110,22 +110,18 @@ impl SNPFrag {
                 // insertion base
                 continue;
             }
-            // check current position is a candidate SNP
+
+            // 1.filtering with depth
             let depth = bf.get_depth_exclude_intron_deletion();
-            let depth_include_intron = bf.get_depth_include_intron();
             if depth < min_coverage {
                 position += 1;
                 continue;
             }
-            let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
-            if bf.d > allele1_cnt {
-                println!("indels: {}, {}, {}, {}", position, bf.d, allele1_cnt, allele2_cnt);
-                position += 1;
-                continue;
-            }
-            let allele1_freq = (allele1_cnt as f32) / (depth as f32);
-            let allele2_freq = (allele2_cnt as f32) / (depth as f32);
 
+            let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
+
+            // 2.filtering with depth, considering intron reads
+            let depth_include_intron = bf.get_depth_include_intron();
             if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // maybe caused by erroneous intron alignment
                 println!("allele freq include intron: {}, {}, {}, {}", position, allele1_cnt, allele2_cnt, depth_include_intron);
@@ -133,31 +129,35 @@ impl SNPFrag {
                 continue;
             }
 
-            // filter snps only covered by one strand reads (may caused by intron alignment error)
-            let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
-            if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
-                // forward strand bias
-                println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
+            // 3.filtering with deletion frequency
+            if bf.d > allele1_cnt {
+                println!("indels: {}, {}, {}, {}", position, bf.d, allele1_cnt, allele2_cnt);
                 position += 1;
                 continue;
-            } else if bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
-                // reverse strand bias
+            }
+
+            // 4.filtering snps only covered by one strand reads (may caused by intron alignment error)
+            let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
+            if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
+                // strand bias
                 println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
                 position += 1;
                 continue;
             }
 
+
+            let allele1_freq = (allele1_cnt as f32) / (depth as f32);
+            let allele2_freq = (allele2_cnt as f32) / (depth as f32);
             if allele1_freq >= min_homozygous_freq && allele1 != bf.ref_base {
                 // candidate homozygous SNP
                 let mut candidate_snp = CandidateSNP::default();
                 candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
                 candidate_snp.pos = position as i64;
-                // candidate_snp.ref_base = allele1 as u8;
                 candidate_snp.alleles = [allele1, allele2];
                 candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
-                candidate_snp.variant_type = 2;
+                candidate_snp.variant_type = 2; // homozygous SNP
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
             } else if allele2_freq > min_allele_freq {
@@ -165,12 +165,11 @@ impl SNPFrag {
                 let mut candidate_snp = CandidateSNP::default();
                 candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
                 candidate_snp.pos = position as i64;
-                // candidate_snp.ref_base = allele1 as u8;
                 candidate_snp.alleles = [allele1, allele2];
                 candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
-                candidate_snp.variant_type = 1;
+                candidate_snp.variant_type = 1; // heterozygous SNP
                 self.candidate_snps.push(candidate_snp);
                 self.hete_snps.push(self.candidate_snps.len() - 1);
             }
@@ -210,38 +209,35 @@ impl SNPFrag {
             if result.is_err() {
                 panic!("BAM parsing failed...");
             }
+            // TODO: filtering unmapped, secondary, supplementary reads?
             if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
                 continue;
             }
             let pos = record.pos(); // 0-based
-            if pos > self.candidate_snps[*self.hete_snps.last().unwrap()].pos
-            {
-                continue;
-            }
+            if pos > self.candidate_snps[*self.hete_snps.last().unwrap()].pos { continue; }
             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-            // println!("{} {} {}", qname, pos, record.cigar());
             let cigar = record.cigar();
             let seq = record.seq().as_bytes();
             let strand = if record.strand() == Forward { 0 } else { 1 };
             let mut pos_on_ref = pos;   // 0-based
             let mut pos_on_query = cigar.leading_softclips();   // 0-based
-            let mut snp_offset = 0; // index of candidate SNPs
+            let mut idx = 0; // index in self.hete_snps
             let mut snp_pos = -1;   // pre-computed position of candidate SNPs
             let mut alleles;   // pre-computed alleles of candidate SNPs
             if pos <= self.candidate_snps[*self.hete_snps.first().unwrap()].pos {
-                snp_pos = self.candidate_snps[self.hete_snps[snp_offset]].pos;
-                alleles = self.candidate_snps[self.hete_snps[snp_offset]].alleles.clone();
+                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
             } else {
                 // find the first SNP in the read
-                while snp_offset < self.hete_snps.len() {
-                    if self.candidate_snps[self.hete_snps[snp_offset]].pos >= pos {
+                while idx < self.hete_snps.len() {
+                    if self.candidate_snps[self.hete_snps[idx]].pos >= pos {
                         break;
                     }
-                    snp_offset += 1;
+                    idx += 1;
                 }
-                assert!(snp_offset < self.hete_snps.len(), "Error: snp_offset < self.candidate_snps.len()");
-                snp_pos = self.candidate_snps[self.hete_snps[snp_offset]].pos;
-                alleles = self.candidate_snps[self.hete_snps[snp_offset]].alleles.clone();
+                assert!(idx < self.hete_snps.len(), "Error: idx < self.candidate_snps.len()");
+                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
             }
 
             let mut fragment = Fragment::default();
@@ -251,7 +247,7 @@ impl SNPFrag {
                 if pos_on_ref > self.candidate_snps[*self.hete_snps.last().unwrap()].pos {
                     break;
                 }
-                if snp_offset >= self.hete_snps.len() {
+                if idx >= self.hete_snps.len() {
                     break;
                 }
                 match cg.char() as u8 {
@@ -263,7 +259,7 @@ impl SNPFrag {
                             assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
-                                frag_elem.snp_idx = self.hete_snps[snp_offset];
+                                frag_elem.snp_idx = self.hete_snps[idx];
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = seq[pos_on_query as usize] as char;
                                 frag_elem.baseq = record.qual()[pos_on_query as usize];
@@ -276,6 +272,7 @@ impl SNPFrag {
                                 } else {
                                     frag_elem.p = 0;    // not covered
                                 }
+                                // calculate the cost of links of two snps as hapcut (optioanl)
                                 if fragment.list.len() > 0 {
                                     for prev_frag_elem in fragment.list.iter() {
                                         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
@@ -302,14 +299,14 @@ impl SNPFrag {
                                 }
                                 // println!("M: {:?}", frag_elem);
                                 fragment.list.push(frag_elem);
-                                snp_offset += 1;
-                                if snp_offset >= self.hete_snps.len() {
+                                idx += 1;
+                                if idx >= self.hete_snps.len() {
                                     pos_on_query += 1;
                                     pos_on_ref += 1;
                                     break;
                                 }
-                                snp_pos = self.candidate_snps[self.hete_snps[snp_offset]].pos;
-                                alleles = self.candidate_snps[self.hete_snps[snp_offset]].alleles.clone();
+                                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                             }
                             pos_on_query += 1;
                             pos_on_ref += 1;
@@ -323,12 +320,13 @@ impl SNPFrag {
                             assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
-                                frag_elem.snp_idx = self.hete_snps[snp_offset];
+                                frag_elem.snp_idx = self.hete_snps[idx];
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = '-';
                                 frag_elem.baseq = 0;
                                 frag_elem.strand = strand;
                                 frag_elem.p = 0;
+                                // calculate the cost of links of two snps as hapcut (optioanl)
                                 if fragment.list.len() > 0 {
                                     for prev_frag_elem in fragment.list.iter() {
                                         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
@@ -355,13 +353,13 @@ impl SNPFrag {
                                 }
                                 // println!("D: {:?}", frag_elem);
                                 fragment.list.push(frag_elem);
-                                snp_offset += 1;
-                                if snp_offset >= self.hete_snps.len() {
+                                idx += 1;
+                                if idx >= self.hete_snps.len() {
                                     pos_on_ref += 1;
                                     break;
                                 }
-                                snp_pos = self.candidate_snps[self.hete_snps[snp_offset]].pos;
-                                alleles = self.candidate_snps[self.hete_snps[snp_offset]].alleles.clone();
+                                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                             }
                             pos_on_ref += 1;
                         }
@@ -371,12 +369,13 @@ impl SNPFrag {
                             assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
-                                frag_elem.snp_idx = self.hete_snps[snp_offset];
+                                frag_elem.snp_idx = self.hete_snps[idx];
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = b'-' as char;
                                 frag_elem.baseq = 0;
                                 frag_elem.strand = strand;
                                 frag_elem.p = 0;
+                                // calculate the cost of links of two snps as hapcut (optioanl)
                                 if fragment.list.len() > 0 {
                                     for prev_frag_elem in fragment.list.iter() {
                                         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
@@ -403,13 +402,13 @@ impl SNPFrag {
                                 }
                                 // println!("N: {:?}", frag_elem);
                                 fragment.list.push(frag_elem);
-                                snp_offset += 1;
-                                if snp_offset >= self.hete_snps.len() {
+                                idx += 1;
+                                if idx >= self.hete_snps.len() {
                                     pos_on_ref += 1;
                                     break;
                                 }
-                                snp_pos = self.candidate_snps[self.hete_snps[snp_offset]].pos;
-                                alleles = self.candidate_snps[self.hete_snps[snp_offset]].alleles.clone();
+                                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                             }
                             pos_on_ref += 1;
                         }
@@ -434,6 +433,8 @@ impl SNPFrag {
         *? Filter false positive SNPs, which may be cause by strand bias or in a dense cluster of variants (100bp length has over 3 snps).
          */
 
+
+        // 1. filter dense cluster of variants
         let mut homo_hete_snps: Vec<i64> = Vec::new();
         for i in self.hete_snps.iter() {
             homo_hete_snps.push(self.candidate_snps[*i].pos);
@@ -441,17 +442,17 @@ impl SNPFrag {
         for i in self.homo_snps.iter() {
             homo_hete_snps.push(self.candidate_snps[*i].pos);
         }
-        // sort homo_hete_snps in accending order
+        // sort homo_hete_snps in ascending order
         homo_hete_snps.sort();
 
         let mut filter_window: HashSet<i64> = HashSet::new();   // record the SNP position in a dense cluster of variants
         for i in 0..homo_hete_snps.len() {
             for j in i..homo_hete_snps.len() {
+                // TODO: dense cluster of snps?
                 if homo_hete_snps[j] - homo_hete_snps[i] > 300 {
                     if (j - 1) - i + 1 >= 9 {
                         for tk in i..j {
                             filter_window.insert(homo_hete_snps[tk]);
-                            // println!("j = {}, i = {}, tk = {}, pos = {}", j, i, tk, homo_hete_snps[tk]);
                         }
                     }
                     break;
@@ -485,6 +486,7 @@ impl SNPFrag {
             self.hete_snps = filtered_hete_snps;
         }
 
+        // 2. filtering strand bias
         let mut filtered_hete_snps: Vec<usize> = Vec::new();
         for i in self.hete_snps.iter() {
             let snp = &mut self.candidate_snps[*i];
@@ -508,11 +510,7 @@ impl SNPFrag {
             let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
             if total_variant_cnt > 0 {
                 // variant strand bias
-                if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
-                    snp.filter = true;  // current snp is filtered because of strand bias
-                    println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
-                    continue;
-                } else if variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
+                if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold || variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
                     snp.filter = true;  // current snp is filtered because of strand bias
                     println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
                     continue;
@@ -520,9 +518,7 @@ impl SNPFrag {
             }
             filtered_hete_snps.push(*i);
         }
-        if filtered_hete_snps.len() == self.hete_snps.len() {
-            return;
-        } else {
+        if filtered_hete_snps.len() != self.hete_snps.len() {
             self.hete_snps = filtered_hete_snps;
         }
     }
@@ -920,14 +916,10 @@ impl SNPFrag {
                 }
             }
         }
-        println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
-        if logp > pre_logp {
-            return 1;
-        } else if logp == pre_logp {
-            return 0;
-        } else {
-            return -1;
-        }
+        // println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
+        let mut rv = 0;
+        if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else { rv = -1; }
+        return rv;
     }
 
 
@@ -955,14 +947,10 @@ impl SNPFrag {
                 }
             }
         }
-        println!("check_new_haplotype: logp = {}, pre_logp = {}", logp, pre_logp);
-        if logp > pre_logp {
-            return 1;
-        } else if logp == pre_logp {
-            return 0;
-        } else {
-            return -1;
-        }
+        // println!("check_new_haplotype: logp = {}, pre_logp = {}", logp, pre_logp);
+        let mut rv = 0;
+        if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else { rv = -1; }
+        return rv;
     }
 
     pub fn cross_optimize(&mut self) -> f64 {
@@ -1071,7 +1059,7 @@ impl SNPFrag {
         let prob = SNPFrag::cal_overall_probability(&self, &processed_snps, &covered_fragments);
         // println!("cross optimization iterations: {}", num_iters);
         // println!("haplotype: {:?}", self.haplotype);
-        println!("score: {:?}", prob);
+        // println!("score: {:?}", prob);
         // println!("assignment: {:?}", self.haplotag);
         return prob;
     }
@@ -1100,11 +1088,9 @@ impl SNPFrag {
                 }
             }
             for hap in haplotype_enum.iter() {
-                // self.haplotype = hap.clone();
                 for i in 0..self.hete_snps.len() {
                     self.candidate_snps[self.hete_snps[i]].haplotype = hap[i];
                 }
-                println!("1");
                 let prob = self.cross_optimize();
                 if prob > largest_prob {
                     largest_prob = prob;
@@ -1118,19 +1104,14 @@ impl SNPFrag {
                     }
                 }
             }
-            // self.haplotag = best_haplotag.clone();
-            // self.haplotype = best_haplotype.clone();
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
             for k in covered_fragments.iter() {
                 self.fragments[*k].haplotag = best_haplotag[k];
             }
-            // println!("best prob: {:?}", largest_prob);
-            // println!("best haplotype: {:?}", best_haplotype);
         } else {
             // optimize haplotype and read assignment alternatively
-            println!("2");
             let prob = self.cross_optimize();
             if prob > largest_prob {
                 largest_prob = prob;
@@ -1143,8 +1124,6 @@ impl SNPFrag {
                     best_haplotag.insert(*k, self.fragments[*k].haplotag);
                 }
             }
-            // self.haplotag = best_haplotag.clone();
-            // self.haplotype = best_haplotype.clone();
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
@@ -1170,8 +1149,6 @@ impl SNPFrag {
                 for i in 0..self.hete_snps.len() {
                     self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
                 }
-                // self.haplotype = tmp_hap.clone();
-                println!("3");
                 let prob = self.cross_optimize();
                 if prob > largest_prob {
                     largest_prob = prob;
@@ -1183,12 +1160,8 @@ impl SNPFrag {
                     for k in covered_fragments.iter() {
                         best_haplotag.insert(*k, self.fragments[*k].haplotag);
                     }
-                    // best_haplotype = self.haplotype.clone();
-                    // best_haplotag = self.haplotag.clone();
                 }
             }
-            // self.haplotag = best_haplotag.clone();
-            // self.haplotype = best_haplotype.clone();
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
@@ -1208,7 +1181,6 @@ impl SNPFrag {
             for tk in selected_flip_haplotag {
                 self.fragments[*tk].haplotag = self.fragments[*tk].haplotag * (-1);
             }
-            println!("4");
             let prob = self.cross_optimize();
             if prob > largest_prob {
                 largest_prob = prob;
@@ -1220,19 +1192,13 @@ impl SNPFrag {
                 for k in covered_fragments.iter() {
                     best_haplotag.insert(*k, self.fragments[*k].haplotag);
                 }
-                // best_haplotype = self.haplotype.clone();
-                // best_haplotag = self.haplotag.clone();
             }
-            // self.haplotag = best_haplotag.clone();
-            // self.haplotype = best_haplotype.clone();
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
             for k in covered_fragments.iter() {
                 self.fragments[*k].haplotag = best_haplotag[k];
             }
-            // println!("best prob: {:?}", largest_prob);
-            // println!("best haplotype: {:?}", best_haplotype);
         }
     }
 
@@ -1641,12 +1607,10 @@ pub fn multithread_phase_haplotag(bam_file: String,
         isolated_regions.par_iter().for_each(|reg| {
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
-            let mut readnames: Vec<String> = Vec::new();
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, cover_strand_bias_threshold);
-            // if snpfrag.snps.len() > 0 {
             for snp in snpfrag.candidate_snps.iter() {
                 println!("snp: {:?}", snp);
             }
