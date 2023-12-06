@@ -354,6 +354,15 @@ impl ParsedRead {
     }
 }
 
+
+#[derive(Default, Debug, Clone)]
+pub struct BaseQual {
+    pub a: Vec<u8>,
+    pub c: Vec<u8>,
+    pub g: Vec<u8>,
+    pub t: Vec<u8>,
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct BaseFreq {
     pub a: u32,
@@ -374,6 +383,7 @@ pub struct BaseFreq {
     // number of forward reads covering this position, excluding intron
     pub backward_cnt: u32,
     // number of backward reads covering this position, excluding intron
+    pub baseq: BaseQual,
 }
 
 impl BaseFreq {
@@ -506,6 +516,7 @@ impl BaseFreq {
     }
 }
 
+
 #[derive(Default, Debug, Clone)]
 pub struct Profile {
     pub freq_vec: Vec<BaseFreq>,
@@ -562,26 +573,52 @@ impl Profile {
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
+                            let base_qual = record.qual();
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0 });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
                             for tmpi in 1..=len {
                                 // insert_segment.push(seq[q_pos.unwrap() + tmpi as usize] as char);
                                 let base = seq[(q_pos + tmpi) as usize] as char;
+                                let baseq = base_qual[(q_pos + tmpi) as usize];
                                 let bf = &mut insert_bf[tmpi as usize - 1];
                                 match base {
-                                    'A' => bf.a += 1,
-                                    'a' => bf.a += 1,
-                                    'C' => bf.c += 1,
-                                    'c' => bf.c += 1,
-                                    'G' => bf.g += 1,
-                                    'g' => bf.g += 1,
-                                    'T' => bf.t += 1,
-                                    't' => bf.t += 1,
+                                    'A' => {
+                                        bf.a += 1;
+                                        bf.baseq.a.push(baseq);
+                                    }
+                                    'a' => {
+                                        bf.a += 1;
+                                        bf.baseq.a.push(baseq);
+                                    }
+                                    'C' => {
+                                        bf.c += 1;
+                                        bf.baseq.c.push(baseq);
+                                    }
+                                    'c' => {
+                                        bf.c += 1;
+                                        bf.baseq.c.push(baseq);
+                                    }
+                                    'G' => {
+                                        bf.g += 1;
+                                        bf.baseq.g.push(baseq);
+                                    }
+                                    'g' => {
+                                        bf.g += 1;
+                                        bf.baseq.g.push(baseq);
+                                    }
+                                    'T' => {
+                                        bf.t += 1;
+                                        bf.baseq.t.push(baseq);
+                                    }
+                                    't' => {
+                                        bf.t += 1;
+                                        bf.baseq.t.push(baseq);
+                                    }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
@@ -608,26 +645,52 @@ impl Profile {
                             let record = alignment.record();
                             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                             let seq = record.seq();
+                            let base_qual = record.qual();
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0 });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
                             for tmpi in 1..=len {
                                 // insert_segment.push(seq[q_pos.unwrap() + tmpi as usize] as char);
                                 let base = seq[(q_pos + tmpi) as usize] as char;
+                                let baseq = base_qual[(q_pos + tmpi) as usize];
                                 let bf = &mut insert_bf[tmpi as usize - 1];
                                 match base {
-                                    'A' => bf.a += 1,
-                                    'a' => bf.a += 1,
-                                    'C' => bf.c += 1,
-                                    'c' => bf.c += 1,
-                                    'G' => bf.g += 1,
-                                    'g' => bf.g += 1,
-                                    'T' => bf.t += 1,
-                                    't' => bf.t += 1,
+                                    'A' => {
+                                        bf.a += 1;
+                                        bf.baseq.a.push(baseq);
+                                    }
+                                    'a' => {
+                                        bf.a += 1;
+                                        bf.baseq.a.push(baseq);
+                                    }
+                                    'C' => {
+                                        bf.c += 1;
+                                        bf.baseq.c.push(baseq);
+                                    }
+                                    'c' => {
+                                        bf.c += 1;
+                                        bf.baseq.c.push(baseq);
+                                    }
+                                    'G' => {
+                                        bf.g += 1;
+                                        bf.baseq.g.push(baseq);
+                                    }
+                                    'g' => {
+                                        bf.g += 1;
+                                        bf.baseq.g.push(baseq);
+                                    }
+                                    'T' => {
+                                        bf.t += 1;
+                                        bf.baseq.t.push(baseq);
+                                    }
+                                    't' => {
+                                        bf.t += 1;
+                                        bf.baseq.t.push(baseq);
+                                    }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
@@ -649,17 +712,43 @@ impl Profile {
                     let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                     read_positions.insert(qname.clone(), q_pos as u32);
                     let seq = record.seq();
+                    let base_qual = record.qual();
                     let strand = if record.strand() == Forward { 0 } else { 1 };
                     let base = seq[q_pos] as char;
+                    let baseq = base_qual[q_pos];
                     match base {
-                        'A' => bf.a += 1,
-                        'a' => bf.a += 1,
-                        'C' => bf.c += 1,
-                        'c' => bf.c += 1,
-                        'G' => bf.g += 1,
-                        'g' => bf.g += 1,
-                        'T' => bf.t += 1,
-                        't' => bf.t += 1,
+                        'A' => {
+                            bf.a += 1;
+                            bf.baseq.a.push(baseq);
+                        }
+                        'a' => {
+                            bf.a += 1;
+                            bf.baseq.a.push(baseq);
+                        }
+                        'C' => {
+                            bf.c += 1;
+                            bf.baseq.c.push(baseq);
+                        }
+                        'c' => {
+                            bf.c += 1;
+                            bf.baseq.c.push(baseq);
+                        }
+                        'G' => {
+                            bf.g += 1;
+                            bf.baseq.g.push(baseq);
+                        }
+                        'g' => {
+                            bf.g += 1;
+                            bf.baseq.g.push(baseq);
+                        }
+                        'T' => {
+                            bf.t += 1;
+                            bf.baseq.t.push(baseq);
+                        }
+                        't' => {
+                            bf.t += 1;
+                            bf.baseq.t.push(baseq);
+                        }
                         _ => {
                             panic!("Invalid nucleotide base: {}", base);
                         }
@@ -677,22 +766,47 @@ impl Profile {
                             }
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0 });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default() });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
                                 // insert_segment.push(seq[q_pos.unwrap() + tmpi as usize] as char);
                                 let base = seq[q_pos + tmpi as usize] as char;
+                                let baseq = base_qual[q_pos + tmpi as usize];
                                 let ibf = &mut insert_bf[tmpi as usize - 1];
                                 match base {
-                                    'A' => ibf.a += 1,
-                                    'a' => ibf.a += 1,
-                                    'C' => ibf.c += 1,
-                                    'c' => ibf.c += 1,
-                                    'G' => ibf.g += 1,
-                                    'g' => ibf.g += 1,
-                                    'T' => ibf.t += 1,
-                                    't' => ibf.t += 1,
+                                    'A' => {
+                                        ibf.a += 1;
+                                        ibf.baseq.a.push(baseq);
+                                    }
+                                    'a' => {
+                                        ibf.a += 1;
+                                        ibf.baseq.a.push(baseq);
+                                    }
+                                    'C' => {
+                                        ibf.c += 1;
+                                        ibf.baseq.c.push(baseq);
+                                    }
+                                    'c' => {
+                                        ibf.c += 1;
+                                        ibf.baseq.c.push(baseq);
+                                    }
+                                    'G' => {
+                                        ibf.g += 1;
+                                        ibf.baseq.g.push(baseq);
+                                    }
+                                    'g' => {
+                                        ibf.g += 1;
+                                        ibf.baseq.g.push(baseq);
+                                    }
+                                    'T' => {
+                                        ibf.t += 1;
+                                        ibf.baseq.t.push(baseq);
+                                    }
+                                    't' => {
+                                        ibf.t += 1;
+                                        ibf.baseq.t.push(baseq);
+                                    }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }

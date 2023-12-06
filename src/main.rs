@@ -390,7 +390,7 @@ struct Args {
     min_allele_freq_include_intron: f32,
 
     /// Minimum allele frequency for homozygous SNPs
-    #[arg(long, default_value_t = 0.75)]
+    #[arg(long, default_value_t = 0.85)]
     min_homozygous_freq: f32,
 
     /// Minimum support number for each allele
@@ -504,6 +504,9 @@ fn main() {
         let ref_seqs = read_references(ref_path);
         profile.init_with_pileup(bam_path, &region);
         profile.append_reference(&ref_seqs);
+        // for bf in profile.freq_vec.iter() {
+        //     println!("bf: {:?}", bf);
+        // }
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, cover_strand_bias_threshold);
         for i in snpfrag.hete_snps.iter() {
@@ -528,52 +531,69 @@ fn main() {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         // if snpfrag.snps.len() > 0 {
         snpfrag.get_fragments(bam_path, &region);
-        println!("{:?}", snpfrag.hete_snps);
-        println!("{:?}", snpfrag.homo_snps);
-        for snp in snpfrag.candidate_snps.iter() {
-            println!("{:?}", snp);
-        }
-        for fg in snpfrag.fragments.iter() {
-            println!("{:?}", fg);
-            println!();
-        }
+        // println!("{:?}", snpfrag.hete_snps);
+        // println!("{:?}", snpfrag.homo_snps);
+        // for snp in snpfrag.candidate_snps.iter() {
+        //     println!("{:?}", snp);
+        // }
+        // for fg in snpfrag.fragments.iter() {
+        //     println!("{:?}", fg);
+        //     println!();
+        // }
         // println!("{:?}", snpfrag.fragments);
         // return;
         snpfrag.filter_fp_snps(strand_bias_threshold, None);
         if snpfrag.hete_snps.len() > 0 {
+            for i in snpfrag.hete_snps.iter() {
+                println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
+            }
+
             // for elem in snpfrag.fragments.iter() {
             //     println!("fragment: {:?}", elem);
             // }
 
             let mut v: Vec<_> = snpfrag.edges.iter().collect();
             v.sort_by(|x, y| x.0[0].cmp(&y.0[0]));
-            for edge in v.iter() {
-                println!("edge: {:?}", edge);
-                // for idx in edge.1.frag_idxes.iter() {
-                //     println!("fragment: {:?}", snpfrag.fragments[*idx]);
-                // }
-            }
+            // for edge in v.iter() {
+            //     println!("edge: {:?}", edge);
+            //     // for idx in edge.1.frag_idxes.iter() {
+            //     //     println!("fragment: {:?}", snpfrag.fragments[*idx]);
+            //     // }
+            // }
             unsafe { snpfrag.init_haplotypes(); }
             unsafe { snpfrag.init_assignment(); }
             snpfrag.phase(max_enum_snps, random_flip_fraction);
             read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
             snpfrag.add_phase_score(min_allele_cnt);
             // // second round phase
-            // snpfrag.filter_fp_snps(strand_bias_threshold, Some((min_phase_score * 0.8) as f64));
-            // if snpfrag.snps.len() == 0 {
-            //     unsafe { snpfrag.init_haplotypes(); }
-            //     unsafe { snpfrag.init_assignment(); }
-            // }
-            // if snpfrag.snps.len() > 0 {
-            //     unsafe { snpfrag.init_haplotypes(); }
-            //     unsafe { snpfrag.init_assignment(); }
-            //     snpfrag.phase(max_enum_snps, random_flip_fraction);
-            //     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-            //     snpfrag.add_phase_score(min_allele_cnt);
+            // {
+            //     let mut second_round_hete_snps: Vec<usize> = Vec::new();
+            //     for ti in 0..snpfrag.candidate_snps.len() {
+            //         let snp = &snpfrag.candidate_snps[ti];
+            //         if snp.filter == true || snp.variant_type != 1 {
+            //             continue;
+            //         }
+            //
+            //         if snp.phase_score >= min_phase_score as f64 {
+            //             second_round_hete_snps.push(ti);
+            //         }
+            //     }
+            //     snpfrag.hete_snps = second_round_hete_snps;
+            //     if snpfrag.hete_snps.len() > 0 {
+            //         unsafe { snpfrag.init_haplotypes(); }
+            //         // remove the haplotag of each fragment
+            //         for tk in 0..snpfrag.fragments.len() {
+            //             snpfrag.fragments[tk].haplotag = 0;
+            //         }
+            //         unsafe { snpfrag.init_assignment(); }
+            //         snpfrag.phase(max_enum_snps, random_flip_fraction);
+            //         let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+            //         snpfrag.add_phase_score(min_allele_cnt);
+            //     }
             // }
         }
         // }
-        let vcf_records = snpfrag.output_vcf2(min_phase_score, min_allele_cnt, phasing_output);
+        let vcf_records = snpfrag.output_vcf2(min_phase_score, min_homozygous_freq, phasing_output);
         for rd in vcf_records.iter() {
             if rd.alternative.len() == 1 {
                 println!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", std::str::from_utf8(&rd.chromosome).unwrap(),
