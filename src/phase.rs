@@ -11,7 +11,6 @@ use std::sync::{mpsc, Arc, Mutex, Condvar};
 use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
 use rand::seq::SliceRandom;
-use log::error;
 use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
 
@@ -176,16 +175,16 @@ impl SNPFrag {
 
             for bq in identical_baseqs.iter() {
                 let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
-                likelihood[0] *= (ploidy) as f64 * error_rate;
-                likelihood[1] *= (ploidy - 1) as f64 * error_rate + (1.0 - error_rate);
-                likelihood[2] *= (ploidy - 2) as f64 * error_rate + 2.0 * (1.0 - error_rate);
+                likelihood[0] *= (ploidy - 0) as f64 * (error_rate) + 0.0 * (1.0 - error_rate);
+                likelihood[1] *= (ploidy - 1) as f64 * (error_rate) + 1.0 * (1.0 - error_rate);
+                likelihood[2] *= (ploidy - 2) as f64 * (error_rate) + 2.0 * (1.0 - error_rate);
             }
 
             for bq_vec in different_baseqs.iter() {
                 for bq in bq_vec.iter() {
                     let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
-                    likelihood[0] *= ploidy as f64 * (1.0 - error_rate);
-                    likelihood[1] *= (ploidy - 1) as f64 * (1.0 - error_rate) + error_rate;
+                    likelihood[0] *= (ploidy - 0) as f64 * (1.0 - error_rate) + 0.0 * error_rate;
+                    likelihood[1] *= (ploidy - 1) as f64 * (1.0 - error_rate) + 1.0 * error_rate;
                     likelihood[2] *= (ploidy - 2) as f64 * (1.0 - error_rate) + 2.0 * error_rate;
                 }
             }
@@ -200,11 +199,11 @@ impl SNPFrag {
             likelihood[1] *= background_prob[1];
             likelihood[2] *= background_prob[2];
             let likelihood_sum = likelihood[0] + likelihood[1] + likelihood[2];
-            likelihood[0] = 10e-9_f64.max(likelihood[0] / likelihood_sum);
-            likelihood[1] = 10e-9_f64.max(likelihood[1] / likelihood_sum);
-            likelihood[2] = 10e-9_f64.max(likelihood[2] / likelihood_sum);
+            likelihood[0] = 10e-6_f64.max(likelihood[0] / likelihood_sum);
+            likelihood[1] = 10e-6_f64.max(likelihood[1] / likelihood_sum);
+            likelihood[2] = 10e-6_f64.max(likelihood[2] / likelihood_sum);
 
-            // println!("likelihood: {}, {}, {}", likelihood[0], likelihood[1], likelihood[2]);
+            // println!("{} likelihood: {}, {}, {}", position as i64, likelihood[0], likelihood[1], likelihood[2]);
 
             if likelihood[0] > likelihood[1] && likelihood[0] > likelihood[2] {
                 // candidate homozygous SNP
@@ -219,7 +218,8 @@ impl SNPFrag {
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 2; // homozygous SNP
                 candidate_snp.genotype_likelihood = likelihood.clone();
-                candidate_snp.genotype_quality = -10.0_f64 * (1.0 - likelihood[0]).log10();
+                candidate_snp.genotype_quality = 0_f64.max(-10.0_f64 * (1.0 - likelihood[0] + 10e-10_f64).log10());
+                // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
             } else if likelihood[1] > likelihood[0] && likelihood[1] > likelihood[2] {
@@ -239,39 +239,11 @@ impl SNPFrag {
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 1; // heterozygous SNP
                 candidate_snp.genotype_likelihood = likelihood.clone();
-                candidate_snp.genotype_quality = -10.0_f64 * (1.0 - likelihood[1]).log10();
+                candidate_snp.genotype_quality = 0_f64.max(-10.0_f64 * (1.0 - likelihood[1] + 10e-10_f64).log10());
+                // println!("hete genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.hete_snps.push(self.candidate_snps.len() - 1);
             }
-
-
-            // let allele1_freq = (allele1_cnt as f32) / (depth as f32);
-            // let allele2_freq = (allele2_cnt as f32) / (depth as f32);
-            // if allele1_freq >= min_homozygous_freq && allele1 != bf.ref_base {
-            //     // candidate homozygous SNP
-            //     let mut candidate_snp = CandidateSNP::default();
-            //     candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
-            //     candidate_snp.pos = position as i64;
-            //     candidate_snp.alleles = [allele1, allele2];
-            //     candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
-            //     candidate_snp.reference = bf.ref_base;
-            //     candidate_snp.depth = depth;
-            //     candidate_snp.variant_type = 2; // homozygous SNP
-            //     self.candidate_snps.push(candidate_snp);
-            //     self.homo_snps.push(self.candidate_snps.len() - 1);
-            // } else if allele2_freq > min_allele_freq {
-            //     // candidate heterozgous SNP
-            //     let mut candidate_snp = CandidateSNP::default();
-            //     candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
-            //     candidate_snp.pos = position as i64;
-            //     candidate_snp.alleles = [allele1, allele2];
-            //     candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
-            //     candidate_snp.reference = bf.ref_base;
-            //     candidate_snp.depth = depth;
-            //     candidate_snp.variant_type = 1; // heterozygous SNP
-            //     self.candidate_snps.push(candidate_snp);
-            //     self.hete_snps.push(self.candidate_snps.len() - 1);
-            // }
             position += 1;
         }
     }
@@ -288,11 +260,32 @@ impl SNPFrag {
     }
 
     pub unsafe fn init_assignment(&mut self) {
-        for i in 0..self.fragments.len() {
+        let mut fragment_cnt: HashMap<usize, usize> = HashMap::new();
+        let mut covered_fragments: HashSet<usize> = HashSet::new();
+
+        for i in self.hete_snps.iter() {
+            let snp = &self.candidate_snps[*i];
+            for k in snp.snp_cover_fragments.iter() {
+                if fragment_cnt.contains_key(k) {
+                    let cnt = fragment_cnt.get_mut(k).unwrap();
+                    *cnt += 1;
+                } else {
+                    fragment_cnt.insert(*k, 1);
+                }
+            }
+        }
+
+        for (k, v) in fragment_cnt.iter() {
+            if *v >= 2 {
+                covered_fragments.insert(*k);
+            }
+        }
+
+        for k in covered_fragments.iter() {
             if drand48() < 0.5 {
-                self.fragments[i].haplotag = -1;
+                self.fragments[*k].haplotag = -1;
             } else {
-                self.fragments[i].haplotag = 1;
+                self.fragments[*k].haplotag = 1;
             }
         }
     }
@@ -622,7 +615,25 @@ impl SNPFrag {
         }
     }
 
-    pub fn keep_reliable_snps_in_component(&mut self) {}
+    pub fn keep_reliable_snps_in_component(&mut self) {
+        let mut gqmap: HashMap<usize, f64> = HashMap::new();
+        for i in self.hete_snps.iter() {
+            let snp = &mut self.candidate_snps[*i];
+            if snp.filter == true { continue; }
+            gqmap.insert(*i, snp.genotype_quality);
+        }
+        // sort gqmap in descending order
+        let mut gqmap_vec: Vec<(&usize, &f64)> = gqmap.iter().collect();
+        gqmap_vec.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
+        if gqmap_vec.len() > 10 {
+            let mut filtered_hete_snps: Vec<usize> = Vec::new();
+            for i in 0..((gqmap_vec.len() as f32 * 0.7) as usize) {
+                // for i in 0..gqmap_vec.len() {
+                filtered_hete_snps.push(*gqmap_vec[i].0);
+            }
+            self.hete_snps = filtered_hete_snps;
+        }
+    }
 
     // pub fn optimization_using_maxcut(&mut self) {
     //     // optimization using maxcut
@@ -1066,14 +1077,28 @@ impl SNPFrag {
         let mut phasing_increase: bool = true;
         let mut haplotag_increase: bool = true;
         let mut num_iters = 0;
+        let mut fragments_cnt: HashMap<usize, usize> = HashMap::new();
         let mut covered_fragments: HashSet<usize> = HashSet::new();
         let mut processed_snps: HashSet<usize> = HashSet::new();
         for i in self.hete_snps.iter() {
             processed_snps.insert(*i);
             for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                // covered_fragments.insert(*k);
+                if !fragments_cnt.contains_key(k) {
+                    fragments_cnt.insert(*k, 1);
+                } else {
+                    let cnt = fragments_cnt.get_mut(k).unwrap();
+                    *cnt += 1;
+                }
+            }
+        }
+
+        for (k, v) in fragments_cnt.iter() {
+            if *v >= 2 {
                 covered_fragments.insert(*k);
             }
         }
+
         while phasing_increase | haplotag_increase {
             // optimize sigma
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
@@ -1170,11 +1195,24 @@ impl SNPFrag {
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
         let mut covered_fragments: HashSet<usize> = HashSet::new();
+        let mut fragments_cnt: HashMap<usize, usize> = HashMap::new();
         for i in self.hete_snps.iter() {
             for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                if !fragments_cnt.contains_key(k) {
+                    fragments_cnt.insert(*k, 1);
+                } else {
+                    let cnt = fragments_cnt.get_mut(k).unwrap();
+                    *cnt += 1;
+                }
+            }
+        }
+
+        for (k, v) in fragments_cnt.iter() {
+            if *v >= 2 {
                 covered_fragments.insert(*k);
             }
         }
+
         if self.hete_snps.len() <= max_enum_snps {
             // enumerate the haplotype, then optimize the assignment
             let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
@@ -1213,42 +1251,78 @@ impl SNPFrag {
             }
         } else {
             // optimize haplotype and read assignment alternatively
-            let prob = self.cross_optimize();
-            if prob > largest_prob {
-                largest_prob = prob;
-                best_haplotype.clear();
-                best_haplotag.clear();
-                for i in self.hete_snps.iter() {
-                    best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
-                }
-                for k in covered_fragments.iter() {
-                    best_haplotag.insert(*k, self.fragments[*k].haplotag);
-                }
-            }
-            for i in self.hete_snps.iter() {
-                self.candidate_snps[*i].haplotype = best_haplotype[i];
-            }
-            for k in covered_fragments.iter() {
-                self.fragments[*k].haplotag = best_haplotag[k];
-            }
-
-            // block flip: flip all the snps after a random position to jump local optimization
-            let mut unflipped_haplotype: Vec<i32> = Vec::new();
-            for i in self.hete_snps.iter() {
-                unflipped_haplotype.push(self.candidate_snps[*i].haplotype);
-            }
-            for ti in 0..unflipped_haplotype.len() {
-                let mut tmp_hap: Vec<i32> = Vec::new();
-                for tj in 0..unflipped_haplotype.len() {
-                    if tj < ti {
-                        tmp_hap.push(unflipped_haplotype[tj]);
-                    } else {
-                        tmp_hap.push(unflipped_haplotype[tj] * (-1));
+            let mut max_iter = 5;
+            while max_iter >= 0 {
+                unsafe { self.init_haplotypes(); }
+                unsafe { self.init_assignment(); }
+                let prob = self.cross_optimize();
+                if prob > largest_prob {
+                    largest_prob = prob;
+                    best_haplotype.clear();
+                    best_haplotag.clear();
+                    for i in self.hete_snps.iter() {
+                        best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
+                    }
+                    for k in covered_fragments.iter() {
+                        best_haplotag.insert(*k, self.fragments[*k].haplotag);
                     }
                 }
-                assert!(tmp_hap.len() == self.hete_snps.len());
-                for i in 0..self.hete_snps.len() {
-                    self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
+                for i in self.hete_snps.iter() {
+                    self.candidate_snps[*i].haplotype = best_haplotype[i];
+                }
+                for k in covered_fragments.iter() {
+                    self.fragments[*k].haplotag = best_haplotag[k];
+                }
+
+                // block flip: flip all the snps after a random position to jump local optimization
+                // let mut unflipped_haplotype: Vec<i32> = Vec::new();
+                // for i in self.hete_snps.iter() {
+                //     unflipped_haplotype.push(self.candidate_snps[*i].haplotype);
+                // }
+                // for ti in 0..unflipped_haplotype.len() {
+                //     let mut tmp_hap: Vec<i32> = Vec::new();
+                //     for tj in 0..unflipped_haplotype.len() {
+                //         if tj < ti {
+                //             tmp_hap.push(unflipped_haplotype[tj]);
+                //         } else {
+                //             tmp_hap.push(unflipped_haplotype[tj] * (-1));
+                //         }
+                //     }
+                //     assert!(tmp_hap.len() == self.hete_snps.len());
+                //     for i in 0..self.hete_snps.len() {
+                //         self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
+                //     }
+                //     let prob = self.cross_optimize();
+                //     if prob > largest_prob {
+                //         largest_prob = prob;
+                //         best_haplotype.clear();
+                //         best_haplotag.clear();
+                //         for i in self.hete_snps.iter() {
+                //             best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
+                //         }
+                //         for k in covered_fragments.iter() {
+                //             best_haplotag.insert(*k, self.fragments[*k].haplotag);
+                //         }
+                //     }
+                // }
+                // for i in self.hete_snps.iter() {
+                //     self.candidate_snps[*i].haplotype = best_haplotype[i];
+                // }
+                // for k in covered_fragments.iter() {
+                //     self.fragments[*k].haplotag = best_haplotag[k];
+                // }
+
+                // flip a fraction of snps and reads
+                let num_flip_haplotype = (self.hete_snps.len() as f32 * random_flip_fraction) as usize;
+                let num_flip_haplotag = (covered_fragments.len() as f32 * random_flip_fraction) as usize;
+                let mut rng = rand::thread_rng();
+                let selected_flip_haplotype: Vec<_> = self.hete_snps.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
+                for ti in selected_flip_haplotype {
+                    self.candidate_snps[*ti].haplotype = self.candidate_snps[*ti].haplotype * (-1);
+                }
+                let selected_flip_haplotag: Vec<_> = covered_fragments.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
+                for tk in selected_flip_haplotag {
+                    self.fragments[*tk].haplotag = self.fragments[*tk].haplotag * (-1);
                 }
                 let prob = self.cross_optimize();
                 if prob > largest_prob {
@@ -1262,37 +1336,8 @@ impl SNPFrag {
                         best_haplotag.insert(*k, self.fragments[*k].haplotag);
                     }
                 }
-            }
-            for i in self.hete_snps.iter() {
-                self.candidate_snps[*i].haplotype = best_haplotype[i];
-            }
-            for k in covered_fragments.iter() {
-                self.fragments[*k].haplotag = best_haplotag[k];
-            }
-
-            // flip a fraction of snps and reads
-            let num_flip_haplotype = (self.hete_snps.len() as f32 * random_flip_fraction) as usize;
-            let num_flip_haplotag = (covered_fragments.len() as f32 * random_flip_fraction) as usize;
-            let mut rng = rand::thread_rng();
-            let selected_flip_haplotype: Vec<_> = self.hete_snps.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
-            for ti in selected_flip_haplotype {
-                self.candidate_snps[*ti].haplotype = self.candidate_snps[*ti].haplotype * (-1);
-            }
-            let selected_flip_haplotag: Vec<_> = covered_fragments.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
-            for tk in selected_flip_haplotag {
-                self.fragments[*tk].haplotag = self.fragments[*tk].haplotag * (-1);
-            }
-            let prob = self.cross_optimize();
-            if prob > largest_prob {
-                largest_prob = prob;
-                best_haplotype.clear();
-                best_haplotag.clear();
-                for i in self.hete_snps.iter() {
-                    best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
-                }
-                for k in covered_fragments.iter() {
-                    best_haplotag.insert(*k, self.fragments[*k].haplotag);
-                }
+                max_iter -= 1;
+                println!("largest_prob: {}", largest_prob);
             }
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
@@ -1489,26 +1534,22 @@ impl SNPFrag {
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
             } else if snp.variant_type == 1 {
-                if snp.phase_score < min_phase_score as f64 {
-                    if snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference {
-                        let mut rd: VCFRecord = VCFRecord::default();
-                        rd.chromosome = snp.chromosome.clone();
-                        rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
-                        rd.reference = vec![snp.reference as u8];
-                        rd.id = vec!['.' as u8];
+                if snp.phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference {
+                    let mut rd: VCFRecord = VCFRecord::default();
+                    rd.chromosome = snp.chromosome.clone();
+                    rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+                    rd.reference = vec![snp.reference as u8];
+                    rd.id = vec!['.' as u8];
 
 
-                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                        rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max(1.0 - snp.allele_freqs[0] as f64))) as i32);
-                        rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", rd.qual, snp.depth, snp.allele_freqs[1]);
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max(1.0 - snp.allele_freqs[0] as f64))) as i32);
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", rd.qual, snp.depth, snp.allele_freqs[1]);
 
-                        rd.filter = "PASS".to_string().into_bytes();
-                        rd.info = ".".to_string().into_bytes();
-                        rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
-                        records.push(rd);
-                    } else {
-                        continue;
-                    }
+                    rd.filter = "PASS".to_string().into_bytes();
+                    rd.info = ".".to_string().into_bytes();
+                    rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                    records.push(rd);
                 } else {
                     let mut rd: VCFRecord = VCFRecord::default();
                     rd.chromosome = snp.chromosome.clone();
@@ -1541,8 +1582,11 @@ impl SNPFrag {
                             rd.qual = cmp::min(q1, q2);
                             rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
                         }
-
-                        rd.filter = "PASS".to_string().into_bytes();
+                        if snp.phase_score < min_phase_score as f64 {
+                            rd.filter = "LowQual".to_string().into_bytes();
+                        } else {
+                            rd.filter = "PASS".to_string().into_bytes();
+                        }
                         rd.info = ".".to_string().into_bytes();
                         rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                     } else {
@@ -1569,6 +1613,69 @@ impl SNPFrag {
                     }
                     records.push(rd);
                 }
+            } else {
+                println!("Unknown variant type: {:?}:{:?}", snp.chromosome, snp.pos);
+                continue;
+            }
+        }
+        return records;
+    }
+
+    pub fn output_vcf3(&mut self, min_allele_freq: f32, min_homo_freq: f32) -> Vec<VCFRecord> {
+        let mut records: Vec<VCFRecord> = Vec::new();
+
+        // output heterozygous SNPs
+        // assert_eq!(self.haplotype.len(), self.snps.len());
+        for i in 0..self.candidate_snps.len() {
+            let snp = &self.candidate_snps[i];
+            let hp = snp.haplotype;
+            if snp.filter == true {
+                continue;
+            }
+
+            if snp.variant_type == 2 {
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+                rd.reference = vec![snp.reference as u8];
+                rd.id = vec!['.' as u8];
+
+
+                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                rd.qual = snp.genotype_quality as i32;
+                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+
+                rd.filter = "PASS".to_string().into_bytes();
+                rd.info = ".".to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
+            } else if snp.variant_type == 1 {
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+                rd.reference = vec![snp.reference as u8];
+                rd.id = vec!['.' as u8];
+                if snp.alleles[0] == snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    rd.qual = snp.genotype_quality as i32;
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                } else if snp.alleles[1] == snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    rd.qual = snp.genotype_quality as i32;
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                } else {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                    let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                    let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                    // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
+                    rd.qual = cmp::min(q1, q2);
+                    rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                }
+
+                rd.filter = "PASS".to_string().into_bytes();
+                rd.info = ".".to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
             } else {
                 println!("Unknown variant type: {:?}:{:?}", snp.chromosome, snp.pos);
                 continue;
@@ -1678,6 +1785,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   phased_bam_file: String,
                                   thread_size: usize,
                                   isolated_regions: Vec<Region>,
+                                  genotype_only: bool,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
                                   min_allele_cnt: u32,
@@ -1717,55 +1825,36 @@ pub fn multithread_phase_haplotag(bam_file: String,
             }
             snpfrag.get_fragments(&bam_file, &reg);
             snpfrag.filter_fp_snps(strand_bias_threshold, None);
-            if snpfrag.hete_snps.len() > 0 {
-                unsafe { snpfrag.init_haplotypes(); }
-                unsafe { snpfrag.init_assignment(); }
-                snpfrag.phase(max_enum_snps, random_flip_fraction);
-                let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                snpfrag.add_phase_score(min_allele_cnt);
-
-
-                // // second round phase
-                // {
-                //     let mut second_round_hete_snps: Vec<usize> = Vec::new();
-                //     for ti in 0..snpfrag.candidate_snps.len() {
-                //         let snp = &snpfrag.candidate_snps[ti];
-                //         if snp.filter == true || snp.variant_type != 1 {
-                //             continue;
-                //         }
-                //
-                //         if snp.phase_score >= min_phase_score as f64 {
-                //             second_round_hete_snps.push(ti);
-                //         }
-                //     }
-                //     snpfrag.hete_snps = second_round_hete_snps;
-                //     if snpfrag.hete_snps.len() > 0 {
-                //         unsafe { snpfrag.init_haplotypes(); }
-                //         // remove the haplotag of each fragment
-                //         for tk in 0..snpfrag.fragments.len() {
-                //             snpfrag.fragments[tk].haplotag = 0;
-                //         }
-                //         unsafe { snpfrag.init_assignment(); }
-                //         snpfrag.phase(max_enum_snps, random_flip_fraction);
-                //         let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                //         snpfrag.add_phase_score(min_allele_cnt);
-                //     }
-                // }
-
-
+            if genotype_only {
+                // without phasing
+                let vcf_records = snpfrag.output_vcf3(min_allele_freq, min_homozygous_freq);
                 {
-                    let mut queue = read_haplotag_queue.lock().unwrap();
-                    for a in read_assignments.iter() {
-                        queue.push_back((a.0.clone(), a.1.clone()));
+                    let mut queue = vcf_records_queue.lock().unwrap();
+                    for rd in vcf_records.iter() {
+                        queue.push_back(rd.clone());
                     }
                 }
-            }
-            // }
-            let vcf_records = snpfrag.output_vcf2(min_phase_score, min_homozygous_freq, output_phasing);
-            {
-                let mut queue = vcf_records_queue.lock().unwrap();
-                for rd in vcf_records.iter() {
-                    queue.push_back(rd.clone());
+            } else {
+                if snpfrag.hete_snps.len() > 0 {
+                    unsafe { snpfrag.init_haplotypes(); }
+                    unsafe { snpfrag.init_assignment(); }
+                    // snpfrag.keep_reliable_snps_in_component();
+                    snpfrag.phase(max_enum_snps, random_flip_fraction);
+                    let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+                    snpfrag.add_phase_score(min_allele_cnt);
+                    {
+                        let mut queue = read_haplotag_queue.lock().unwrap();
+                        for a in read_assignments.iter() {
+                            queue.push_back((a.0.clone(), a.1.clone()));
+                        }
+                    }
+                }
+                let vcf_records = snpfrag.output_vcf2(min_phase_score, min_homozygous_freq, output_phasing);
+                {
+                    let mut queue = vcf_records_queue.lock().unwrap();
+                    for rd in vcf_records.iter() {
+                        queue.push_back(rd.clone());
+                    }
                 }
             }
         });
@@ -1779,6 +1868,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
         let chromosome_len = ctglen.1.clone();
         vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
     }
+    vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=PASS,Description=\"Pass\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
