@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use rand::seq::SliceRandom;
 use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
+use std::cmp::Ordering;
 
 
 #[derive(Debug, Clone, Default)]
@@ -28,7 +29,9 @@ pub struct CandidateSNP {
     pub depth: u32,
     pub variant_type: i32,
     // 1: heterozygous SNP, 2: homozygous SNP
-    pub genotype_likelihood: [f64; 3],
+    pub variant_quality: f64,
+    // the confidence that the variant exists at this site given the data, phred-scaled
+    pub phred_scaled_likelihood: [f64; 3],
     // 0th: homo var, 1st: hete var, 2nd: homo ref
     pub genotype_quality: f64,
     pub haplotype: i32,
@@ -103,6 +106,15 @@ pub struct SNPFrag {
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
 }
 
+fn cmp_f64(a: &f64, b: &f64) -> Ordering {
+    if a < b {
+        return Ordering::Less;
+    } else if a > b {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
 impl SNPFrag {
     pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32, cover_strand_bias_threshold: f32) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
@@ -151,8 +163,8 @@ impl SNPFrag {
 
 
             // genotype likelihood
-            let ploidy = 2;
-            let mut likelihood = [1.0, 1.0, 1.0];
+            let mut loglikelihood = [0.0, 0.0, 0.0];
+            let mut phred_scaled_likelihood = [0.0, 0.0, 0.0];
             let theta = 0.001;  // mutation rate
             let background_prob = [theta / 2.0, theta, 1.0 - 1.5 * theta];    // background of probability of observe homo variant, hete variant and homo reference
             let mut identical_baseqs;
@@ -175,37 +187,103 @@ impl SNPFrag {
 
             for bq in identical_baseqs.iter() {
                 let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
-                likelihood[0] *= (ploidy - 0) as f64 * (error_rate) + 0.0 * (1.0 - error_rate);
-                likelihood[1] *= (ploidy - 1) as f64 * (error_rate) + 1.0 * (1.0 - error_rate);
-                likelihood[2] *= (ploidy - 2) as f64 * (error_rate) + 2.0 * (1.0 - error_rate);
+                loglikelihood[0] += error_rate.log10();
+                loglikelihood[2] += (1.0 - error_rate).log10();
             }
 
             for bq_vec in different_baseqs.iter() {
                 for bq in bq_vec.iter() {
                     let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
-                    likelihood[0] *= (ploidy - 0) as f64 * (1.0 - error_rate) + 0.0 * error_rate;
-                    likelihood[1] *= (ploidy - 1) as f64 * (1.0 - error_rate) + 1.0 * error_rate;
-                    likelihood[2] *= (ploidy - 2) as f64 * (1.0 - error_rate) + 2.0 * error_rate;
+                    loglikelihood[0] += (1.0 - error_rate).log10();
+                    loglikelihood[2] += error_rate.log10();
                 }
             }
 
             let num_reads = bf.a + bf.c + bf.g + bf.t;
-            likelihood[0] = likelihood[0] / ((ploidy as f64).powf(num_reads as f64));
-            likelihood[1] = likelihood[1] / ((ploidy as f64).powf(num_reads as f64));
-            likelihood[2] = likelihood[2] / ((ploidy as f64).powf(num_reads as f64));
+            loglikelihood[1] -= (num_reads as f64) * 2.0_f64.log10();   // example: logL(0) = -1, logL(1) = -6, logL(2) = -26
 
-            // prior probability of genotype
-            likelihood[0] *= background_prob[0];
-            likelihood[1] *= background_prob[1];
-            likelihood[2] *= background_prob[2];
-            let likelihood_sum = likelihood[0] + likelihood[1] + likelihood[2];
-            likelihood[0] = 10e-6_f64.max(likelihood[0] / likelihood_sum);
-            likelihood[1] = 10e-6_f64.max(likelihood[1] / likelihood_sum);
-            likelihood[2] = 10e-6_f64.max(likelihood[2] / likelihood_sum);
+            // PL: phred-scaled likelihood, https://gatk.broadinstitute.org/hc/en-us/articles/360035890451-Calculation-of-PL-and-GQ-by-HaplotypeCaller-and-GenotypeGVCFs
+            phred_scaled_likelihood = loglikelihood.clone();
+            // multiple prior probability of genotype
+            phred_scaled_likelihood[0] += (background_prob[0] as f64).log10();
+            phred_scaled_likelihood[1] += (background_prob[1] as f64).log10();
+            phred_scaled_likelihood[2] += (background_prob[2] as f64).log10();
 
-            // println!("{} likelihood: {}, {}, {}", position as i64, likelihood[0], likelihood[1], likelihood[2]);
+            let max_pl = phred_scaled_likelihood[0].max(phred_scaled_likelihood[1]).max(phred_scaled_likelihood[2]);
+            phred_scaled_likelihood[0] = -10.0 * (phred_scaled_likelihood[0] - max_pl);
+            phred_scaled_likelihood[1] = -10.0 * (phred_scaled_likelihood[1] - max_pl);
+            phred_scaled_likelihood[2] = -10.0 * (phred_scaled_likelihood[2] - max_pl);
 
-            if likelihood[0] > likelihood[1] && likelihood[0] > likelihood[2] {
+            // standardize phred-scaled likelihood, let the minimum value be 0
+            let min_pl = phred_scaled_likelihood[0].min(phred_scaled_likelihood[1]).min(phred_scaled_likelihood[2]);
+            phred_scaled_likelihood[0] -= min_pl;
+            phred_scaled_likelihood[1] -= min_pl;
+            phred_scaled_likelihood[2] -= min_pl;
+
+            let variant_quality = -10.0 * f64::log10(1.0 - (phred_scaled_likelihood[0] + phred_scaled_likelihood[1]) / (phred_scaled_likelihood[0] + phred_scaled_likelihood[1] + phred_scaled_likelihood[2]));
+
+            // calculate GQ: The value of GQ is the difference between the second lowest PL and the lowest PL
+            let mut sorted_pl = phred_scaled_likelihood.clone();
+            sorted_pl.sort_by(cmp_f64);
+            let genotype_quality = sorted_pl[1] - sorted_pl[0];   // genotype quality: phred-scaled likelihood difference between the best and second best genotype
+
+
+            // // genotype likelihood
+            // let ploidy = 2;
+            // let mut likelihood = [1.0, 1.0, 1.0];
+            // let theta = 0.001;  // mutation rate
+            // let background_prob = [theta / 2.0, theta, 1.0 - 1.5 * theta];    // background of probability of observe homo variant, hete variant and homo reference
+            // let mut identical_baseqs;
+            // let mut different_baseqs;
+            // if bf.ref_base == 'A' {
+            //     identical_baseqs = &bf.baseq.a;
+            //     different_baseqs = [&bf.baseq.c, &bf.baseq.g, &bf.baseq.t];
+            // } else if bf.ref_base == 'C' {
+            //     identical_baseqs = &bf.baseq.c;
+            //     different_baseqs = [&bf.baseq.a, &bf.baseq.g, &bf.baseq.t];
+            // } else if bf.ref_base == 'G' {
+            //     identical_baseqs = &bf.baseq.g;
+            //     different_baseqs = [&bf.baseq.a, &bf.baseq.c, &bf.baseq.t];
+            // } else if bf.ref_base == 'T' {
+            //     identical_baseqs = &bf.baseq.t;
+            //     different_baseqs = [&bf.baseq.a, &bf.baseq.c, &bf.baseq.g];
+            // } else {
+            //     panic!("Error: unknown reference base");
+            // }
+            //
+            // for bq in identical_baseqs.iter() {
+            //     let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
+            //     likelihood[0] *= (ploidy - 0) as f64 * (error_rate) + 0.0 * (1.0 - error_rate);
+            //     likelihood[1] *= (ploidy - 1) as f64 * (error_rate) + 1.0 * (1.0 - error_rate);
+            //     likelihood[2] *= (ploidy - 2) as f64 * (error_rate) + 2.0 * (1.0 - error_rate);
+            // }
+            //
+            // for bq_vec in different_baseqs.iter() {
+            //     for bq in bq_vec.iter() {
+            //         let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
+            //         likelihood[0] *= (ploidy - 0) as f64 * (1.0 - error_rate) + 0.0 * error_rate;
+            //         likelihood[1] *= (ploidy - 1) as f64 * (1.0 - error_rate) + 1.0 * error_rate;
+            //         likelihood[2] *= (ploidy - 2) as f64 * (1.0 - error_rate) + 2.0 * error_rate;
+            //     }
+            // }
+            //
+            // let num_reads = bf.a + bf.c + bf.g + bf.t;
+            // likelihood[0] = likelihood[0] / ((ploidy as f64).powf(num_reads as f64));
+            // likelihood[1] = likelihood[1] / ((ploidy as f64).powf(num_reads as f64));
+            // likelihood[2] = likelihood[2] / ((ploidy as f64).powf(num_reads as f64));
+            //
+            // // prior probability of genotype
+            // likelihood[0] *= background_prob[0];
+            // likelihood[1] *= background_prob[1];
+            // likelihood[2] *= background_prob[2];
+            // let likelihood_sum = likelihood[0] + likelihood[1] + likelihood[2];
+            // likelihood[0] = 10e-6_f64.max(likelihood[0] / likelihood_sum);
+            // likelihood[1] = 10e-6_f64.max(likelihood[1] / likelihood_sum);
+            // likelihood[2] = 10e-6_f64.max(likelihood[2] / likelihood_sum);
+            //
+            // // println!("{} likelihood: {}, {}, {}", position as i64, likelihood[0], likelihood[1], likelihood[2]);
+
+            if loglikelihood[0] > loglikelihood[1] && loglikelihood[0] > loglikelihood[2] {
                 // candidate homozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -217,12 +295,13 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 2; // homozygous SNP
-                candidate_snp.genotype_likelihood = likelihood.clone();
-                candidate_snp.genotype_quality = 0_f64.max(-10.0_f64 * (1.0 - likelihood[0] + 10e-10_f64).log10());
+                candidate_snp.variant_quality = variant_quality;
+                candidate_snp.phred_scaled_likelihood = phred_scaled_likelihood.clone();
+                candidate_snp.genotype_quality = genotype_quality;
                 // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
-            } else if likelihood[1] > likelihood[0] && likelihood[1] > likelihood[2] {
+            } else if loglikelihood[1] > loglikelihood[0] && loglikelihood[1] > loglikelihood[2] {
                 // candidate heterozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -238,8 +317,9 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 1; // heterozygous SNP
-                candidate_snp.genotype_likelihood = likelihood.clone();
-                candidate_snp.genotype_quality = 0_f64.max(-10.0_f64 * (1.0 - likelihood[1] + 10e-10_f64).log10());
+                candidate_snp.variant_quality = variant_quality;
+                candidate_snp.phred_scaled_likelihood = phred_scaled_likelihood.clone();
+                candidate_snp.genotype_quality = genotype_quality;
                 // println!("hete genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.hete_snps.push(self.candidate_snps.len() - 1);
@@ -1526,8 +1606,8 @@ impl SNPFrag {
 
 
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max(1.0 - snp.allele_freqs[0] as f64))) as i32);
-                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", rd.qual, snp.depth, snp.allele_freqs[1]);
+                rd.qual = snp.variant_quality as i32;
+                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
 
                 rd.filter = "PASS".to_string().into_bytes();
                 rd.info = ".".to_string().into_bytes();
@@ -1543,8 +1623,8 @@ impl SNPFrag {
 
 
                     rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                    rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max(1.0 - snp.allele_freqs[0] as f64))) as i32);
-                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", rd.qual, snp.depth, snp.allele_freqs[1]);
+                    rd.qual = snp.variant_quality as i32;
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
 
                     rd.filter = "PASS".to_string().into_bytes();
                     rd.info = ".".to_string().into_bytes();
@@ -1559,30 +1639,26 @@ impl SNPFrag {
                     if output_phasing {
                         if snp.alleles[0] == snp.reference {
                             rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                            rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
+                            rd.qual = snp.variant_quality as i32;
                             if hp == -1 {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
                             } else {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
                             }
                         } else if snp.alleles[1] == snp.reference {
                             rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                            // rd.qual = -10.0 * f32::log10((0.5 - snp.allele_freqs[0]).abs() / 0.5);
-                            rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
+                            rd.qual = snp.variant_quality as i32;
                             if hp == -1 {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", rd.qual, snp.depth, snp.allele_freqs[0], snp.phase_score);
+                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
                             } else {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", rd.qual, snp.depth, snp.allele_freqs[0], snp.phase_score);
+                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
                             }
                         } else {
                             rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                            let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
-                            let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                            // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
-                            rd.qual = cmp::min(q1, q2);
-                            rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
+                            rd.qual = snp.variant_quality as i32;
+                            rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
                         }
-                        if snp.phase_score < min_phase_score as f64 {
+                        if snp.phase_score != 0.0 && snp.phase_score < min_phase_score as f64 {
                             rd.filter = "LowQual".to_string().into_bytes();
                         } else {
                             rd.filter = "PASS".to_string().into_bytes();
@@ -1592,19 +1668,16 @@ impl SNPFrag {
                     } else {
                         if snp.alleles[0] == snp.reference {
                             rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                            rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                            rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", rd.qual, snp.depth, snp.allele_freqs[1]);
+                            rd.qual = snp.variant_quality as i32;
+                            rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
                         } else if snp.alleles[1] == snp.reference {
                             rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                            rd.qual = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
-                            rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", rd.qual, snp.depth, snp.allele_freqs[0]);
+                            rd.qual = snp.variant_quality as i32;
+                            rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                         } else {
+                            // TODO: variant quality and genotype quality for 1/2 variant
                             rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                            let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
-                            let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                            // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
-                            rd.qual = cmp::min(q1, q2);
-                            rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                            rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                         }
 
                         rd.filter = "PASS".to_string().into_bytes();
@@ -1642,7 +1715,7 @@ impl SNPFrag {
 
 
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                rd.qual = snp.genotype_quality as i32;
+                rd.qual = snp.variant_quality as i32;
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
 
                 rd.filter = "PASS".to_string().into_bytes();
@@ -1657,21 +1730,17 @@ impl SNPFrag {
                 rd.id = vec!['.' as u8];
                 if snp.alleles[0] == snp.reference {
                     rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                    rd.qual = snp.genotype_quality as i32;
+                    rd.qual = snp.variant_quality as i32;
                     rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
                 } else if snp.alleles[1] == snp.reference {
                     rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                    rd.qual = snp.genotype_quality as i32;
+                    rd.qual = snp.variant_quality as i32;
                     rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                 } else {
                     rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                    let q1 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[0] as f64).abs() / 0.5))) as i32);
-                    let q2 = cmp::max(1, (-10.0 * f64::log10(0.01_f64.max((0.5 - snp.allele_freqs[1] as f64).abs() / 0.5))) as i32);
-                    // if q1 > q2 { rd.qual = q2; } else { rd.qual = q1; }
-                    rd.qual = cmp::min(q1, q2);
-                    rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", rd.qual, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                    rd.qual = snp.variant_quality as i32;
+                    rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                 }
-
                 rd.filter = "PASS".to_string().into_bytes();
                 rd.info = ".".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
