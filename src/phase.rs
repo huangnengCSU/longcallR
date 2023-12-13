@@ -214,13 +214,14 @@ impl SNPFrag {
             phred_scaled_likelihood[1] = -10.0 * (phred_scaled_likelihood[1] - max_pl);
             phred_scaled_likelihood[2] = -10.0 * (phred_scaled_likelihood[2] - max_pl);
 
-            // standardize phred-scaled likelihood, let the minimum value be 0
+            // standardize phred-scaled likelihood, let the minimum value be 0. The most likely genotype has the lowest PL value.
             let min_pl = phred_scaled_likelihood[0].min(phred_scaled_likelihood[1]).min(phred_scaled_likelihood[2]);
             phred_scaled_likelihood[0] -= min_pl;
             phred_scaled_likelihood[1] -= min_pl;
             phred_scaled_likelihood[2] -= min_pl;
 
-            let variant_quality = -10.0 * f64::log10(1.0 - (phred_scaled_likelihood[0] + phred_scaled_likelihood[1]) / (phred_scaled_likelihood[0] + phred_scaled_likelihood[1] + phred_scaled_likelihood[2]));
+            // Sum of PL_homo_var and PL_hete_var is smaller, the variant probability is higher.
+            let variant_quality = -10.0 * f64::log10((phred_scaled_likelihood[0] + phred_scaled_likelihood[1]) / (phred_scaled_likelihood[0] + phred_scaled_likelihood[1] + phred_scaled_likelihood[2]));
 
             // calculate GQ: The value of GQ is the difference between the second lowest PL and the lowest PL
             let mut sorted_pl = phred_scaled_likelihood.clone();
