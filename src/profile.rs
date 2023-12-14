@@ -364,6 +364,16 @@ pub struct BaseQual {
 }
 
 #[derive(Default, Debug, Clone)]
+pub struct BaseStrands {
+    pub a: [i32; 2],
+    // [forward, backward]
+    pub c: [i32; 2],
+    pub g: [i32; 2],
+    pub t: [i32; 2],
+}
+
+
+#[derive(Default, Debug, Clone)]
 pub struct BaseFreq {
     pub a: u32,
     pub c: u32,
@@ -384,6 +394,7 @@ pub struct BaseFreq {
     pub backward_cnt: u32,
     // number of backward reads covering this position, excluding intron
     pub baseq: BaseQual,
+    pub base_strands: BaseStrands,
 }
 
 impl BaseFreq {
@@ -577,7 +588,7 @@ impl Profile {
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -590,34 +601,74 @@ impl Profile {
                                     'A' => {
                                         bf.a += 1;
                                         bf.baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.a[0] += 1;
+                                        } else {
+                                            bf.base_strands.a[1] += 1;
+                                        }
                                     }
                                     'a' => {
                                         bf.a += 1;
                                         bf.baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.a[0] += 1;
+                                        } else {
+                                            bf.base_strands.a[1] += 1;
+                                        }
                                     }
                                     'C' => {
                                         bf.c += 1;
                                         bf.baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.c[0] += 1;
+                                        } else {
+                                            bf.base_strands.c[1] += 1;
+                                        }
                                     }
                                     'c' => {
                                         bf.c += 1;
                                         bf.baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.c[0] += 1;
+                                        } else {
+                                            bf.base_strands.c[1] += 1;
+                                        }
                                     }
                                     'G' => {
                                         bf.g += 1;
                                         bf.baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.g[0] += 1;
+                                        } else {
+                                            bf.base_strands.g[1] += 1;
+                                        }
                                     }
                                     'g' => {
                                         bf.g += 1;
                                         bf.baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.g[0] += 1;
+                                        } else {
+                                            bf.base_strands.g[1] += 1;
+                                        }
                                     }
                                     'T' => {
                                         bf.t += 1;
                                         bf.baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.t[0] += 1;
+                                        } else {
+                                            bf.base_strands.t[1] += 1;
+                                        }
                                     }
                                     't' => {
                                         bf.t += 1;
                                         bf.baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.t[0] += 1;
+                                        } else {
+                                            bf.base_strands.t[1] += 1;
+                                        }
                                     }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
@@ -649,7 +700,7 @@ impl Profile {
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -662,34 +713,74 @@ impl Profile {
                                     'A' => {
                                         bf.a += 1;
                                         bf.baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.a[0] += 1;
+                                        } else {
+                                            bf.base_strands.a[1] += 1;
+                                        }
                                     }
                                     'a' => {
                                         bf.a += 1;
                                         bf.baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.a[0] += 1;
+                                        } else {
+                                            bf.base_strands.a[1] += 1;
+                                        }
                                     }
                                     'C' => {
                                         bf.c += 1;
                                         bf.baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.c[0] += 1;
+                                        } else {
+                                            bf.base_strands.c[1] += 1;
+                                        }
                                     }
                                     'c' => {
                                         bf.c += 1;
                                         bf.baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.c[0] += 1;
+                                        } else {
+                                            bf.base_strands.c[1] += 1;
+                                        }
                                     }
                                     'G' => {
                                         bf.g += 1;
                                         bf.baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.g[0] += 1;
+                                        } else {
+                                            bf.base_strands.g[1] += 1;
+                                        }
                                     }
                                     'g' => {
                                         bf.g += 1;
                                         bf.baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.g[0] += 1;
+                                        } else {
+                                            bf.base_strands.g[1] += 1;
+                                        }
                                     }
                                     'T' => {
                                         bf.t += 1;
                                         bf.baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.t[0] += 1;
+                                        } else {
+                                            bf.base_strands.t[1] += 1;
+                                        }
                                     }
                                     't' => {
                                         bf.t += 1;
                                         bf.baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            bf.base_strands.t[0] += 1;
+                                        } else {
+                                            bf.base_strands.t[1] += 1;
+                                        }
                                     }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
@@ -720,34 +811,74 @@ impl Profile {
                         'A' => {
                             bf.a += 1;
                             bf.baseq.a.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.a[0] += 1;
+                            } else {
+                                bf.base_strands.a[1] += 1;
+                            }
                         }
                         'a' => {
                             bf.a += 1;
                             bf.baseq.a.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.a[0] += 1;
+                            } else {
+                                bf.base_strands.a[1] += 1;
+                            }
                         }
                         'C' => {
                             bf.c += 1;
                             bf.baseq.c.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.c[0] += 1;
+                            } else {
+                                bf.base_strands.c[1] += 1;
+                            }
                         }
                         'c' => {
                             bf.c += 1;
                             bf.baseq.c.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.c[0] += 1;
+                            } else {
+                                bf.base_strands.c[1] += 1;
+                            }
                         }
                         'G' => {
                             bf.g += 1;
                             bf.baseq.g.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.g[0] += 1;
+                            } else {
+                                bf.base_strands.g[1] += 1;
+                            }
                         }
                         'g' => {
                             bf.g += 1;
                             bf.baseq.g.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.g[0] += 1;
+                            } else {
+                                bf.base_strands.g[1] += 1;
+                            }
                         }
                         'T' => {
                             bf.t += 1;
                             bf.baseq.t.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.t[0] += 1;
+                            } else {
+                                bf.base_strands.t[1] += 1;
+                            }
                         }
                         't' => {
                             bf.t += 1;
                             bf.baseq.t.push(baseq);
+                            if strand == 0 {
+                                bf.base_strands.t[0] += 1;
+                            } else {
+                                bf.base_strands.t[1] += 1;
+                            }
                         }
                         _ => {
                             panic!("Invalid nucleotide base: {}", base);
@@ -766,7 +897,7 @@ impl Profile {
                             }
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
@@ -778,34 +909,74 @@ impl Profile {
                                     'A' => {
                                         ibf.a += 1;
                                         ibf.baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.a[0] += 1;
+                                        } else {
+                                            ibf.base_strands.a[1] += 1;
+                                        }
                                     }
                                     'a' => {
                                         ibf.a += 1;
                                         ibf.baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.a[0] += 1;
+                                        } else {
+                                            ibf.base_strands.a[1] += 1;
+                                        }
                                     }
                                     'C' => {
                                         ibf.c += 1;
                                         ibf.baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.c[0] += 1;
+                                        } else {
+                                            ibf.base_strands.c[1] += 1;
+                                        }
                                     }
                                     'c' => {
                                         ibf.c += 1;
                                         ibf.baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.c[0] += 1;
+                                        } else {
+                                            ibf.base_strands.c[1] += 1;
+                                        }
                                     }
                                     'G' => {
                                         ibf.g += 1;
                                         ibf.baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.g[0] += 1;
+                                        } else {
+                                            ibf.base_strands.g[1] += 1;
+                                        }
                                     }
                                     'g' => {
                                         ibf.g += 1;
                                         ibf.baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.g[0] += 1;
+                                        } else {
+                                            ibf.base_strands.g[1] += 1;
+                                        }
                                     }
                                     'T' => {
                                         ibf.t += 1;
                                         ibf.baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.t[0] += 1;
+                                        } else {
+                                            ibf.base_strands.t[1] += 1;
+                                        }
                                     }
                                     't' => {
                                         ibf.t += 1;
                                         ibf.baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            ibf.base_strands.t[0] += 1;
+                                        } else {
+                                            ibf.base_strands.t[1] += 1;
+                                        }
                                     }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
