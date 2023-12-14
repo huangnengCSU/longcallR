@@ -116,7 +116,7 @@ fn cmp_f64(a: &f64, b: &f64) -> Ordering {
 }
 
 impl SNPFrag {
-    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32, cover_strand_bias_threshold: f32) {
+    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32, strand_bias_threshold: f32, cover_strand_bias_threshold: f32) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
@@ -157,8 +157,53 @@ impl SNPFrag {
             if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
                 // strand bias
                 println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
+                println!("{:?}", bf);
                 position += 1;
                 continue;
+            }
+
+            // 5.filtering with strand bias
+            let mut variant_allele: Vec<char> = Vec::new();
+            if allele1 != bf.ref_base {
+                variant_allele.push(allele1);
+            }
+            if allele2 != bf.ref_base {
+                variant_allele.push(allele2);
+            }
+            if variant_allele.len() > 0 {
+                // variant allele
+                let mut strand_bias = false;
+                for allele_base in variant_allele.iter() {
+                    let mut fcnt = 0;
+                    let mut bcnt = 0;
+                    match allele_base {
+                        'a' => { [fcnt, bcnt] = bf.base_strands.a; }
+                        'A' => { [fcnt, bcnt] = bf.base_strands.a; }
+                        'c' => { [fcnt, bcnt] = bf.base_strands.c; }
+                        'C' => { [fcnt, bcnt] = bf.base_strands.c; }
+                        'g' => { [fcnt, bcnt] = bf.base_strands.g; }
+                        'G' => { [fcnt, bcnt] = bf.base_strands.g; }
+                        't' => { [fcnt, bcnt] = bf.base_strands.t; }
+                        'T' => { [fcnt, bcnt] = bf.base_strands.t; }
+                        _ => {
+                            println!("Error: unknown allele");
+                            position += 1;
+                            continue;
+                        }
+                    }
+                    let total_cnt = fcnt + bcnt;
+                    if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
+                        // strand bias
+                        println!("strand bias: {}, {}, {}, {}", position, fcnt, bcnt, total_cnt);
+                        println!("{:?}", bf);
+                        strand_bias = true;
+                        continue;
+                    }
+                }
+                if strand_bias {
+                    position += 1;
+                    continue;
+                }
             }
 
 
@@ -227,6 +272,10 @@ impl SNPFrag {
             let mut sorted_pl = phred_scaled_likelihood.clone();
             sorted_pl.sort_by(cmp_f64);
             let genotype_quality = sorted_pl[1] - sorted_pl[0];   // genotype quality: phred-scaled likelihood difference between the best and second best genotype
+
+            println!("{} variant quality: {}", position, variant_quality);
+            println!("{} log likelihood: {}, {}, {}", position as i64, loglikelihood[0], loglikelihood[1], loglikelihood[2]);
+            println!("{} phred scaled likelihood: {}, {}, {}", position as i64, phred_scaled_likelihood[0], phred_scaled_likelihood[1], phred_scaled_likelihood[2]);
 
 
             // // genotype likelihood
@@ -306,7 +355,12 @@ impl SNPFrag {
                 // candidate heterozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
-                if allele2_freq < min_allele_freq {
+                if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
+                    println!("{:?} allele1 {:?} low frequency {}", position, allele1, allele1_freq);
+                    position += 1;
+                    continue;
+                } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
+                    println!("{:?} allele2 {:?} low frequency {}", position, allele2, allele2_freq);
                     position += 1;
                     continue;
                 }
@@ -659,41 +713,57 @@ impl SNPFrag {
             self.hete_snps = filtered_hete_snps;
         }
 
-        // 2. filtering strand bias
-        let mut filtered_hete_snps: Vec<usize> = Vec::new();
-        for i in self.hete_snps.iter() {
-            let snp = &mut self.candidate_snps[*i];
-            if snp.filter == true { continue; }
-            let mut variant_strand_cnt = [0, 0];    // variant strand [forward, reverse]
-            for k in snp.snp_cover_fragments.iter() {
-                for fe in self.fragments[*k].list.iter() {
-                    if fe.snp_idx == *i {
-                        if fe.p != 0 {
-                            if fe.base != snp.reference {
-                                if fe.strand == 0 {
-                                    variant_strand_cnt[0] += 1;
-                                } else {
-                                    variant_strand_cnt[1] += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
-            if total_variant_cnt > 0 {
-                // variant strand bias
-                if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold || variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
-                    snp.filter = true;  // current snp is filtered because of strand bias
-                    println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
-                    continue;
-                }
-            }
-            filtered_hete_snps.push(*i);
-        }
-        if filtered_hete_snps.len() != self.hete_snps.len() {
-            self.hete_snps = filtered_hete_snps;
-        }
+        // // 2. filtering strand bias
+        // let mut filter_window: HashSet<usize> = HashSet::new();
+        // for i in 0..self.candidate_snps.len() {
+        //     let snp = &mut self.candidate_snps[i];
+        //     if snp.filter == true { continue; }
+        //     let mut variant_strand_cnt = [0, 0];    // variant strand [forward, reverse]
+        //     for k in snp.snp_cover_fragments.iter() {
+        //         for fe in self.fragments[*k].list.iter() {
+        //             if fe.snp_idx == i {
+        //                 if fe.p != 0 {
+        //                     if fe.base != snp.reference {
+        //                         if fe.strand == 0 {
+        //                             variant_strand_cnt[0] += 1;
+        //                         } else {
+        //                             variant_strand_cnt[1] += 1;
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
+        //     println!("{:?} strand bias: {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
+        //     if total_variant_cnt > 0 {
+        //         // variant strand bias
+        //         if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold || variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
+        //             snp.filter = true;  // current snp is filtered because of strand bias
+        //             println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
+        //             continue;
+        //         }
+        //     }
+        //     filter_window.insert(i);   // index of snp
+        // }
+        // if filter_window.len() > 0 {
+        //     let mut filtered_homo_snps: Vec<usize> = Vec::new();
+        //     let mut filtered_hete_snps: Vec<usize> = Vec::new();
+        //
+        //     for i in self.homo_snps.iter() {
+        //         if !filter_window.contains(i) {
+        //             filtered_homo_snps.push(*i);
+        //         }
+        //     }
+        //     self.homo_snps = filtered_homo_snps;
+        //
+        //     for i in self.hete_snps.iter() {
+        //         if !filter_window.contains(i) {
+        //             filtered_hete_snps.push(*i);
+        //         }
+        //     }
+        //     self.hete_snps = filtered_hete_snps;
+        // }
     }
 
     pub fn keep_reliable_snps_in_component(&mut self) {
@@ -1889,7 +1959,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, cover_strand_bias_threshold);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold);
             for snp in snpfrag.candidate_snps.iter() {
                 println!("snp: {:?}", snp);
             }
