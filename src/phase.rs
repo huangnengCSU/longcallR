@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
-use rust_htslib::htslib::{drand48, fai_load};
+use rust_htslib::htslib::{drand48, fai_load, uint32_u};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
@@ -116,11 +116,21 @@ fn cmp_f64(a: &f64, b: &f64) -> Ordering {
 }
 
 impl SNPFrag {
-    pub fn get_candidate_snps(&mut self, profile: &Profile, min_allele_freq: f32, min_allele_freq_include_intron: f32, min_coverage: u32, min_homozygous_freq: f32, strand_bias_threshold: f32, cover_strand_bias_threshold: f32) {
+    pub fn get_candidate_snps(&mut self,
+                              profile: &Profile,
+                              min_allele_freq: f32,
+                              min_allele_freq_include_intron: f32,
+                              min_coverage: u32,
+                              min_homozygous_freq: f32,
+                              strand_bias_threshold: f32,
+                              cover_strand_bias_threshold: f32,
+                              distance_to_splicing_site: u32,
+                              distance_to_read_end: u32) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
-        for bf in pileup.iter() {
+        for bfidx in 0..pileup.len() {
+            let bf = &pileup[bfidx];
             // println!("{:?}", bf);
             if bf.i {
                 // insertion base
@@ -205,6 +215,131 @@ impl SNPFrag {
                     continue;
                 }
             }
+
+            // 6.filtering close to the donor and acceptor site
+            let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
+            let mut B_cnts: Vec<u32> = Vec::new();  // number of nucleotide bases
+            let mut lext = 0;
+            let mut lidx = bfidx as i32;
+            let mut rext = 1;
+            let mut ridx = bfidx + 1;
+            while lext <= distance_to_splicing_site {
+                if lidx < 0 {
+                    break;
+                }
+                let lbf = &pileup[lidx as usize];
+                if lbf.i {
+                    // ignore insertion region
+                    lidx -= 1;
+                    continue;
+                }
+                N_cnts.push(lbf.n);
+                B_cnts.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d);
+                lidx -= 1;
+                lext += 1;
+            }
+            N_cnts.reverse();
+            B_cnts.reverse();
+            while rext <= distance_to_splicing_site {
+                if ridx >= pileup.len() {
+                    break;
+                }
+                let rbf = &pileup[ridx];
+                if rbf.i {
+                    // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                N_cnts.push(rbf.n);
+                B_cnts.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d);
+                ridx += 1;
+                rext += 1;
+            }
+            println!("{} N_cnts: \n{:?}", position, N_cnts);
+            println!("{} B_cnts: \n{:?}", position, B_cnts);
+            if N_cnts.len() > 0 {
+                let max_N_cnt = N_cnts.iter().max().unwrap().clone();
+                let min_N_cnt = N_cnts.iter().min().unwrap().clone();
+                if min_N_cnt == 0 {
+                    if max_N_cnt - min_N_cnt > 10 {
+                        println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                        position += 1;
+                        continue;
+                    }
+                } else {
+                    if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.5 {
+                        println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                        position += 1;
+                        continue;
+                    }
+                }
+            }
+
+
+            // 7. filtering close to read end
+            let mut left_depths: Vec<u32> = Vec::new();
+            let mut right_depths: Vec<u32> = Vec::new();
+            let mut lext = 0;
+            let mut lidx = bfidx as i32;
+            let mut rext = 0;
+            let mut ridx = bfidx;
+            let mut num_variant_allele = 0;
+            if allele1 != bf.ref_base {
+                num_variant_allele += allele1_cnt;
+            }
+            if allele2 != bf.ref_base {
+                num_variant_allele += allele2_cnt;
+            }
+            while lext <= distance_to_read_end {
+                if lidx < 0 {
+                    break;
+                }
+                let lbf = &pileup[lidx as usize];
+                if lbf.i {
+                    // ignore insertion region
+                    lidx -= 1;
+                    continue;
+                }
+                left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
+                lidx -= 1;
+                lext += 1;
+            }
+            println!("{} left_depths: \n{:?}", position, left_depths);
+            while rext <= distance_to_read_end {
+                if ridx >= pileup.len() {
+                    break;
+                }
+                let rbf = &pileup[ridx];
+                if rbf.i {
+                    // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                right_depths.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d + rbf.n);
+                ridx += 1;
+                rext += 1;
+            }
+            println!("{} right_depths: \n{:?}", position, right_depths);
+            if left_depths.len() > 0 {
+                let max_left_depth = left_depths.iter().max().unwrap().clone() as i32;
+                let min_left_depth = left_depths.iter().min().unwrap().clone() as i32;
+                if ((max_left_depth - min_left_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_left_depth < left_depths[0] as i32) {
+                    println!("close to left read end: {}, {}, {}", position, max_left_depth, min_left_depth);
+                    position += 1;
+                    continue;
+                }
+            }
+            if right_depths.len() > 0 {
+                let max_right_depth = right_depths.iter().max().unwrap().clone() as i32;
+                let min_right_depth = right_depths.iter().min().unwrap().clone() as i32;
+                if ((max_right_depth - min_right_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_right_depth < right_depths[0] as i32) {
+                    println!("close to right read end: {}, {}, {}", position, max_right_depth, min_right_depth);
+                    position += 1;
+                    continue;
+                }
+            }
+
+            // 8. filtering lying in long homopolymer regions
 
 
             // genotype likelihood
@@ -1932,6 +2067,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   strand_bias_threshold: f32,
                                   cover_strand_bias_threshold: f32,
                                   min_depth: u32,
+                                  distance_to_splicing_site: u32,
+                                  distance_to_read_end: u32,
                                   min_homozygous_freq: f32,
                                   min_phase_score: f32,
                                   max_enum_snps: usize,
@@ -1959,7 +2096,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, distance_to_read_end);
             for snp in snpfrag.candidate_snps.iter() {
                 println!("snp: {:?}", snp);
             }
