@@ -13,7 +13,7 @@ use rayon::prelude::*;
 use rand::seq::SliceRandom;
 use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
-use std::cmp::Ordering;
+use std::cmp::{min, Ordering};
 
 
 #[derive(Debug, Clone, Default)]
@@ -174,10 +174,12 @@ impl SNPFrag {
 
             // 5.filtering with strand bias
             let mut variant_allele: Vec<char> = Vec::new();
-            if allele1 != bf.ref_base {
+            // if allele1 != bf.ref_base {
+            if allele1 != bf.ref_base && allele1_cnt >= 4 {
                 variant_allele.push(allele1);
             }
-            if allele2 != bf.ref_base {
+            // if allele2 != bf.ref_base {
+            if allele2 != bf.ref_base && allele2_cnt >= 4 {
                 variant_allele.push(allele2);
             }
             if variant_allele.len() > 0 {
@@ -223,6 +225,13 @@ impl SNPFrag {
             let mut lidx = bfidx as i32;
             let mut rext = 1;
             let mut ridx = bfidx + 1;
+            let mut num_variant_allele = 0;
+            if allele1 != bf.ref_base {
+                num_variant_allele += allele1_cnt;
+            }
+            if allele2 != bf.ref_base {
+                num_variant_allele += allele2_cnt;
+            }
             while lext <= distance_to_splicing_site {
                 if lidx < 0 {
                     break;
@@ -260,6 +269,11 @@ impl SNPFrag {
             if N_cnts.len() > 0 {
                 let max_N_cnt = N_cnts.iter().max().unwrap().clone();
                 let min_N_cnt = N_cnts.iter().min().unwrap().clone();
+                // if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.9) as u32 {
+                //     println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                //     position += 1;
+                //     continue;
+                // }
                 if min_N_cnt == 0 {
                     if max_N_cnt - min_N_cnt > 10 {
                         println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
@@ -267,7 +281,8 @@ impl SNPFrag {
                         continue;
                     }
                 } else {
-                    if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.5 {
+                    // if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.5 {
+                    if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.3 && max_N_cnt - min_N_cnt >= 8 {
                         println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
                         position += 1;
                         continue;
@@ -276,7 +291,7 @@ impl SNPFrag {
             }
 
 
-            // 7. filtering close to read end
+            // 7. filtering close to read end and approximate homopolymer. Ref: ATAAA, Read: AAAAA,
             let mut left_depths: Vec<u32> = Vec::new();
             let mut right_depths: Vec<u32> = Vec::new();
             let mut lext = 0;
@@ -300,6 +315,11 @@ impl SNPFrag {
                     lidx -= 1;
                     continue;
                 }
+                if lbf.d as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32 >= 0.7 {
+                    // ignore deletion region
+                    lidx -= 1;
+                    continue;
+                }
                 left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
                 lidx -= 1;
                 lext += 1;
@@ -312,6 +332,11 @@ impl SNPFrag {
                 let rbf = &pileup[ridx];
                 if rbf.i {
                     // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                if rbf.d as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32 >= 0.7 {
+                    // ignore deletion region
                     ridx += 1;
                     continue;
                 }
@@ -812,7 +837,12 @@ impl SNPFrag {
             for j in i..homo_hete_snps.len() {
                 // TODO: dense cluster of snps?
                 if homo_hete_snps[j] - homo_hete_snps[i] > 300 {
-                    if (j - 1) - i + 1 >= 9 {
+                    // if (j - 1) - i + 1 >= 9 {
+                    //     for tk in i..j {
+                    //         filter_window.insert(homo_hete_snps[tk]);
+                    //     }
+                    // }
+                    if (j - 1 - i + 1) >= 5 && ((homo_hete_snps[j - 1] - homo_hete_snps[i] + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
                         for tk in i..j {
                             filter_window.insert(homo_hete_snps[tk]);
                         }
@@ -2061,6 +2091,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   thread_size: usize,
                                   isolated_regions: Vec<Region>,
                                   genotype_only: bool,
+                                  min_mapq: u8,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
                                   min_allele_cnt: u32,
@@ -2093,7 +2124,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
         isolated_regions.par_iter().for_each(|reg| {
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
-            profile.init_with_pileup(&bam_file.as_str(), &reg);
+            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, distance_to_read_end);

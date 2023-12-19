@@ -72,6 +72,10 @@ struct Args {
     #[arg(long, default_value_t = 0.2)]
     random_flip_fraction: f32,
 
+    /// Minimum mapping quality for reads
+    #[arg(long, default_value_t = 20)]
+    min_mapq: u8,
+
     /// Minimum allele frequency for candidate SNPs
     #[arg(long, default_value_t = 0.25)]
     min_allele_freq: f32,
@@ -101,7 +105,7 @@ struct Args {
     distance_to_splicing_site: u32,
 
     /// Ignore with distance to read end
-    #[arg(long, default_value_t = 15)]
+    #[arg(long, default_value_t = 20)]
     distance_to_read_end: u32,
 
     /// Minimum phase score to filter SNPs
@@ -146,6 +150,7 @@ fn main() {
     let genotype_only = arg.genotype_only;
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
+    let min_mapq = arg.min_mapq;
     let min_allele_freq = arg.min_allele_freq;
     let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let min_allele_cnt = arg.min_allele_cnt;
@@ -173,7 +178,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region);
+        profile.init_with_pileup(bam_path, &region, min_mapq);
         profile.append_reference(&ref_seqs);
         // for bf in profile.freq_vec.iter() {
         //     println!("bf: {:?}", bf);
@@ -195,7 +200,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region);
+        profile.init_with_pileup(bam_path, &region, min_mapq);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, distance_to_read_end);
@@ -279,6 +284,7 @@ fn main() {
                                    threads,
                                    regions,
                                    genotype_only,
+                                   min_mapq,
                                    min_allele_freq,
                                    min_allele_freq_include_intron,
                                    min_allele_cnt,

@@ -541,7 +541,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, min_mapq: u8) {
         /*
         Generate the initial profile from the pileup of input bam file
         bam_path: bam file path
@@ -571,7 +571,7 @@ impl Profile {
             let mut bf = BaseFreq::default();
             let mut insert_bf: Vec<BaseFreq> = Vec::new();
             for alignment in pileup.alignments() {
-                if alignment.record().is_unmapped() || alignment.record().is_secondary() || alignment.record().is_supplementary() {
+                if alignment.record().mapq() < min_mapq || alignment.record().is_unmapped() || alignment.record().is_secondary() || alignment.record().is_supplementary() {
                     continue;
                 }
                 if alignment.is_refskip() {

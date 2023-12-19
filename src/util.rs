@@ -1,3 +1,4 @@
+use std::cmp::min;
 use rust_htslib::{bam, bam::Record, bam::Format, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
@@ -217,7 +218,7 @@ pub fn multithread_produce3(bam_file: String, thread_size: usize, contigs: Optio
     return results.into_inner().unwrap().clone();
 }
 
-pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_isolated_regions: mpsc::Receiver<Region>) {
+pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_isolated_regions: mpsc::Receiver<Region>, min_mapq: u8) {
     let pool = ThreadPool::new(&thread_size - 1);
     let cond = Arc::new((Mutex::new(()), Condvar::new()));
     let bam_records_queue: Arc<Mutex<VecDeque<bam::Record>>> = Arc::new(Mutex::new(VecDeque::new()));
@@ -243,7 +244,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let mut readnames: Vec<String> = Vec::new();
-            profile.init_with_pileup(bam_file_clone.clone().as_str(), &reg);
+            profile.init_with_pileup(bam_file_clone.clone().as_str(), &reg, min_mapq);
             profile.append_reference(&ref_seqs_clone);
             let mut parsed_reads = read_bam(bam_file_clone.clone().as_str(), &reg);
             for (rname, pr) in parsed_reads.iter_mut() {
@@ -298,7 +299,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
 }
 
 
-pub fn multithread_work3(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, isolated_regions: Vec<Region>) {
+pub fn multithread_work3(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, isolated_regions: Vec<Region>, min_mapq: u8) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let bam_records_queue = Mutex::new(VecDeque::new());
     let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
@@ -312,7 +313,7 @@ pub fn multithread_work3(bam_file: String, ref_file: String, out_bam: String, th
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let mut readnames: Vec<String> = Vec::new();
-            profile.init_with_pileup(&bam_file.as_str(), &reg);
+            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq);
             profile.append_reference(&ref_seqs);
             let mut parsed_reads = read_bam(&bam_file.as_str(), &reg);
             for (rname, pr) in parsed_reads.iter_mut() {
