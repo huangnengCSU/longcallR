@@ -31,7 +31,7 @@ pub struct CandidateSNP {
     // 1: heterozygous SNP, 2: homozygous SNP
     pub variant_quality: f64,
     // the confidence that the variant exists at this site given the data, phred-scaled
-    pub phred_scaled_likelihood: [f64; 3],
+    pub genotype_probability: [f64; 3],
     // 0th: homo var, 1st: hete var, 2nd: homo ref
     pub genotype_quality: f64,
     pub haplotype: i32,
@@ -218,6 +218,9 @@ impl SNPFrag {
                 }
             }
 
+
+            // filtering by local identity
+
             // 6.filtering close to the donor and acceptor site
             let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
             let mut B_cnts: Vec<u32> = Vec::new();  // number of nucleotide bases
@@ -269,25 +272,25 @@ impl SNPFrag {
             if N_cnts.len() > 0 {
                 let max_N_cnt = N_cnts.iter().max().unwrap().clone();
                 let min_N_cnt = N_cnts.iter().min().unwrap().clone();
-                // if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.9) as u32 {
-                //     println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                //     position += 1;
-                //     continue;
-                // }
-                if min_N_cnt == 0 {
-                    if max_N_cnt - min_N_cnt > 10 {
-                        println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                        position += 1;
-                        continue;
-                    }
-                } else {
-                    // if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.5 {
-                    if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.3 && max_N_cnt - min_N_cnt >= 8 {
-                        println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                        position += 1;
-                        continue;
-                    }
+                if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.6) as u32 {
+                    println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                    position += 1;
+                    continue;
                 }
+                // if min_N_cnt == 0 {
+                //     if max_N_cnt - min_N_cnt > 10 {
+                //         println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                //         position += 1;
+                //         continue;
+                //     }
+                // } else {
+                //     // if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.5 {
+                //     if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.3 && max_N_cnt - min_N_cnt >= 8 {
+                //         println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                //         position += 1;
+                //         continue;
+                //     }
+                // }
             }
 
 
@@ -369,7 +372,7 @@ impl SNPFrag {
 
             // genotype likelihood
             let mut loglikelihood = [0.0, 0.0, 0.0];
-            let mut phred_scaled_likelihood = [0.0, 0.0, 0.0];
+            let mut logprob = [0.0, 0.0, 0.0];
             let theta = 0.001;  // mutation rate
             let background_prob = [theta / 2.0, theta, 1.0 - 1.5 * theta];    // background of probability of observe homo variant, hete variant and homo reference
             let mut identical_baseqs;
@@ -407,35 +410,58 @@ impl SNPFrag {
             let num_reads = bf.a + bf.c + bf.g + bf.t;
             loglikelihood[1] -= (num_reads as f64) * 2.0_f64.log10();   // example: logL(0) = -1, logL(1) = -6, logL(2) = -26
 
-            // PL: phred-scaled likelihood, https://gatk.broadinstitute.org/hc/en-us/articles/360035890451-Calculation-of-PL-and-GQ-by-HaplotypeCaller-and-GenotypeGVCFs
-            phred_scaled_likelihood = loglikelihood.clone();
+            // PL: phred-scaled likelihood
+            // https://gatk.broadinstitute.org/hc/en-us/articles/360035890451-Calculation-of-PL-and-GQ-by-HaplotypeCaller-and-GenotypeGVCFs
+            // https://gatk.broadinstitute.org/hc/en-us/articles/360035890511
+            logprob = loglikelihood.clone();
             // multiple prior probability of genotype
-            phred_scaled_likelihood[0] += (background_prob[0] as f64).log10();
-            phred_scaled_likelihood[1] += (background_prob[1] as f64).log10();
-            phred_scaled_likelihood[2] += (background_prob[2] as f64).log10();
+            logprob[0] += (background_prob[0] as f64).log10();
+            logprob[1] += (background_prob[1] as f64).log10();
+            logprob[2] += (background_prob[2] as f64).log10();
 
-            let max_pl = phred_scaled_likelihood[0].max(phred_scaled_likelihood[1]).max(phred_scaled_likelihood[2]);
-            phred_scaled_likelihood[0] = -10.0 * (phred_scaled_likelihood[0] - max_pl);
-            phred_scaled_likelihood[1] = -10.0 * (phred_scaled_likelihood[1] - max_pl);
-            phred_scaled_likelihood[2] = -10.0 * (phred_scaled_likelihood[2] - max_pl);
+            let max_logprob = logprob[0].max(logprob[1]).max(logprob[2]);
 
-            // standardize phred-scaled likelihood, let the minimum value be 0. The most likely genotype has the lowest PL value.
-            let min_pl = phred_scaled_likelihood[0].min(phred_scaled_likelihood[1]).min(phred_scaled_likelihood[2]);
-            phred_scaled_likelihood[0] -= min_pl;
-            phred_scaled_likelihood[1] -= min_pl;
-            phred_scaled_likelihood[2] -= min_pl;
+
+            logprob[0] = logprob[0] - max_logprob;
+            logprob[1] = logprob[1] - max_logprob;
+            logprob[2] = logprob[2] - max_logprob;
+
+            let mut genotype_prob = logprob.clone();
+            genotype_prob[0] = 10.0_f64.powf(logprob[0]);
+            genotype_prob[1] = 10.0_f64.powf(logprob[1]);
+            genotype_prob[2] = 10.0_f64.powf(logprob[2]);
+            let sum_genotype_prob = genotype_prob[0] + genotype_prob[1] + genotype_prob[2];
+            genotype_prob = [genotype_prob[0] / sum_genotype_prob, genotype_prob[1] / sum_genotype_prob, genotype_prob[2] / sum_genotype_prob];
+
+            // // standardize phred-scaled likelihood, let the minimum value be 0. The most likely genotype has the lowest PL value.
+            // let min_pl = phred_scaled_likelihood[0].min(phred_scaled_likelihood[1]).min(phred_scaled_likelihood[2]);
+            // phred_scaled_likelihood[0] -= min_pl;
+            // phred_scaled_likelihood[1] -= min_pl;
+            // phred_scaled_likelihood[2] -= min_pl;
 
             // Sum of PL_homo_var and PL_hete_var is smaller, the variant probability is higher.
-            let variant_quality = -10.0 * f64::log10((phred_scaled_likelihood[0] + phred_scaled_likelihood[1]) / (phred_scaled_likelihood[0] + phred_scaled_likelihood[1] + phred_scaled_likelihood[2]));
+            // let variant_quality = -10.0 * f64::log10((phred_scaled_likelihood[0] + phred_scaled_likelihood[1]) / (phred_scaled_likelihood[0] + phred_scaled_likelihood[1] + phred_scaled_likelihood[2]));
+            let variant_quality = -10.0 * ((10e-51_f64.max(genotype_prob[2])).log10());
 
             // calculate GQ: The value of GQ is the difference between the second lowest PL and the lowest PL
-            let mut sorted_pl = phred_scaled_likelihood.clone();
+            let mut sorted_pl = genotype_prob.clone();
+            sorted_pl[0] = -10.0 * sorted_pl[0].log10();
+            sorted_pl[1] = -10.0 * sorted_pl[1].log10();
+            sorted_pl[2] = -10.0 * sorted_pl[2].log10();
             sorted_pl.sort_by(cmp_f64);
             let genotype_quality = sorted_pl[1] - sorted_pl[0];   // genotype quality: phred-scaled likelihood difference between the best and second best genotype
 
             println!("{} variant quality: {}", position, variant_quality);
             println!("{} log likelihood: {}, {}, {}", position as i64, loglikelihood[0], loglikelihood[1], loglikelihood[2]);
-            println!("{} phred scaled likelihood: {}, {}, {}", position as i64, phred_scaled_likelihood[0], phred_scaled_likelihood[1], phred_scaled_likelihood[2]);
+            println!("{} genotype probability: {}, {}, {}", position as i64, genotype_prob[0], genotype_prob[1], genotype_prob[2]);
+            println!("{} genotype quality: {}", position, genotype_quality);
+
+            // filter low variant quality
+            if variant_quality < 20.0 {
+                println!("{} low variant quality", position);
+                position += 1;
+                continue;
+            }
 
 
             // // genotype likelihood
@@ -506,7 +532,7 @@ impl SNPFrag {
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 2; // homozygous SNP
                 candidate_snp.variant_quality = variant_quality;
-                candidate_snp.phred_scaled_likelihood = phred_scaled_likelihood.clone();
+                candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
                 // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
@@ -533,7 +559,7 @@ impl SNPFrag {
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 1; // heterozygous SNP
                 candidate_snp.variant_quality = variant_quality;
-                candidate_snp.phred_scaled_likelihood = phred_scaled_likelihood.clone();
+                candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
                 // println!("hete genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
