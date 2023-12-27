@@ -244,7 +244,7 @@ pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, th
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let mut readnames: Vec<String> = Vec::new();
-            profile.init_with_pileup(bam_file_clone.clone().as_str(), &reg, min_mapq);
+            profile.init_with_pileup(bam_file_clone.clone().as_str(), &reg, min_mapq, 2000);
             profile.append_reference(&ref_seqs_clone);
             let mut parsed_reads = read_bam(bam_file_clone.clone().as_str(), &reg);
             for (rname, pr) in parsed_reads.iter_mut() {
@@ -313,7 +313,7 @@ pub fn multithread_work3(bam_file: String, ref_file: String, out_bam: String, th
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let mut readnames: Vec<String> = Vec::new();
-            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq);
+            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq, 2000);
             profile.append_reference(&ref_seqs);
             let mut parsed_reads = read_bam(&bam_file.as_str(), &reg);
             for (rname, pr) in parsed_reads.iter_mut() {
