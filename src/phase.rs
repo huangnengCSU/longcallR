@@ -121,10 +121,12 @@ impl SNPFrag {
                               min_allele_freq: f32,
                               min_allele_freq_include_intron: f32,
                               min_coverage: u32,
+                              max_coverage: u32,
                               min_homozygous_freq: f32,
                               strand_bias_threshold: f32,
                               cover_strand_bias_threshold: f32,
                               distance_to_splicing_site: u32,
+                              window_size: u32,
                               distance_to_read_end: u32) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
@@ -140,6 +142,12 @@ impl SNPFrag {
             // 1.filtering with depth
             let depth = bf.get_depth_exclude_intron_deletion();
             if depth < min_coverage {
+                println!("depth: {}, {}", position, depth);
+                position += 1;
+                continue;
+            }
+            if depth > max_coverage {
+                println!("depth: {}, {}", position, depth);
                 position += 1;
                 continue;
             }
@@ -219,9 +227,164 @@ impl SNPFrag {
             }
 
 
-            // filtering by local identity
+            // filtering by local high error rate
+            let mut local_misalignment_ratio: Vec<f32> = Vec::new();
+            let mut lext = 1;
+            let mut lidx = bfidx as i32 - 1;
+            let mut rext = 1;
+            let mut ridx = bfidx + 1;
+            while lext <= window_size {
+                if lidx < 0 {
+                    break;
+                }
+                let lbf = &pileup[lidx as usize];
+                if lbf.i {
+                    // ignore insertion region
+                    lidx -= 1;
+                    continue;
+                }
+                let local_error_rate = lbf.get_none_ref_count() as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
+                local_misalignment_ratio.push(local_error_rate);
+                lext += 1;
+                lidx -= 1;
+            }
+            while rext <= window_size {
+                if ridx >= pileup.len() {
+                    break;
+                }
+                let rbf = &pileup[ridx];
+                if rbf.i {
+                    // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                let local_error_rate = rbf.get_none_ref_count() as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
+                local_misalignment_ratio.push(local_error_rate);
+                rext += 1;
+                ridx += 1;
+            }
+            println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
 
-            // 6.filtering close to the donor and acceptor site
+            let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
+            let mut lext = 0;
+            let mut lidx = bfidx as i32;
+            let mut rext = 1;
+            let mut ridx = bfidx + 1;
+            let mut num_variant_allele = 0;
+            if allele1 != bf.ref_base {
+                num_variant_allele += allele1_cnt;
+            }
+            if allele2 != bf.ref_base {
+                num_variant_allele += allele2_cnt;
+            }
+            while lext <= distance_to_splicing_site {
+                if lidx < 0 {
+                    break;
+                }
+                let lbf = &pileup[lidx as usize];
+                if lbf.i {
+                    // ignore insertion region
+                    lidx -= 1;
+                    continue;
+                }
+                N_cnts.push(lbf.n);
+                lidx -= 1;
+                lext += 1;
+            }
+            N_cnts.reverse();
+            while rext <= distance_to_splicing_site {
+                if ridx >= pileup.len() {
+                    break;
+                }
+                let rbf = &pileup[ridx];
+                if rbf.i {
+                    // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                N_cnts.push(rbf.n);
+                ridx += 1;
+                rext += 1;
+            }
+            println!("{} N_cnts: \n{:?}", position, N_cnts);
+
+            if local_misalignment_ratio.len() as u32 > window_size {
+                let sum_local_misalignment_ratio = local_misalignment_ratio.iter().sum::<f32>();
+                let mut high_error_cnt = 0;
+                for error_rate in local_misalignment_ratio.iter() {
+                    // if mismatch rate > 15%, we think it is high error rate site for ONT reads
+                    if *error_rate > 0.10 {
+                        high_error_cnt += 1;
+                    }
+                }
+                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 > 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.10 {
+                    if N_cnts.len() > 0 {
+                        let max_N_cnt = N_cnts.iter().max().unwrap().clone();
+                        let min_N_cnt = N_cnts.iter().min().unwrap().clone();
+                        if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
+                            println!("close to the splicing site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
+                            println!("{} high local error rate: {}, {}", position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
+                            position += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            /*let mut local_misalignment_ratio: Vec<f32> = Vec::new();
+            let mut lext = 1;
+            let mut lidx = bfidx as i32 - 1;
+            let mut rext = 1;
+            let mut ridx = bfidx + 1;
+            while lext <= distance_to_splicing_site {
+                if lidx < 0 {
+                    break;
+                }
+                let lbf = &pileup[lidx as usize];
+                if lbf.i {
+                    // ignore insertion region
+                    lidx -= 1;
+                    continue;
+                }
+                let local_error_rate = lbf.get_none_ref_count() as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
+                local_misalignment_ratio.push(local_error_rate);
+                lext += 1;
+                lidx -= 1;
+            }
+            while rext <= distance_to_splicing_site {
+                if ridx >= pileup.len() {
+                    break;
+                }
+                let rbf = &pileup[ridx];
+                if rbf.i {
+                    // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                let local_error_rate = rbf.get_none_ref_count() as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
+                local_misalignment_ratio.push(local_error_rate);
+                rext += 1;
+                ridx += 1;
+            }
+            println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
+            if local_misalignment_ratio.len() as u32 > distance_to_splicing_site {
+                let sum_local_misalignment_ratio = local_misalignment_ratio.iter().sum::<f32>();
+                let mut high_error_cnt = 0;
+                for error_rate in local_misalignment_ratio.iter() {
+                    // if mismatch rate > 10%, we think it is high error rate site for ONT reads
+                    if *error_rate > 0.10 {
+                        high_error_cnt += 1;
+                    }
+                }
+                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 > 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.10 {
+                    println!("{} high local error rate: {}, {}", position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
+                    position += 1;
+                    continue;
+                }
+            }*/
+
+
+            /*// 6.filtering close to the donor and acceptor site
             let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
             let mut B_cnts: Vec<u32> = Vec::new();  // number of nucleotide bases
             let mut lext = 0;
@@ -272,7 +435,7 @@ impl SNPFrag {
             if N_cnts.len() > 0 {
                 let max_N_cnt = N_cnts.iter().max().unwrap().clone();
                 let min_N_cnt = N_cnts.iter().min().unwrap().clone();
-                if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.6) as u32 {
+                if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
                     println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
                     position += 1;
                     continue;
@@ -291,7 +454,7 @@ impl SNPFrag {
                 //         continue;
                 //     }
                 // }
-            }
+            }*/
 
 
             // 7. filtering close to read end and approximate homopolymer. Ref: ATAAA, Read: AAAAA,
@@ -566,6 +729,21 @@ impl SNPFrag {
                 self.hete_snps.push(self.candidate_snps.len() - 1);
             }
             position += 1;
+        }
+
+        // filter dense SNPs
+        for i in 0..self.candidate_snps.len() {
+            for j in i..self.candidate_snps.len() {
+                if self.candidate_snps[j].pos - self.candidate_snps[i].pos > 300 {
+                    if (j - 1 - i + 1) >= 5 && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
+                        for tk in i..j {
+                            println!("dense SNPs: {}", self.candidate_snps[tk].pos);
+                            self.candidate_snps[tk].filter = true;
+                        }
+                    }
+                    break;
+                }
+            }
         }
     }
 
@@ -2124,7 +2302,10 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   strand_bias_threshold: f32,
                                   cover_strand_bias_threshold: f32,
                                   min_depth: u32,
+                                  max_depth: u32,
+                                  min_read_length: usize,
                                   distance_to_splicing_site: u32,
+                                  window_size: u32,
                                   distance_to_read_end: u32,
                                   min_homozygous_freq: f32,
                                   min_phase_score: f32,
@@ -2150,15 +2331,15 @@ pub fn multithread_phase_haplotag(bam_file: String,
         isolated_regions.par_iter().for_each(|reg| {
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
-            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq);
+            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq, min_read_length);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, distance_to_read_end);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end);
             for snp in snpfrag.candidate_snps.iter() {
                 println!("snp: {:?}", snp);
             }
             snpfrag.get_fragments(&bam_file, &reg);
-            snpfrag.filter_fp_snps(strand_bias_threshold, None);
+            // snpfrag.filter_fp_snps(strand_bias_threshold, None);
             if genotype_only {
                 // without phasing
                 let vcf_records = snpfrag.output_vcf3(min_allele_freq, min_homozygous_freq);
