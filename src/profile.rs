@@ -525,6 +525,18 @@ impl BaseFreq {
         x.sort_by(|a, b| b.1.cmp(&a.1));
         (x[0].0, x[0].1, x[1].0, x[1].1)
     }
+
+    pub fn get_none_ref_count(&self) -> u32 {
+        match self.ref_base {
+            'A' => self.c + self.g + self.t + self.d,
+            'C' => self.a + self.g + self.t + self.d,
+            'G' => self.a + self.c + self.t + self.d,
+            'T' => self.a + self.c + self.g + self.d,
+            _ => {
+                0
+            }
+        }
+    }
 }
 
 
@@ -541,7 +553,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, min_mapq: u8) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, min_mapq: u8, min_read_length: usize) {
         /*
         Generate the initial profile from the pileup of input bam file
         bam_path: bam file path
@@ -571,7 +583,7 @@ impl Profile {
             let mut bf = BaseFreq::default();
             let mut insert_bf: Vec<BaseFreq> = Vec::new();
             for alignment in pileup.alignments() {
-                if alignment.record().mapq() < min_mapq || alignment.record().is_unmapped() || alignment.record().is_secondary() || alignment.record().is_supplementary() {
+                if alignment.record().mapq() < min_mapq || alignment.record().seq_len() < min_read_length || alignment.record().is_unmapped() || alignment.record().is_secondary() || alignment.record().is_supplementary() {
                     continue;
                 }
                 if alignment.is_refskip() {
