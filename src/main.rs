@@ -101,8 +101,12 @@ struct Args {
     cover_strand_bias_threshold: f32,
 
     /// Ignore with distance to splicing site
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 15)]
     distance_to_splicing_site: u32,
+
+    /// Window size for local error rate
+    #[arg(long, default_value_t = 3)]
+    window_size: u32,
 
     /// Ignore with distance to read end
     #[arg(long, default_value_t = 20)]
@@ -115,6 +119,14 @@ struct Args {
     /// Minimum depth to filter SNPs
     #[arg(long, default_value_t = 10)]
     min_depth: u32,
+
+    /// Maximum depth to filter SNPs
+    #[arg(long, default_value_t = 100000)]
+    max_depth: u32,
+
+    /// Minimum read length to filter reads
+    #[arg(long, default_value_t = 500)]
+    min_read_length: usize,
 
     /// Read assignment cutoff, the read is phased only if the probability of assignment P(hap1)-P(hap2) > cutoff or P(hap2)-P(hap1) > cutoff
     #[arg(long, default_value_t = 0.15)]
@@ -157,9 +169,12 @@ fn main() {
     let strand_bias_threshold = arg.strand_bias_threshold;
     let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
     let distance_to_splicing_site = arg.distance_to_splicing_site;
+    let window_size = arg.window_size;
     let distance_to_read_end = arg.distance_to_read_end;
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
+    let max_depth = arg.max_depth;
+    let min_read_length = arg.min_read_length;
     let read_assignment_cutoff = arg.read_assignment_cutoff;
     let min_homozygous_freq = arg.min_homozygous_freq;
     let phasing_output = arg.no_phase_vcf;  // default=true
@@ -178,14 +193,14 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, min_mapq);
+        profile.init_with_pileup(bam_path, &region, min_mapq, min_read_length);
         profile.append_reference(&ref_seqs);
         // for bf in profile.freq_vec.iter() {
         //     println!("bf: {:?}", bf);
         // }
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, distance_to_read_end);
-        snpfrag.filter_fp_snps(strand_bias_threshold, None);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end);
+        // snpfrag.filter_fp_snps(strand_bias_threshold, None);
         for i in snpfrag.hete_snps.iter() {
             println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
         }
@@ -200,16 +215,16 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, min_mapq);
+        profile.init_with_pileup(bam_path, &region, min_mapq, min_read_length);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, distance_to_read_end);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         snpfrag.get_fragments(bam_path, &region);
         for edge in snpfrag.edges.iter() {
             println!("edge: {:?}->{:?}", snpfrag.candidate_snps[edge.0[0]], snpfrag.candidate_snps[edge.0[1]]);
         }
-        snpfrag.filter_fp_snps(strand_bias_threshold, None);
+        // snpfrag.filter_fp_snps(strand_bias_threshold, None);
         let mut vcf_records: Vec<VCFRecord> = Vec::new();
         if genotype_only {
             // without phasing
@@ -291,7 +306,10 @@ fn main() {
                                    strand_bias_threshold,
                                    cover_strand_bias_threshold,
                                    min_depth,
+                                   max_depth,
+                                   min_read_length,
                                    distance_to_splicing_site,
+                                   window_size,
                                    distance_to_read_end,
                                    min_homozygous_freq,
                                    min_phase_score,
