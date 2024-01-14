@@ -227,6 +227,84 @@ impl SNPFrag {
             }
 
 
+            // 7. filtering close to read end
+            let mut left_depths: Vec<u32> = Vec::new();
+            let mut right_depths: Vec<u32> = Vec::new();
+            let mut lext = 0;
+            let mut lidx = bfidx as i32;
+            let mut rext = 0;
+            let mut ridx = bfidx;
+            let mut num_variant_allele = 0;
+            if allele1 != bf.ref_base {
+                num_variant_allele += allele1_cnt;
+            }
+            if allele2 != bf.ref_base {
+                num_variant_allele += allele2_cnt;
+            }
+            while lext <= distance_to_read_end {
+                if lidx < 0 {
+                    break;
+                }
+                let lbf = &pileup[lidx as usize];
+                if lbf.i {
+                    // ignore insertion region
+                    lidx -= 1;
+                    continue;
+                }
+                if lbf.d as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32 >= 0.7 {
+                    // ignore deletion region
+                    lidx -= 1;
+                    continue;
+                }
+                left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
+                lidx -= 1;
+                lext += 1;
+            }
+            println!("{} left_depths: \n{:?}", position, left_depths);
+            while rext <= distance_to_read_end {
+                if ridx >= pileup.len() {
+                    break;
+                }
+                let rbf = &pileup[ridx];
+                if rbf.i {
+                    // ignore insertion region
+                    ridx += 1;
+                    continue;
+                }
+                if rbf.d as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32 >= 0.7 {
+                    // ignore deletion region
+                    ridx += 1;
+                    continue;
+                }
+                right_depths.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d + rbf.n);
+                ridx += 1;
+                rext += 1;
+            }
+            println!("{} right_depths: \n{:?}", position, right_depths);
+
+
+            if left_depths.len() > 0 {
+                let max_left_depth = left_depths.iter().max().unwrap().clone() as i32;
+                let min_left_depth = left_depths.iter().min().unwrap().clone() as i32;
+                if ((max_left_depth - min_left_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_left_depth < left_depths[0] as i32) {
+                    println!("close to left read end: {}, {}, {}", position, max_left_depth, min_left_depth);
+                    position += 1;
+                    continue;
+                }
+            }
+
+
+            if right_depths.len() > 0 {
+                let max_right_depth = right_depths.iter().max().unwrap().clone() as i32;
+                let min_right_depth = right_depths.iter().min().unwrap().clone() as i32;
+                if ((max_right_depth - min_right_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_right_depth < right_depths[0] as i32) {
+                    println!("close to right read end: {}, {}, {}", position, max_right_depth, min_right_depth);
+                    position += 1;
+                    continue;
+                }
+            }
+
+
             // filtering by local high error rate
             let mut local_misalignment_ratio: Vec<f32> = Vec::new();
             let mut lext = 1;
@@ -266,6 +344,7 @@ impl SNPFrag {
             println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
 
             let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
+            let mut INS_cnts: Vec<u32> = Vec::new();  // number of insertions
             let mut lext = 0;
             let mut lidx = bfidx as i32;
             let mut rext = 1;
@@ -282,6 +361,7 @@ impl SNPFrag {
                     break;
                 }
                 let lbf = &pileup[lidx as usize];
+                INS_cnts.push(lbf.ni);
                 if lbf.i {
                     // ignore insertion region
                     lidx -= 1;
@@ -291,12 +371,14 @@ impl SNPFrag {
                 lidx -= 1;
                 lext += 1;
             }
+            INS_cnts.reverse();
             N_cnts.reverse();
             while rext <= distance_to_splicing_site {
                 if ridx >= pileup.len() {
                     break;
                 }
                 let rbf = &pileup[ridx];
+                INS_cnts.push(rbf.ni);
                 if rbf.i {
                     // ignore insertion region
                     ridx += 1;
@@ -307,7 +389,10 @@ impl SNPFrag {
                 rext += 1;
             }
             println!("{} N_cnts: \n{:?}", position, N_cnts);
+            println!("{} INS_cnts: \n{:?}", position, INS_cnts);
 
+            let max_N_cnt = N_cnts.iter().max().unwrap().clone();
+            let min_N_cnt = N_cnts.iter().min().unwrap().clone();
             if local_misalignment_ratio.len() as u32 > window_size {
                 let sum_local_misalignment_ratio = local_misalignment_ratio.iter().sum::<f32>();
                 let mut high_error_cnt = 0;
@@ -317,10 +402,8 @@ impl SNPFrag {
                         high_error_cnt += 1;
                     }
                 }
-                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 > 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.10 {
+                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.10 {
                     if N_cnts.len() > 0 {
-                        let max_N_cnt = N_cnts.iter().max().unwrap().clone();
-                        let min_N_cnt = N_cnts.iter().min().unwrap().clone();
                         if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
                             println!("close to the splicing site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
                             println!("{} high local error rate: {}, {}", position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
@@ -330,6 +413,22 @@ impl SNPFrag {
                     }
                 }
             }
+
+            // filtering insertion cause false variant near splicing site
+            let mut insertion_concerned = false;
+            let mut ins_cnt = 0;
+            for INS_cnt in INS_cnts.iter() {
+                if (*INS_cnt > (num_variant_allele as f32 * 0.8) as u32) && (max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32) {
+                    insertion_concerned = true;
+                    ins_cnt = *INS_cnt;
+                }
+            }
+            if insertion_concerned {
+                println!("insertion cause false variant: {}, {}, {}", position, num_variant_allele, ins_cnt);
+                position += 1;
+                continue;
+            }
+
 
             /*let mut local_misalignment_ratio: Vec<f32> = Vec::new();
             let mut lext = 1;
@@ -456,79 +555,6 @@ impl SNPFrag {
                 // }
             }*/
 
-
-            // 7. filtering close to read end and approximate homopolymer. Ref: ATAAA, Read: AAAAA,
-            let mut left_depths: Vec<u32> = Vec::new();
-            let mut right_depths: Vec<u32> = Vec::new();
-            let mut lext = 0;
-            let mut lidx = bfidx as i32;
-            let mut rext = 0;
-            let mut ridx = bfidx;
-            let mut num_variant_allele = 0;
-            if allele1 != bf.ref_base {
-                num_variant_allele += allele1_cnt;
-            }
-            if allele2 != bf.ref_base {
-                num_variant_allele += allele2_cnt;
-            }
-            while lext <= distance_to_read_end {
-                if lidx < 0 {
-                    break;
-                }
-                let lbf = &pileup[lidx as usize];
-                if lbf.i {
-                    // ignore insertion region
-                    lidx -= 1;
-                    continue;
-                }
-                if lbf.d as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32 >= 0.7 {
-                    // ignore deletion region
-                    lidx -= 1;
-                    continue;
-                }
-                left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
-                lidx -= 1;
-                lext += 1;
-            }
-            println!("{} left_depths: \n{:?}", position, left_depths);
-            while rext <= distance_to_read_end {
-                if ridx >= pileup.len() {
-                    break;
-                }
-                let rbf = &pileup[ridx];
-                if rbf.i {
-                    // ignore insertion region
-                    ridx += 1;
-                    continue;
-                }
-                if rbf.d as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32 >= 0.7 {
-                    // ignore deletion region
-                    ridx += 1;
-                    continue;
-                }
-                right_depths.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d + rbf.n);
-                ridx += 1;
-                rext += 1;
-            }
-            println!("{} right_depths: \n{:?}", position, right_depths);
-            if left_depths.len() > 0 {
-                let max_left_depth = left_depths.iter().max().unwrap().clone() as i32;
-                let min_left_depth = left_depths.iter().min().unwrap().clone() as i32;
-                if ((max_left_depth - min_left_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_left_depth < left_depths[0] as i32) {
-                    println!("close to left read end: {}, {}, {}", position, max_left_depth, min_left_depth);
-                    position += 1;
-                    continue;
-                }
-            }
-            if right_depths.len() > 0 {
-                let max_right_depth = right_depths.iter().max().unwrap().clone() as i32;
-                let min_right_depth = right_depths.iter().min().unwrap().clone() as i32;
-                if ((max_right_depth - min_right_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_right_depth < right_depths[0] as i32) {
-                    println!("close to right read end: {}, {}, {}", position, max_right_depth, min_right_depth);
-                    position += 1;
-                    continue;
-                }
-            }
 
             // 8. filtering lying in long homopolymer regions
 
