@@ -383,6 +383,8 @@ pub struct BaseFreq {
     // number of introns
     pub d: u32,
     // number of deletions
+    pub ni: u32,
+    // number of insertions
     pub i: bool,
     // whether this position falls in an insertion
     pub ref_base: char,
@@ -600,7 +602,7 @@ impl Profile {
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -712,7 +714,7 @@ impl Profile {
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -909,7 +911,7 @@ impl Profile {
                             }
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
@@ -1009,6 +1011,9 @@ impl Profile {
             }
             // update the number of dash in insertion position
             let cur_depth_with_intron = bf.get_depth_include_intron();
+            if insert_bf.len() > 0 {
+                bf.ni = insert_bf[0].get_depth_exclude_intron_deletion();  // update the number of insertion for current position
+            }
             self.freq_vec.push(bf);
             if insert_bf.len() > 0 {
                 for tmpi in 0..insert_bf.len() {
