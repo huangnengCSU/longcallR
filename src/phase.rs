@@ -760,7 +760,7 @@ impl SNPFrag {
         // filter dense SNPs
         for i in 0..self.candidate_snps.len() {
             for j in i..self.candidate_snps.len() {
-                if self.candidate_snps[j].pos - self.candidate_snps[i].pos > 300 {
+                if self.candidate_snps[j].pos - self.candidate_snps[i].pos > 500 {
                     if (j - 1 - i + 1) >= 5 && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
                         for tk in i..j {
                             println!("dense SNPs: {}", self.candidate_snps[tk].pos);
