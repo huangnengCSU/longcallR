@@ -77,7 +77,7 @@ struct Args {
     min_mapq: u8,
 
     /// Minimum allele frequency for candidate SNPs
-    #[arg(long, default_value_t = 0.25)]
+    #[arg(long, default_value_t = 0.20)]
     min_allele_freq: f32,
 
     /// Minimum allele frequency for candidate SNPs include intron
@@ -85,7 +85,7 @@ struct Args {
     min_allele_freq_include_intron: f32,
 
     /// Minimum allele frequency for homozygous SNPs
-    #[arg(long, default_value_t = 0.85)]
+    #[arg(long, default_value_t = 0.75)]
     min_homozygous_freq: f32,
 
     /// Minimum support number for each allele
@@ -101,7 +101,7 @@ struct Args {
     cover_strand_bias_threshold: f32,
 
     /// Ignore with distance to splicing site
-    #[arg(long, default_value_t = 15)]
+    #[arg(long, default_value_t = 20)]
     distance_to_splicing_site: u32,
 
     /// Window size for local error rate
@@ -121,7 +121,7 @@ struct Args {
     min_depth: u32,
 
     /// Maximum depth to filter SNPs
-    #[arg(long, default_value_t = 100000)]
+    #[arg(long, default_value_t = 50000)]
     max_depth: u32,
 
     /// Minimum read length to filter reads
