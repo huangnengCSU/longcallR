@@ -555,7 +555,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, min_mapq: u8, min_read_length: usize) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, min_mapq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
         /*
         Generate the initial profile from the pileup of input bam file
         bam_path: bam file path
@@ -583,6 +583,8 @@ impl Profile {
                 freq_vec_end = pos + 1;
             }
             let mut bf = BaseFreq::default();
+            let depth = pileup.depth();
+            // println!("depth: {} {} {}", pos + 1, depth, pileup.alignments().count());
             let mut insert_bf: Vec<BaseFreq> = Vec::new();
             for alignment in pileup.alignments() {
                 if alignment.record().mapq() < min_mapq || alignment.record().seq_len() < min_read_length || alignment.record().is_unmapped() || alignment.record().is_secondary() || alignment.record().is_supplementary() {
@@ -821,6 +823,50 @@ impl Profile {
                     let strand = if record.strand() == Forward { 0 } else { 1 };
                     let base = seq[q_pos] as char;
                     let baseq = base_qual[q_pos];
+
+                    let leading_softclips = alignment.record().cigar().leading_softclips();
+                    let trailing_softclips = alignment.record().cigar().trailing_softclips();
+
+                    // close to left read end or right read end, check whether current position is in polyA tail
+                    let ref_base = ref_seq[pos as usize] as char;
+                    let mut polyA_flag = false;
+                    let mut homopolymer_flag = false;
+                    let polyA_win = polya_tail_length as i64;
+                    if (q_pos as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (q_pos as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64 {
+                        for tmpi in (q_pos as i64 - polyA_win + 1)..=(q_pos as i64) {
+                            if tmpi < 0 || tmpi + polyA_win - 1 >= seq.len() as i64 {
+                                continue;
+                            }
+                            let mut polyA_cnt = 0;
+                            let mut polyT_cnt = 0;
+                            let mut polyC_cnt = 0;
+                            let mut polyG_cnt = 0;
+                            for tmpj in 0..polyA_win {
+                                if seq[(tmpi + tmpj) as usize] == b'A' && ref_base != 'A' {
+                                    polyA_cnt += 1;
+                                } else if seq[(tmpi + tmpj) as usize] == b'T' && ref_base != 'T' {
+                                    polyT_cnt += 1;
+                                } else if seq[(tmpi + tmpj) as usize] == b'C' && ref_base != 'C' {
+                                    polyC_cnt += 1;
+                                } else if seq[(tmpi + tmpj) as usize] == b'G' && ref_base != 'G' {
+                                    polyG_cnt += 1;
+                                }
+                            }
+                            if polyA_cnt >= polyA_win || polyT_cnt >= polyA_win {
+                                polyA_flag = true;
+                            }
+                            if polyC_cnt >= polyA_win || polyG_cnt >= polyA_win {
+                                homopolymer_flag = true;
+                            }
+                        }
+                    }
+                    if polyA_flag {
+                        continue;
+                    }
+                    if homopolymer_flag {
+                        continue;
+                    }
+
                     match base {
                         'A' => {
                             bf.a += 1;
