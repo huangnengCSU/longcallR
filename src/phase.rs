@@ -39,8 +39,10 @@ pub struct CandidateSNP {
     pub phase_score: f64,
     pub snp_cover_fragments: Vec<usize>,
     // index of the fragment cover this SNP
+    pub rna_editing: bool,
+    // A->G, T-C, rna_editing variant does not have haplotype information, no phasing
     pub filter: bool,
-    // filter out this SNP or not
+    // filter out this SNP or not in phasing process
 }
 
 #[derive(Debug, Clone, Default)]
@@ -127,7 +129,10 @@ impl SNPFrag {
                               cover_strand_bias_threshold: f32,
                               distance_to_splicing_site: u32,
                               window_size: u32,
-                              distance_to_read_end: u32) {
+                              distance_to_read_end: u32,
+                              dense_win_size: u32,
+                              min_dense_cnt: u32,
+                              avg_dense_dist: f32) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
@@ -142,12 +147,12 @@ impl SNPFrag {
             // 1.filtering with depth
             let depth = bf.get_depth_exclude_intron_deletion();
             if depth < min_coverage {
-                println!("depth: {}, {}", position, depth);
+                // println!("depth: {}, {}", position, depth);
                 position += 1;
                 continue;
             }
             if depth > max_coverage {
-                println!("depth: {}, {}", position, depth);
+                // println!("depth: {}, {}", position, depth);
                 position += 1;
                 continue;
             }
@@ -227,82 +232,82 @@ impl SNPFrag {
             }
 
 
-            // 7. filtering close to read end
-            let mut left_depths: Vec<u32> = Vec::new();
-            let mut right_depths: Vec<u32> = Vec::new();
-            let mut lext = 0;
-            let mut lidx = bfidx as i32;
-            let mut rext = 0;
-            let mut ridx = bfidx;
-            let mut num_variant_allele = 0;
-            if allele1 != bf.ref_base {
-                num_variant_allele += allele1_cnt;
-            }
-            if allele2 != bf.ref_base {
-                num_variant_allele += allele2_cnt;
-            }
-            while lext <= distance_to_read_end {
-                if lidx < 0 {
-                    break;
-                }
-                let lbf = &pileup[lidx as usize];
-                if lbf.i {
-                    // ignore insertion region
-                    lidx -= 1;
-                    continue;
-                }
-                if lbf.d as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32 >= 0.7 {
-                    // ignore deletion region
-                    lidx -= 1;
-                    continue;
-                }
-                left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
-                lidx -= 1;
-                lext += 1;
-            }
-            println!("{} left_depths: \n{:?}", position, left_depths);
-            while rext <= distance_to_read_end {
-                if ridx >= pileup.len() {
-                    break;
-                }
-                let rbf = &pileup[ridx];
-                if rbf.i {
-                    // ignore insertion region
-                    ridx += 1;
-                    continue;
-                }
-                if rbf.d as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32 >= 0.7 {
-                    // ignore deletion region
-                    ridx += 1;
-                    continue;
-                }
-                right_depths.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d + rbf.n);
-                ridx += 1;
-                rext += 1;
-            }
-            println!("{} right_depths: \n{:?}", position, right_depths);
-
-
-            if left_depths.len() > 0 {
-                let max_left_depth = left_depths.iter().max().unwrap().clone() as i32;
-                let min_left_depth = left_depths.iter().min().unwrap().clone() as i32;
-                if ((max_left_depth - min_left_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_left_depth < left_depths[0] as i32) {
-                    println!("close to left read end: {}, {}, {}", position, max_left_depth, min_left_depth);
-                    position += 1;
-                    continue;
-                }
-            }
-
-
-            if right_depths.len() > 0 {
-                let max_right_depth = right_depths.iter().max().unwrap().clone() as i32;
-                let min_right_depth = right_depths.iter().min().unwrap().clone() as i32;
-                if ((max_right_depth - min_right_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_right_depth < right_depths[0] as i32) {
-                    println!("close to right read end: {}, {}, {}", position, max_right_depth, min_right_depth);
-                    position += 1;
-                    continue;
-                }
-            }
+            // // 7. filtering close to read end
+            // let mut left_depths: Vec<u32> = Vec::new();
+            // let mut right_depths: Vec<u32> = Vec::new();
+            // let mut lext = 0;
+            // let mut lidx = bfidx as i32;
+            // let mut rext = 0;
+            // let mut ridx = bfidx;
+            // let mut num_variant_allele = 0;
+            // if allele1 != bf.ref_base {
+            //     num_variant_allele += allele1_cnt;
+            // }
+            // if allele2 != bf.ref_base {
+            //     num_variant_allele += allele2_cnt;
+            // }
+            // while lext <= distance_to_read_end {
+            //     if lidx < 0 {
+            //         break;
+            //     }
+            //     let lbf = &pileup[lidx as usize];
+            //     if lbf.i {
+            //         // ignore insertion region
+            //         lidx -= 1;
+            //         continue;
+            //     }
+            //     if lbf.d as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32 >= 0.7 {
+            //         // ignore deletion region
+            //         lidx -= 1;
+            //         continue;
+            //     }
+            //     left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
+            //     lidx -= 1;
+            //     lext += 1;
+            // }
+            // println!("{} left_depths: \n{:?}", position, left_depths);
+            // while rext <= distance_to_read_end {
+            //     if ridx >= pileup.len() {
+            //         break;
+            //     }
+            //     let rbf = &pileup[ridx];
+            //     if rbf.i {
+            //         // ignore insertion region
+            //         ridx += 1;
+            //         continue;
+            //     }
+            //     if rbf.d as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32 >= 0.7 {
+            //         // ignore deletion region
+            //         ridx += 1;
+            //         continue;
+            //     }
+            //     right_depths.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d + rbf.n);
+            //     ridx += 1;
+            //     rext += 1;
+            // }
+            // println!("{} right_depths: \n{:?}", position, right_depths);
+            //
+            //
+            // if left_depths.len() > 0 {
+            //     let max_left_depth = left_depths.iter().max().unwrap().clone() as i32;
+            //     let min_left_depth = left_depths.iter().min().unwrap().clone() as i32;
+            //     if ((max_left_depth - min_left_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_left_depth < left_depths[0] as i32) {
+            //         println!("close to left read end: {}, {}, {}", position, max_left_depth, min_left_depth);
+            //         position += 1;
+            //         continue;
+            //     }
+            // }
+            //
+            //
+            // if right_depths.len() > 0 {
+            //     let max_right_depth = right_depths.iter().max().unwrap().clone() as i32;
+            //     let min_right_depth = right_depths.iter().min().unwrap().clone() as i32;
+            //     if ((max_right_depth - min_right_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_right_depth < right_depths[0] as i32) {
+            //         println!("close to right read end: {}, {}, {}", position, max_right_depth, min_right_depth);
+            //         position += 1;
+            //         continue;
+            //     }
+            // }
 
 
             // filtering by local high error rate
@@ -321,6 +326,7 @@ impl SNPFrag {
                     lidx -= 1;
                     continue;
                 }
+                // println!("Left bases: {}, {}, {}, {}, {}", lbf.a, lbf.c, lbf.g, lbf.t, lbf.d);
                 let local_error_rate = lbf.get_none_ref_count() as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
                 local_misalignment_ratio.push(local_error_rate);
                 lext += 1;
@@ -336,11 +342,13 @@ impl SNPFrag {
                     ridx += 1;
                     continue;
                 }
+                // println!("Right bases: {}, {}, {}, {}, {}", rbf.a, rbf.c, rbf.g, rbf.t, rbf.d);
                 let local_error_rate = rbf.get_none_ref_count() as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
                 local_misalignment_ratio.push(local_error_rate);
                 rext += 1;
                 ridx += 1;
             }
+            // println!("{:?}", bf);
             println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
 
             let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
@@ -402,7 +410,7 @@ impl SNPFrag {
                         high_error_cnt += 1;
                     }
                 }
-                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.10 {
+                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.20 {
                     if N_cnts.len() > 0 {
                         if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
                             println!("close to the splicing site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
@@ -723,6 +731,14 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
+                if bf.ref_base == 'A' && allele1 == 'G' {
+                    candidate_snp.rna_editing = true;
+                    candidate_snp.filter = true;
+                }
+                if bf.ref_base == 'T' && allele1 == 'C' {
+                    candidate_snp.rna_editing = true;
+                    candidate_snp.filter = true;
+                }
                 // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
@@ -750,6 +766,18 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
+                if bf.ref_base == 'A' {
+                    if (allele1 == 'A' && allele2 == 'G') || (allele1 == 'G' && allele2 == 'A') {
+                        candidate_snp.rna_editing = true;
+                        candidate_snp.filter = true;
+                    }
+                }
+                if bf.ref_base == 'T' {
+                    if (allele1 == 'T' && allele2 == 'C') || (allele1 == 'C' && allele2 == 'T') {
+                        candidate_snp.rna_editing = true;
+                        candidate_snp.filter = true;
+                    }
+                }
                 // println!("hete genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.hete_snps.push(self.candidate_snps.len() - 1);
@@ -760,10 +788,12 @@ impl SNPFrag {
         // filter dense SNPs
         for i in 0..self.candidate_snps.len() {
             for j in i..self.candidate_snps.len() {
-                if self.candidate_snps[j].pos - self.candidate_snps[i].pos > 500 {
-                    if (j - 1 - i + 1) >= 5 && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
+                if self.candidate_snps[j].pos - self.candidate_snps[i].pos > dense_win_size as i64 {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
                         for tk in i..j {
                             println!("dense SNPs: {}", self.candidate_snps[tk].pos);
+                            // even rna editing may be filtered by dense SNPs
+                            self.candidate_snps[tk].rna_editing = false;
                             self.candidate_snps[tk].filter = true;
                         }
                     }
@@ -1576,7 +1606,10 @@ impl SNPFrag {
         }
         // println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
         let mut rv = 0;
-        if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else { rv = -1; }
+        if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else {
+            println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
+            rv = -1;
+        }
         return rv;
     }
 
@@ -1674,7 +1707,7 @@ impl SNPFrag {
 
             // assert!(SNPFrag::cal_overall_probability(&self, &processed_snps, &self.haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
             let check_val = SNPFrag::check_new_haplotag(&self, &processed_snps, &tmp_haplotag);
-            assert!(check_val >= 0);
+            // assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
 
             if check_val > 0 {
                 // new haplotag increases the probability P(sigma, delta)
@@ -1715,7 +1748,7 @@ impl SNPFrag {
             }
 
             let check_val = SNPFrag::check_new_haplotype(&self, &tmp_haplotype);
-            assert!(check_val >= 0);
+            // assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
 
             if check_val > 0 {
                 // new haplotype increases the probability P(sigma, delta)
@@ -1754,6 +1787,7 @@ impl SNPFrag {
         }
 
         for (k, v) in fragments_cnt.iter() {
+            // each fragment is covered by at least two SNPs
             if *v >= 2 {
                 covered_fragments.insert(*k);
             }
@@ -1933,7 +1967,7 @@ impl SNPFrag {
             let mut phase_score = 0.0;
 
             if num_hap1 < min_allele_cnt || num_hap2 < min_allele_cnt {
-                // filter SNPs with low allele count
+                // filter SNPs with low allele count, no confident phase
                 println!("Low allele count: {}, {}, {}", snp.pos, num_hap1, num_hap2);
                 phase_score = 0.0;
             } else {
@@ -1942,9 +1976,9 @@ impl SNPFrag {
                     // println!("sigma: {:?}", sigma);
                     // println!("ps: {:?}", ps);
                     // phase_score = -10.0_f64 * SNPFrag::cal_inconsistent_percentage(delta_i, &sigma, &ps, &probs).log10();
-                    phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_log_delta_sigma(delta_i, &sigma, &ps, &probs)).log10();
+                    phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_log_delta_sigma(delta_i, &sigma, &ps, &probs)).log10();   // calaulate assignment score
                 } else {
-                    phase_score = 0.0;
+                    phase_score = 0.0;  // all reads belong to unknown group, maybe caused by single SNP
                 }
             }
             self.candidate_snps[ti].phase_score = phase_score;
@@ -1973,6 +2007,7 @@ impl SNPFrag {
             }
 
             if sigma_k == 0 {
+                // unasigned haplotag, cluster the read into unknown group
                 self.fragments[k].assignment = 0;
                 self.fragments[k].assignment_score = 0.0;
                 read_assignments.insert(self.fragments[k].read_id.clone(), 0);
@@ -1990,6 +2025,7 @@ impl SNPFrag {
                         read_assignments.insert(self.fragments[k].read_id.clone(), 2);
                     }
                 } else {
+                    // unknown which haplotype the read belongs to, cluster the read into unknown group
                     self.fragments[k].assignment = 0;
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
@@ -2059,7 +2095,33 @@ impl SNPFrag {
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
             let hp = snp.haplotype;
-            if snp.filter == true {
+            if snp.filter == true && snp.rna_editing == false {
+                // dense SNP
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+                rd.reference = vec![snp.reference as u8];
+                rd.id = vec!['.' as u8];
+                if snp.variant_type == 1 {
+                    if snp.alleles[0] != snp.reference && snp.alleles[1] == snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                        rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                    } else if snp.alleles[1] != snp.reference && snp.alleles[0] == snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                        rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                    } else {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                        rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                    }
+                } else if snp.variant_type == 2 {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                }
+                rd.qual = snp.variant_quality as i32;
+                rd.filter = "dn".to_string().into_bytes();
+                rd.info = ".".to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
                 continue;
             }
 
@@ -2069,12 +2131,9 @@ impl SNPFrag {
                 rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
                 rd.reference = vec![snp.reference as u8];
                 rd.id = vec!['.' as u8];
-
-
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 rd.qual = snp.variant_quality as i32;
-                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
-
+                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                 rd.filter = "PASS".to_string().into_bytes();
                 rd.info = ".".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
@@ -2086,12 +2145,9 @@ impl SNPFrag {
                     rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
                     rd.reference = vec![snp.reference as u8];
                     rd.id = vec!['.' as u8];
-
-
                     rd.alternative = vec![vec![snp.alleles[0] as u8]];
                     rd.qual = snp.variant_quality as i32;
-                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
-
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                     rd.filter = "PASS".to_string().into_bytes();
                     rd.info = ".".to_string().into_bytes();
                     rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
@@ -2103,34 +2159,53 @@ impl SNPFrag {
                     rd.reference = vec![snp.reference as u8];
                     rd.id = vec!['.' as u8];
                     if output_phasing {
-                        if snp.alleles[0] == snp.reference {
-                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                            rd.qual = snp.variant_quality as i32;
-                            if hp == -1 {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                        if snp.rna_editing == true {
+                            // rna editing no phase information
+                            if snp.alleles[0] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                                rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                            } else if snp.alleles[1] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                                rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                             } else {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                             }
-                        } else if snp.alleles[1] == snp.reference {
-                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
                             rd.qual = snp.variant_quality as i32;
-                            if hp == -1 {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
-                            } else {
-                                rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
-                            }
-                        } else {
-                            rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                            rd.qual = snp.variant_quality as i32;
-                            rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
-                        }
-                        if snp.phase_score != 0.0 && snp.phase_score < min_phase_score as f64 {
-                            rd.filter = "LowQual".to_string().into_bytes();
-                        } else {
                             rd.filter = "PASS".to_string().into_bytes();
+                            rd.info = ".".to_string().into_bytes();
+                            rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                        } else {
+                            if snp.alleles[0] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                                rd.qual = snp.variant_quality as i32;
+                                if hp == -1 {
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                } else {
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                }
+                            } else if snp.alleles[1] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                                rd.qual = snp.variant_quality as i32;
+                                if hp == -1 {
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
+                                } else {
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
+                                }
+                            } else {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.qual = snp.variant_quality as i32;
+                                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
+                            }
+                            if snp.phase_score > 0.0 && snp.phase_score < min_phase_score as f64 {
+                                // not confident phase
+                                rd.filter = "LowQual".to_string().into_bytes();
+                            } else {
+                                rd.filter = "PASS".to_string().into_bytes();
+                            }
+                            rd.info = ".".to_string().into_bytes();
+                            rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                         }
-                        rd.info = ".".to_string().into_bytes();
-                        rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                     } else {
                         if snp.alleles[0] == snp.reference {
                             rd.alternative = vec![vec![snp.alleles[1] as u8]];
@@ -2182,7 +2257,7 @@ impl SNPFrag {
 
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 rd.qual = snp.variant_quality as i32;
-                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
 
                 rd.filter = "PASS".to_string().into_bytes();
                 rd.info = ".".to_string().into_bytes();
@@ -2333,6 +2408,10 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   distance_to_splicing_site: u32,
                                   window_size: u32,
                                   distance_to_read_end: u32,
+                                  polya_tail_len: u32,
+                                  dense_win_size: u32,
+                                  min_dense_cnt: u32,
+                                  avg_dense_dist: f32,
                                   min_homozygous_freq: f32,
                                   min_phase_score: f32,
                                   max_enum_snps: usize,
@@ -2357,10 +2436,11 @@ pub fn multithread_phase_haplotag(bam_file: String,
         isolated_regions.par_iter().for_each(|reg| {
             println!("Start {:?}", reg);
             let mut profile = Profile::default();
-            profile.init_with_pileup(&bam_file.as_str(), &reg, min_mapq, min_read_length);
+            let ref_seq = ref_seqs.get(&reg.chr).unwrap();
+            profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
             for snp in snpfrag.candidate_snps.iter() {
                 println!("snp: {:?}", snp);
             }
@@ -2403,14 +2483,14 @@ pub fn multithread_phase_haplotag(bam_file: String,
 
     let mut vf = File::create(vcf_file).unwrap();
     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
-    vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
     for ctglen in contig_lengths.iter() {
         let chromosome = ctglen.0.clone();
         let chromosome_len = ctglen.1.clone();
         vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
     }
+    vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes()).unwrap();
-    vf.write("##FILTER=<ID=PASS,Description=\"Pass\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
