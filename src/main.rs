@@ -112,6 +112,22 @@ struct Args {
     #[arg(long, default_value_t = 20)]
     distance_to_read_end: u32,
 
+    /// PolyA tail length threshold
+    #[arg(long, default_value_t = 5)]
+    polya_tail_length: u32,
+
+    /// Dense window size
+    #[arg(long, default_value_t = 500)]
+    dense_win_size: u32,
+
+    /// Minimum dense cnt
+    #[arg(long, default_value_t = 5)]
+    min_dense_cnt: u32,
+
+    /// Average dense distance
+    #[arg(long, default_value_t = 60.0)]
+    avg_dense_dist: f32,
+
     /// Minimum phase score to filter SNPs
     #[arg(long, default_value_t = 8.0)]
     min_phase_score: f32,
@@ -171,6 +187,10 @@ fn main() {
     let distance_to_splicing_site = arg.distance_to_splicing_site;
     let window_size = arg.window_size;
     let distance_to_read_end = arg.distance_to_read_end;
+    let polya_tail_length = arg.polya_tail_length;
+    let dense_win_size = arg.dense_win_size;
+    let min_dense_cnt = arg.min_dense_cnt;
+    let avg_dense_dist = arg.avg_dense_dist;
     let min_phase_score = arg.min_phase_score;
     let min_depth = arg.min_depth;
     let max_depth = arg.max_depth;
@@ -193,13 +213,13 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, min_mapq, min_read_length);
+        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         profile.append_reference(&ref_seqs);
         // for bf in profile.freq_vec.iter() {
         //     println!("bf: {:?}", bf);
         // }
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
         // snpfrag.filter_fp_snps(strand_bias_threshold, None);
         for i in snpfrag.hete_snps.iter() {
             println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
@@ -215,10 +235,10 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, min_mapq, min_read_length);
+        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         snpfrag.get_fragments(bam_path, &region);
         for edge in snpfrag.edges.iter() {
@@ -311,6 +331,10 @@ fn main() {
                                    distance_to_splicing_site,
                                    window_size,
                                    distance_to_read_end,
+                                   polya_tail_length,
+                                   dense_win_size,
+                                   min_dense_cnt,
+                                   avg_dense_dist,
                                    min_homozygous_freq,
                                    min_phase_score,
                                    max_enum_snps,
