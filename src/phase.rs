@@ -2141,7 +2141,7 @@ impl SNPFrag {
                 }
                 rd.qual = snp.variant_quality as i32;
                 rd.filter = "dn".to_string().into_bytes();
-                rd.info = "dense snps".to_string().into_bytes();
+                rd.info = format!("RDS={}", "dense snp").to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
                 continue;
@@ -2158,7 +2158,7 @@ impl SNPFrag {
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                 rd.filter = "PASS".to_string().into_bytes();
                 if snp.rna_editing == true {
-                    rd.info = "rna editing".to_string().into_bytes();
+                    rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
                 } else {
                     rd.info = ".".to_string().into_bytes();
                 }
@@ -2176,7 +2176,7 @@ impl SNPFrag {
                     rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                     rd.filter = "PASS".to_string().into_bytes();
                     if snp.rna_editing == true {
-                        rd.info = "rna editing".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
                     } else {
                         rd.info = ".".to_string().into_bytes();
                     }
@@ -2202,9 +2202,9 @@ impl SNPFrag {
                                 rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                             }
                             if snp.rna_editing == true {
-                                rd.info = "rna editing".to_string().into_bytes();
+                                rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
                             } else if snp.phase_score == 0.0 {
-                                rd.info = "single SNP".to_string().into_bytes();
+                                rd.info = format!("RDS={}", "single snp").to_string().into_bytes();
                             } else {
                                 rd.info = ".".to_string().into_bytes();
                             }
@@ -2236,6 +2236,8 @@ impl SNPFrag {
                             if snp.phase_score < min_phase_score as f64 {
                                 // not confident phase
                                 rd.filter = "LowQual".to_string().into_bytes();
+                            } else {
+                                rd.filter = "PASS".to_string().into_bytes();
                             }
                             rd.info = ".".to_string().into_bytes();
                             rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
@@ -2256,10 +2258,10 @@ impl SNPFrag {
                         }
                         if snp.filter == true {
                             if snp.rna_editing == true {
-                                rd.info = "rna editing".to_string().into_bytes();
+                                rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
                                 rd.filter = "PASS".to_string().into_bytes();
                             } else {
-                                rd.info = "dense cluster".to_string().into_bytes();
+                                rd.info = format!("RDS={}", "dense snp").to_string().into_bytes();
                                 rd.filter = "dn".to_string().into_bytes();
                             }
                         } else {
@@ -2534,6 +2536,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
     vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
+    vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
