@@ -180,7 +180,7 @@ impl SNPFrag {
             if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
                 // strand bias
                 println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
-                println!("{:?}", bf);
+                // println!("{:?}", bf);
                 position += 1;
                 continue;
             }
@@ -220,7 +220,7 @@ impl SNPFrag {
                     if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
                         // strand bias
                         println!("strand bias: {}, {}, {}, {}", position, fcnt, bcnt, total_cnt);
-                        println!("{:?}", bf);
+                        // println!("{:?}", bf);
                         strand_bias = true;
                         continue;
                     }
@@ -349,7 +349,7 @@ impl SNPFrag {
                 ridx += 1;
             }
             // println!("{:?}", bf);
-            println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
+            // println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
 
             let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
             let mut INS_cnts: Vec<u32> = Vec::new();  // number of insertions
@@ -396,8 +396,8 @@ impl SNPFrag {
                 ridx += 1;
                 rext += 1;
             }
-            println!("{} N_cnts: \n{:?}", position, N_cnts);
-            println!("{} INS_cnts: \n{:?}", position, INS_cnts);
+            // println!("{} N_cnts: \n{:?}", position, N_cnts);
+            // println!("{} INS_cnts: \n{:?}", position, INS_cnts);
 
             let max_N_cnt = N_cnts.iter().max().unwrap().clone();
             let min_N_cnt = N_cnts.iter().min().unwrap().clone();
@@ -648,10 +648,10 @@ impl SNPFrag {
             sorted_pl.sort_by(cmp_f64);
             let genotype_quality = sorted_pl[1] - sorted_pl[0];   // genotype quality: phred-scaled likelihood difference between the best and second best genotype
 
-            println!("{} variant quality: {}", position, variant_quality);
-            println!("{} log likelihood: {}, {}, {}", position as i64, loglikelihood[0], loglikelihood[1], loglikelihood[2]);
-            println!("{} genotype probability: {}, {}, {}", position as i64, genotype_prob[0], genotype_prob[1], genotype_prob[2]);
-            println!("{} genotype quality: {}", position, genotype_quality);
+            // println!("{} variant quality: {}", position, variant_quality);
+            // println!("{} log likelihood: {}, {}, {}", position as i64, loglikelihood[0], loglikelihood[1], loglikelihood[2]);
+            // println!("{} genotype probability: {}, {}, {}", position as i64, genotype_prob[0], genotype_prob[1], genotype_prob[2]);
+            // println!("{} genotype quality: {}", position, genotype_quality);
 
             // filter low variant quality
             if variant_quality < 20.0 {
@@ -791,7 +791,7 @@ impl SNPFrag {
                 if self.candidate_snps[j].pos - self.candidate_snps[i].pos > dense_win_size as i64 {
                     if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
                         for tk in i..j {
-                            println!("dense SNPs: {}", self.candidate_snps[tk].pos);
+                            // println!("dense SNPs: {}", self.candidate_snps[tk].pos);
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[tk].rna_editing = false;
                             self.candidate_snps[tk].filter = true;
@@ -1121,7 +1121,7 @@ impl SNPFrag {
             }
         }
 
-        println!("dense cluster filter: {:?}", filter_window);
+        // println!("dense cluster filter: {:?}", filter_window);
 
         if filter_window.len() > 0 {
             // filter homo snps in a dense cluster of variants
@@ -1616,7 +1616,7 @@ impl SNPFrag {
         // println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
         let mut rv = 0;
         if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else {
-            println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
+            // println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
             rv = -1;
         }
         return rv;
@@ -1939,7 +1939,7 @@ impl SNPFrag {
                     }
                 }
                 max_iter -= 1;
-                println!("largest_prob: {}", largest_prob);
+                // println!("largest_prob: {}", largest_prob);
             }
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
@@ -2141,7 +2141,7 @@ impl SNPFrag {
                 }
                 rd.qual = snp.variant_quality as i32;
                 rd.filter = "dn".to_string().into_bytes();
-                rd.info = format!("RDS={}", "dense snp").to_string().into_bytes();
+                rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
                 continue;
@@ -2158,9 +2158,9 @@ impl SNPFrag {
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                 rd.filter = "PASS".to_string().into_bytes();
                 if snp.rna_editing == true {
-                    rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
+                    rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                 } else {
-                    rd.info = ".".to_string().into_bytes();
+                    rd.info = "RDS=.".to_string().into_bytes();
                 }
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
@@ -2176,9 +2176,9 @@ impl SNPFrag {
                     rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                     rd.filter = "PASS".to_string().into_bytes();
                     if snp.rna_editing == true {
-                        rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                     } else {
-                        rd.info = ".".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
                     }
                     rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                     records.push(rd);
@@ -2202,11 +2202,11 @@ impl SNPFrag {
                                 rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                             }
                             if snp.rna_editing == true {
-                                rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
+                                rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                             } else if snp.phase_score == 0.0 {
-                                rd.info = format!("RDS={}", "single snp").to_string().into_bytes();
+                                rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
                             } else {
-                                rd.info = ".".to_string().into_bytes();
+                                rd.info = "RDS=.".to_string().into_bytes();
                             }
                             rd.qual = snp.variant_quality as i32;
                             rd.filter = "PASS".to_string().into_bytes();
@@ -2239,7 +2239,7 @@ impl SNPFrag {
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
                             }
-                            rd.info = ".".to_string().into_bytes();
+                            rd.info = "RDS=.".to_string().into_bytes();
                             rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                         }
                     } else {
@@ -2258,14 +2258,14 @@ impl SNPFrag {
                         }
                         if snp.filter == true {
                             if snp.rna_editing == true {
-                                rd.info = format!("RDS={}", "rna editing").to_string().into_bytes();
+                                rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                                 rd.filter = "PASS".to_string().into_bytes();
                             } else {
-                                rd.info = format!("RDS={}", "dense snp").to_string().into_bytes();
+                                rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
                                 rd.filter = "dn".to_string().into_bytes();
                             }
                         } else {
-                            rd.info = ".".to_string().into_bytes();
+                            rd.info = "RDS=.".to_string().into_bytes();
                             rd.filter = "PASS".to_string().into_bytes();
                         }
                         rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
@@ -2305,7 +2305,7 @@ impl SNPFrag {
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
 
                 rd.filter = "PASS".to_string().into_bytes();
-                rd.info = ".".to_string().into_bytes();
+                rd.info = "RDS=.".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
             } else if snp.variant_type == 1 {
@@ -2328,7 +2328,7 @@ impl SNPFrag {
                     rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                 }
                 rd.filter = "PASS".to_string().into_bytes();
-                rd.info = ".".to_string().into_bytes();
+                rd.info = "RDS=.".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
             } else {
@@ -2479,16 +2479,16 @@ pub fn multithread_phase_haplotag(bam_file: String,
     // multiplethreads for low coverage regions
     pool.install(|| {
         isolated_regions.par_iter().for_each(|reg| {
-            println!("Start {:?}", reg);
+            // println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
-            for snp in snpfrag.candidate_snps.iter() {
-                println!("snp: {:?}", snp);
-            }
+            // for snp in snpfrag.candidate_snps.iter() {
+            //     println!("snp: {:?}", snp);
+            // }
             snpfrag.get_fragments(&bam_file, &reg);
             // snpfrag.filter_fp_snps(strand_bias_threshold, None);
             if genotype_only {
