@@ -833,7 +833,9 @@ impl Profile {
                     let mut homopolymer_flag = false;
                     let polyA_win = polya_tail_length as i64;
                     if (q_pos as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (q_pos as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64 {
-                        for tmpi in (q_pos as i64 - polyA_win + 1)..=(q_pos as i64) {
+                        for tmpi in (q_pos as i64 - polyA_win)..=(q_pos as i64 + 1) {
+                            // q_pos is the current position, and the position 1-base to the left of polyA tail is often false positive variant allele. So the end for loop is q_pos+1 instead of q_pos.
+                            // same reason for q_pos - polyA_win instead fo q_pos - polyA_win + 1
                             if tmpi < 0 || tmpi + polyA_win - 1 >= seq.len() as i64 {
                                 continue;
                             }
