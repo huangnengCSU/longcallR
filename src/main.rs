@@ -64,6 +64,10 @@ struct Args {
     #[arg(short = 't', long, default_value_t = 1)]
     threads: usize,
 
+    /// Platform for sequencing reads, choices: hifi, ont
+    #[arg(short = 'p', long)]
+    platform: String,
+
     /// Maximum number of SNPs for enumerate haplotypes
     #[arg(long, default_value_t = 10)]
     max_enum_snps: usize,
@@ -87,6 +91,10 @@ struct Args {
     /// Minimum allele frequency for homozygous SNPs
     #[arg(long, default_value_t = 0.75)]
     min_homozygous_freq: f32,
+
+    /// Minimum variant quality for candidate SNPs
+    #[arg(long, default_value_t = 20)]
+    min_variant_qual: u32,
 
     /// Minimum support number for each allele
     #[arg(long, default_value_t = 3)]
@@ -175,12 +183,14 @@ fn main() {
     let input_region = arg.region;
     let input_contigs = arg.contigs;
     let threads = arg.threads;
+    let platform = arg.platform;
     let genotype_only = arg.genotype_only;
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
     let min_mapq = arg.min_mapq;
     let min_allele_freq = arg.min_allele_freq;
     let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
+    let min_variant_qual = arg.min_variant_qual;
     let min_allele_cnt = arg.min_allele_cnt;
     let strand_bias_threshold = arg.strand_bias_threshold;
     let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
@@ -219,7 +229,7 @@ fn main() {
         //     println!("bf: {:?}", bf);
         // }
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_variant_qual, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
         // snpfrag.filter_fp_snps(strand_bias_threshold, None);
         for i in snpfrag.hete_snps.iter() {
             println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
@@ -238,7 +248,7 @@ fn main() {
         profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_variant_qual, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         snpfrag.get_fragments(bam_path, &region);
         for edge in snpfrag.edges.iter() {
@@ -248,7 +258,7 @@ fn main() {
         let mut vcf_records: Vec<VCFRecord> = Vec::new();
         if genotype_only {
             // without phasing
-            vcf_records = snpfrag.output_vcf3(min_allele_freq, min_homozygous_freq);
+            vcf_records = snpfrag.output_vcf(min_variant_qual);
         } else {
             if snpfrag.hete_snps.len() > 0 {
                 // for i in snpfrag.hete_snps.iter() {
@@ -262,7 +272,7 @@ fn main() {
                 read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                 snpfrag.add_phase_score(min_allele_cnt);
             }
-            vcf_records = snpfrag.output_vcf2(min_phase_score, min_homozygous_freq, phasing_output);
+            vcf_records = snpfrag.phased_output_vcf(min_phase_score, min_homozygous_freq, phasing_output, min_variant_qual);
         }
 
         for rd in vcf_records.iter() {
@@ -319,9 +329,11 @@ fn main() {
                                    threads,
                                    regions,
                                    genotype_only,
+                                   &platform,
                                    min_mapq,
                                    min_allele_freq,
                                    min_allele_freq_include_intron,
+                                   min_variant_qual,
                                    min_allele_cnt,
                                    strand_bias_threshold,
                                    cover_strand_bias_threshold,
