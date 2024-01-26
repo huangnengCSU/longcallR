@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
-use rust_htslib::htslib::{drand48, fai_load, uint32_u};
+use rust_htslib::htslib::{drand48, fai_load, printf, uint32_u};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
@@ -70,7 +70,7 @@ pub struct FragElem {
     pub strand: u32,
     // read strand,  0: forward, 1: reverse
     pub p: i32,
-    // haplotype of base on the alphabet {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered
+    // base allele on alphabet  {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered (not major variant allele and reference allele, deletions or N)
     pub prob: f64,
     // error rate of observe current base
 }
@@ -122,6 +122,7 @@ impl SNPFrag {
                               profile: &Profile,
                               min_allele_freq: f32,
                               min_allele_freq_include_intron: f32,
+                              min_variant_qual: u32,
                               min_coverage: u32,
                               max_coverage: u32,
                               min_homozygous_freq: f32,
@@ -617,106 +618,43 @@ impl SNPFrag {
             logprob[2] += (background_prob[2] as f64).log10();
 
             let max_logprob = logprob[0].max(logprob[1]).max(logprob[2]);
-
+            // println!("1:{}:{},{:?}", position, max_logprob, logprob);
 
             logprob[0] = logprob[0] - max_logprob;
             logprob[1] = logprob[1] - max_logprob;
             logprob[2] = logprob[2] - max_logprob;
+            // println!("2:{}:{},{:?}", position, max_logprob, logprob);
 
             let mut genotype_prob = logprob.clone();
             genotype_prob[0] = 10.0_f64.powf(logprob[0]);
             genotype_prob[1] = 10.0_f64.powf(logprob[1]);
             genotype_prob[2] = 10.0_f64.powf(logprob[2]);
             let sum_genotype_prob = genotype_prob[0] + genotype_prob[1] + genotype_prob[2];
-            genotype_prob = [genotype_prob[0] / sum_genotype_prob, genotype_prob[1] / sum_genotype_prob, genotype_prob[2] / sum_genotype_prob];
+            // println!("3:{}:{},{:?}", position, sum_genotype_prob, genotype_prob);
+            let correction_factor = 10e-301_f64.max(10.0_f64.powf(max_logprob));     // each logprob is subtracted by max_logprob, so we need to add max_logprob back. And if max_logprob is too small, we set it to 10e-301 to avoid underflow
+            genotype_prob = [correction_factor * genotype_prob[0] / sum_genotype_prob, correction_factor * genotype_prob[1] / sum_genotype_prob, correction_factor * genotype_prob[2] / sum_genotype_prob];
+            // println!("4:{}:{},{:?}", position, correction_factor, genotype_prob);
 
-            // // standardize phred-scaled likelihood, let the minimum value be 0. The most likely genotype has the lowest PL value.
-            // let min_pl = phred_scaled_likelihood[0].min(phred_scaled_likelihood[1]).min(phred_scaled_likelihood[2]);
-            // phred_scaled_likelihood[0] -= min_pl;
-            // phred_scaled_likelihood[1] -= min_pl;
-            // phred_scaled_likelihood[2] -= min_pl;
+            // QUAL phred-scaled quality score for the assertion made in ALT. i.e. give -10log_10 prob(call in ALT is wrong).
+            // If ALT is `.` (no variant) then this is -10log_10 p(variant), and if ALT is not `.` this is -10log_10 p(no variant).
+            let variant_quality = -10.0 * ((10e-301_f64.max(genotype_prob[2])).log10());    // if variant_quality is greater than 3000, we set it to 3000
 
-            // Sum of PL_homo_var and PL_hete_var is smaller, the variant probability is higher.
-            // let variant_quality = -10.0 * f64::log10((phred_scaled_likelihood[0] + phred_scaled_likelihood[1]) / (phred_scaled_likelihood[0] + phred_scaled_likelihood[1] + phred_scaled_likelihood[2]));
-            let variant_quality = -10.0 * ((10e-51_f64.max(genotype_prob[2])).log10());
-
-            // calculate GQ: The value of GQ is the difference between the second lowest PL and the lowest PL
+            // calculate GQ: The value of GQ is simply the difference between the second lowest PL and the lowest PL (which is always 0, normalized PL)
             let mut sorted_pl = genotype_prob.clone();
-            sorted_pl[0] = -10.0 * sorted_pl[0].log10();
-            sorted_pl[1] = -10.0 * sorted_pl[1].log10();
-            sorted_pl[2] = -10.0 * sorted_pl[2].log10();
+            sorted_pl[0] = -10.0 * sorted_pl[0].log10();    // phred scale likelihood of genotype: 1/1
+            sorted_pl[1] = -10.0 * sorted_pl[1].log10();    // phred scale likelihood of genotype: 0/1
+            sorted_pl[2] = -10.0 * sorted_pl[2].log10();    // phred scale likelihood of genotype: 0/0
             sorted_pl.sort_by(cmp_f64);
-            let genotype_quality = sorted_pl[1] - sorted_pl[0];   // genotype quality: phred-scaled likelihood difference between the best and second best genotype
-
-            // println!("{} variant quality: {}", position, variant_quality);
-            // println!("{} log likelihood: {}, {}, {}", position as i64, loglikelihood[0], loglikelihood[1], loglikelihood[2]);
-            // println!("{} genotype probability: {}, {}, {}", position as i64, genotype_prob[0], genotype_prob[1], genotype_prob[2]);
-            // println!("{} genotype quality: {}", position, genotype_quality);
+            let genotype_quality = sorted_pl[1] - sorted_pl[0];
 
             // filter low variant quality
-            if variant_quality < 20.0 {
+            if variant_quality < min_variant_qual as f64 {
                 println!("{} low variant quality", position);
                 position += 1;
                 continue;
             }
 
-
-            // // genotype likelihood
-            // let ploidy = 2;
-            // let mut likelihood = [1.0, 1.0, 1.0];
-            // let theta = 0.001;  // mutation rate
-            // let background_prob = [theta / 2.0, theta, 1.0 - 1.5 * theta];    // background of probability of observe homo variant, hete variant and homo reference
-            // let mut identical_baseqs;
-            // let mut different_baseqs;
-            // if bf.ref_base == 'A' {
-            //     identical_baseqs = &bf.baseq.a;
-            //     different_baseqs = [&bf.baseq.c, &bf.baseq.g, &bf.baseq.t];
-            // } else if bf.ref_base == 'C' {
-            //     identical_baseqs = &bf.baseq.c;
-            //     different_baseqs = [&bf.baseq.a, &bf.baseq.g, &bf.baseq.t];
-            // } else if bf.ref_base == 'G' {
-            //     identical_baseqs = &bf.baseq.g;
-            //     different_baseqs = [&bf.baseq.a, &bf.baseq.c, &bf.baseq.t];
-            // } else if bf.ref_base == 'T' {
-            //     identical_baseqs = &bf.baseq.t;
-            //     different_baseqs = [&bf.baseq.a, &bf.baseq.c, &bf.baseq.g];
-            // } else {
-            //     panic!("Error: unknown reference base");
-            // }
-            //
-            // for bq in identical_baseqs.iter() {
-            //     let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
-            //     likelihood[0] *= (ploidy - 0) as f64 * (error_rate) + 0.0 * (1.0 - error_rate);
-            //     likelihood[1] *= (ploidy - 1) as f64 * (error_rate) + 1.0 * (1.0 - error_rate);
-            //     likelihood[2] *= (ploidy - 2) as f64 * (error_rate) + 2.0 * (1.0 - error_rate);
-            // }
-            //
-            // for bq_vec in different_baseqs.iter() {
-            //     for bq in bq_vec.iter() {
-            //         let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
-            //         likelihood[0] *= (ploidy - 0) as f64 * (1.0 - error_rate) + 0.0 * error_rate;
-            //         likelihood[1] *= (ploidy - 1) as f64 * (1.0 - error_rate) + 1.0 * error_rate;
-            //         likelihood[2] *= (ploidy - 2) as f64 * (1.0 - error_rate) + 2.0 * error_rate;
-            //     }
-            // }
-            //
-            // let num_reads = bf.a + bf.c + bf.g + bf.t;
-            // likelihood[0] = likelihood[0] / ((ploidy as f64).powf(num_reads as f64));
-            // likelihood[1] = likelihood[1] / ((ploidy as f64).powf(num_reads as f64));
-            // likelihood[2] = likelihood[2] / ((ploidy as f64).powf(num_reads as f64));
-            //
-            // // prior probability of genotype
-            // likelihood[0] *= background_prob[0];
-            // likelihood[1] *= background_prob[1];
-            // likelihood[2] *= background_prob[2];
-            // let likelihood_sum = likelihood[0] + likelihood[1] + likelihood[2];
-            // likelihood[0] = 10e-6_f64.max(likelihood[0] / likelihood_sum);
-            // likelihood[1] = 10e-6_f64.max(likelihood[1] / likelihood_sum);
-            // likelihood[2] = 10e-6_f64.max(likelihood[2] / likelihood_sum);
-            //
-            // // println!("{} likelihood: {}, {}, {}", position as i64, likelihood[0], likelihood[1], likelihood[2]);
-
-            if loglikelihood[0] > loglikelihood[1] && loglikelihood[0] > loglikelihood[2] {
+            if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
                 // candidate homozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -742,7 +680,7 @@ impl SNPFrag {
                 // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
-            } else if loglikelihood[1] > loglikelihood[0] && loglikelihood[1] > loglikelihood[2] {
+            } else if genotype_prob[1] > genotype_prob[0] && genotype_prob[1] > genotype_prob[2] {
                 // candidate heterozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -2109,7 +2047,7 @@ impl SNPFrag {
     //     return records;
     // }
 
-    pub fn output_vcf2(&mut self, min_phase_score: f32, min_homozygous_freq: f32, output_phasing: bool) -> Vec<VCFRecord> {
+    pub fn phased_output_vcf(&mut self, min_phase_score: f32, min_homozygous_freq: f32, output_phasing: bool, min_variant_qual: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
         // output heterozygous SNPs
@@ -2156,11 +2094,15 @@ impl SNPFrag {
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 rd.qual = snp.variant_quality as i32;
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
-                rd.filter = "PASS".to_string().into_bytes();
                 if snp.rna_editing == true {
                     rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                 } else {
                     rd.info = "RDS=.".to_string().into_bytes();
+                }
+                if snp.variant_quality < min_variant_qual as f64 {
+                    rd.filter = "LowQual".to_string().into_bytes();
+                } else {
+                    rd.filter = "PASS".to_string().into_bytes();
                 }
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
@@ -2174,11 +2116,15 @@ impl SNPFrag {
                     rd.alternative = vec![vec![snp.alleles[0] as u8]];
                     rd.qual = snp.variant_quality as i32;
                     rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
-                    rd.filter = "PASS".to_string().into_bytes();
                     if snp.rna_editing == true {
                         rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                     } else {
                         rd.info = "RDS=.".to_string().into_bytes();
+                    }
+                    if snp.variant_quality < min_variant_qual as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
                     }
                     rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                     records.push(rd);
@@ -2209,7 +2155,11 @@ impl SNPFrag {
                                 rd.info = "RDS=.".to_string().into_bytes();
                             }
                             rd.qual = snp.variant_quality as i32;
-                            rd.filter = "PASS".to_string().into_bytes();
+                            if snp.variant_quality < min_variant_qual as f64 {
+                                rd.filter = "LowQual".to_string().into_bytes();
+                            } else {
+                                rd.filter = "PASS".to_string().into_bytes();
+                            }
                             rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                         } else {
                             if snp.alleles[0] == snp.reference {
@@ -2233,8 +2183,8 @@ impl SNPFrag {
                                 rd.qual = snp.variant_quality as i32;
                                 rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
                             }
-                            if snp.phase_score < min_phase_score as f64 {
-                                // not confident phase
+                            if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_variant_qual as f64 {
+                                // not confident phase or low variant quality
                                 rd.filter = "LowQual".to_string().into_bytes();
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
@@ -2259,14 +2209,22 @@ impl SNPFrag {
                         if snp.filter == true {
                             if snp.rna_editing == true {
                                 rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
-                                rd.filter = "PASS".to_string().into_bytes();
+                                if snp.variant_quality < min_variant_qual as f64 {
+                                    rd.filter = "LowQual".to_string().into_bytes();
+                                } else {
+                                    rd.filter = "PASS".to_string().into_bytes();
+                                }
                             } else {
                                 rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
                                 rd.filter = "dn".to_string().into_bytes();
                             }
                         } else {
                             rd.info = "RDS=.".to_string().into_bytes();
-                            rd.filter = "PASS".to_string().into_bytes();
+                            if snp.variant_quality < min_variant_qual as f64 {
+                                rd.filter = "LowQual".to_string().into_bytes();
+                            } else {
+                                rd.filter = "PASS".to_string().into_bytes();
+                            }
                         }
                         rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                     }
@@ -2280,7 +2238,7 @@ impl SNPFrag {
         return records;
     }
 
-    pub fn output_vcf3(&mut self, min_allele_freq: f32, min_homo_freq: f32) -> Vec<VCFRecord> {
+    pub fn output_vcf(&mut self, min_variant_quality: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
         // output heterozygous SNPs
@@ -2288,7 +2246,33 @@ impl SNPFrag {
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
             let hp = snp.haplotype;
-            if snp.filter == true {
+            if snp.filter == true && snp.rna_editing == false {
+                // dense SNP
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+                rd.reference = vec![snp.reference as u8];
+                rd.id = vec!['.' as u8];
+                if snp.variant_type == 1 {
+                    if snp.alleles[0] != snp.reference && snp.alleles[1] == snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                        rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                    } else if snp.alleles[1] != snp.reference && snp.alleles[0] == snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                        rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                    } else {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                        rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                    }
+                } else if snp.variant_type == 2 {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                }
+                rd.qual = snp.variant_quality as i32;
+                rd.filter = "dn".to_string().into_bytes();
+                rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
                 continue;
             }
 
@@ -2303,8 +2287,11 @@ impl SNPFrag {
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 rd.qual = snp.variant_quality as i32;
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
-
-                rd.filter = "PASS".to_string().into_bytes();
+                if snp.variant_quality < min_variant_quality as f64 {
+                    rd.filter = "LowQual".to_string().into_bytes();
+                } else {
+                    rd.filter = "PASS".to_string().into_bytes();
+                }
                 rd.info = "RDS=.".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
@@ -2327,7 +2314,11 @@ impl SNPFrag {
                     rd.qual = snp.variant_quality as i32;
                     rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                 }
-                rd.filter = "PASS".to_string().into_bytes();
+                if snp.variant_quality < min_variant_quality as f64 {
+                    rd.filter = "LowQual".to_string().into_bytes();
+                } else {
+                    rd.filter = "PASS".to_string().into_bytes();
+                }
                 rd.info = "RDS=.".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
@@ -2441,9 +2432,11 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   thread_size: usize,
                                   isolated_regions: Vec<Region>,
                                   genotype_only: bool,
+                                  platform: &String,
                                   min_mapq: u8,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
+                                  min_variant_qual: u32,
                                   min_allele_cnt: u32,
                                   strand_bias_threshold: f32,
                                   cover_strand_bias_threshold: f32,
@@ -2485,7 +2478,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_variant_qual, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
             // for snp in snpfrag.candidate_snps.iter() {
             //     println!("snp: {:?}", snp);
             // }
@@ -2493,7 +2486,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             // snpfrag.filter_fp_snps(strand_bias_threshold, None);
             if genotype_only {
                 // without phasing
-                let vcf_records = snpfrag.output_vcf3(min_allele_freq, min_homozygous_freq);
+                let vcf_records = snpfrag.output_vcf(min_variant_qual);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
@@ -2515,7 +2508,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                         }
                     }
                 }
-                let vcf_records = snpfrag.output_vcf2(min_phase_score, min_homozygous_freq, output_phasing);
+                let vcf_records = snpfrag.phased_output_vcf(min_phase_score, min_homozygous_freq, output_phasing, min_variant_qual);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
@@ -2535,6 +2528,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
     }
     vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=RnaEdit,Description=\"RNA editing\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
