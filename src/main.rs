@@ -80,6 +80,10 @@ struct Args {
     #[arg(long, default_value_t = 20)]
     min_mapq: u8,
 
+    /// Minimim base quality for allele
+    #[arg(long, default_value_t = 7)]
+    min_baseq: u8,
+
     /// Minimum allele frequency for candidate SNPs
     #[arg(long, default_value_t = 0.20)]
     min_allele_freq: f32,
@@ -188,6 +192,7 @@ fn main() {
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
     let min_mapq = arg.min_mapq;
+    let min_baseq = arg.min_baseq;
     let min_allele_freq = arg.min_allele_freq;
     let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let min_variant_qual = arg.min_variant_qual;
@@ -223,7 +228,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
+        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         profile.append_reference(&ref_seqs);
         // for bf in profile.freq_vec.iter() {
         //     println!("bf: {:?}", bf);
@@ -245,7 +250,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
+        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_variant_qual, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
@@ -331,6 +336,7 @@ fn main() {
                                    genotype_only,
                                    &platform,
                                    min_mapq,
+                                   min_baseq,
                                    min_allele_freq,
                                    min_allele_freq_include_intron,
                                    min_variant_qual,
