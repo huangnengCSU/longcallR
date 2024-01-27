@@ -122,7 +122,7 @@ impl SNPFrag {
                               profile: &Profile,
                               min_allele_freq: f32,
                               min_allele_freq_include_intron: f32,
-                              min_variant_qual: u32,
+                              min_qual_for_candidate: u32,
                               min_coverage: u32,
                               max_coverage: u32,
                               min_homozygous_freq: f32,
@@ -648,7 +648,7 @@ impl SNPFrag {
             let genotype_quality = sorted_pl[1] - sorted_pl[0];
 
             // filter low variant quality
-            if variant_quality < min_variant_qual as f64 {
+            if variant_quality < min_qual_for_candidate as f64 {
                 println!("{} low variant quality", position);
                 position += 1;
                 continue;
@@ -2047,7 +2047,7 @@ impl SNPFrag {
     //     return records;
     // }
 
-    pub fn phased_output_vcf(&mut self, min_phase_score: f32, min_homozygous_freq: f32, output_phasing: bool, min_variant_qual: u32) -> Vec<VCFRecord> {
+    pub fn phased_output_vcf(&mut self, min_phase_score: f32, min_homozygous_freq: f32, output_phasing: bool, min_qual_for_candidate: u32, min_qual_for_singlesnp_rnaedit: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
         // output heterozygous SNPs
@@ -2096,13 +2096,19 @@ impl SNPFrag {
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                 if snp.rna_editing == true {
                     rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                    }
+                    // rd.filter = "RnaEdit".to_string().into_bytes();
                 } else {
                     rd.info = "RDS=.".to_string().into_bytes();
-                }
-                if snp.variant_quality < min_variant_qual as f64 {
-                    rd.filter = "LowQual".to_string().into_bytes();
-                } else {
-                    rd.filter = "PASS".to_string().into_bytes();
+                    if snp.variant_quality < min_qual_for_candidate as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                    }
                 }
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
@@ -2118,13 +2124,19 @@ impl SNPFrag {
                     rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
                     if snp.rna_editing == true {
                         rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                        if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                            rd.filter = "RnaEdit".to_string().into_bytes();
+                        } else {
+                            rd.filter = "PASS".to_string().into_bytes();
+                        }
+                        // rd.filter = "RnaEdit".to_string().into_bytes();
                     } else {
                         rd.info = "RDS=.".to_string().into_bytes();
-                    }
-                    if snp.variant_quality < min_variant_qual as f64 {
-                        rd.filter = "LowQual".to_string().into_bytes();
-                    } else {
-                        rd.filter = "PASS".to_string().into_bytes();
+                        if snp.variant_quality < min_qual_for_candidate as f64 {
+                            rd.filter = "LowQual".to_string().into_bytes();
+                        } else {
+                            rd.filter = "PASS".to_string().into_bytes();
+                        }
                     }
                     rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                     records.push(rd);
@@ -2134,6 +2146,8 @@ impl SNPFrag {
                     rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
                     rd.reference = vec![snp.reference as u8];
                     rd.id = vec!['.' as u8];
+
+                    // output information containing phasing information
                     if output_phasing {
                         if snp.rna_editing == true || snp.phase_score == 0.0 {
                             // rna editing no phase information or phase_score == 0: single SNP, no phasing information
@@ -2149,17 +2163,28 @@ impl SNPFrag {
                             }
                             if snp.rna_editing == true {
                                 rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                                if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                                    rd.filter = "RnaEdit".to_string().into_bytes();
+                                } else {
+                                    rd.filter = "PASS".to_string().into_bytes();
+                                }
+                                // rd.filter = "RnaEdit".to_string().into_bytes();
                             } else if snp.phase_score == 0.0 {
                                 rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
+                                if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                                    rd.filter = "LowQual".to_string().into_bytes();
+                                } else {
+                                    rd.filter = "PASS".to_string().into_bytes();
+                                }
                             } else {
                                 rd.info = "RDS=.".to_string().into_bytes();
+                                if snp.variant_quality < min_qual_for_candidate as f64 {
+                                    rd.filter = "LowQual".to_string().into_bytes();
+                                } else {
+                                    rd.filter = "PASS".to_string().into_bytes();
+                                }
                             }
                             rd.qual = snp.variant_quality as i32;
-                            if snp.variant_quality < min_variant_qual as f64 {
-                                rd.filter = "LowQual".to_string().into_bytes();
-                            } else {
-                                rd.filter = "PASS".to_string().into_bytes();
-                            }
                             rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                         } else {
                             if snp.alleles[0] == snp.reference {
@@ -2183,7 +2208,7 @@ impl SNPFrag {
                                 rd.qual = snp.variant_quality as i32;
                                 rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
                             }
-                            if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_variant_qual as f64 {
+                            if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_qual_for_candidate as f64 {
                                 // not confident phase or low variant quality
                                 rd.filter = "LowQual".to_string().into_bytes();
                             } else {
@@ -2192,41 +2217,70 @@ impl SNPFrag {
                             rd.info = "RDS=.".to_string().into_bytes();
                             rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                         }
-                    } else {
-                        if snp.alleles[0] == snp.reference {
-                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                            rd.qual = snp.variant_quality as i32;
-                            rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
-                        } else if snp.alleles[1] == snp.reference {
-                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                            rd.qual = snp.variant_quality as i32;
-                            rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
-                        } else {
-                            // TODO: variant quality and genotype quality for 1/2 variant
-                            rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
-                            rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
-                        }
-                        if snp.filter == true {
+                    }
+
+                    // output information does not contain phasing information, but still filtered by phase score
+                    if !output_phasing {
+                        if snp.rna_editing == true || snp.phase_score == 0.0 {
+                            // rna editing no phase information or phase_score == 0: single SNP, no phasing information
+                            if snp.alleles[0] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                                rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                            } else if snp.alleles[1] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                                rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                            } else {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                            }
                             if snp.rna_editing == true {
                                 rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
-                                if snp.variant_quality < min_variant_qual as f64 {
+                                if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                                    rd.filter = "RnaEdit".to_string().into_bytes();
+                                } else {
+                                    rd.filter = "PASS".to_string().into_bytes();
+                                }
+                                // rd.filter = "RnaEdit".to_string().into_bytes();
+                            } else if snp.phase_score == 0.0 {
+                                rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
+                                if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
                                     rd.filter = "LowQual".to_string().into_bytes();
                                 } else {
                                     rd.filter = "PASS".to_string().into_bytes();
                                 }
                             } else {
-                                rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
-                                rd.filter = "dn".to_string().into_bytes();
+                                rd.info = "RDS=.".to_string().into_bytes();
+                                if snp.variant_quality < min_qual_for_candidate as f64 {
+                                    rd.filter = "LowQual".to_string().into_bytes();
+                                } else {
+                                    rd.filter = "PASS".to_string().into_bytes();
+                                }
                             }
+                            rd.qual = snp.variant_quality as i32;
+                            rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                         } else {
-                            rd.info = "RDS=.".to_string().into_bytes();
-                            if snp.variant_quality < min_variant_qual as f64 {
+                            if snp.alleles[0] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                                rd.qual = snp.variant_quality as i32;
+                                rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]);
+                            } else if snp.alleles[1] == snp.reference {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                                rd.qual = snp.variant_quality as i32;
+                                rd.genotype = format!("{}:{}:{}:{:.2}", "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                            } else {
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.qual = snp.variant_quality as i32;
+                                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                            }
+                            if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_qual_for_candidate as f64 {
+                                // not confident phase or low variant quality
                                 rd.filter = "LowQual".to_string().into_bytes();
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
                             }
+                            rd.info = "RDS=.".to_string().into_bytes();
+                            rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                         }
-                        rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                     }
                     records.push(rd);
                 }
@@ -2238,7 +2292,7 @@ impl SNPFrag {
         return records;
     }
 
-    pub fn output_vcf(&mut self, min_variant_quality: u32) -> Vec<VCFRecord> {
+    pub fn output_vcf(&mut self, min_qual: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
         // output heterozygous SNPs
@@ -2287,7 +2341,7 @@ impl SNPFrag {
                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                 rd.qual = snp.variant_quality as i32;
                 rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
-                if snp.variant_quality < min_variant_quality as f64 {
+                if snp.variant_quality < min_qual as f64 {
                     rd.filter = "LowQual".to_string().into_bytes();
                 } else {
                     rd.filter = "PASS".to_string().into_bytes();
@@ -2314,7 +2368,7 @@ impl SNPFrag {
                     rd.qual = snp.variant_quality as i32;
                     rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                 }
-                if snp.variant_quality < min_variant_quality as f64 {
+                if snp.variant_quality < min_qual as f64 {
                     rd.filter = "LowQual".to_string().into_bytes();
                 } else {
                     rd.filter = "PASS".to_string().into_bytes();
@@ -2434,9 +2488,11 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   genotype_only: bool,
                                   platform: &String,
                                   min_mapq: u8,
+                                  min_baseq: u8,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
-                                  min_variant_qual: u32,
+                                  min_qual_for_candidate: u32,
+                                  min_qual_for_singlesnp_rnaedit: u32,
                                   min_allele_cnt: u32,
                                   strand_bias_threshold: f32,
                                   cover_strand_bias_threshold: f32,
@@ -2475,10 +2531,10 @@ pub fn multithread_phase_haplotag(bam_file: String,
             // println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
-            profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
+            profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_variant_qual, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
             // for snp in snpfrag.candidate_snps.iter() {
             //     println!("snp: {:?}", snp);
             // }
@@ -2486,7 +2542,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             // snpfrag.filter_fp_snps(strand_bias_threshold, None);
             if genotype_only {
                 // without phasing
-                let vcf_records = snpfrag.output_vcf(min_variant_qual);
+                let vcf_records = snpfrag.output_vcf(min_qual_for_singlesnp_rnaedit);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
@@ -2508,7 +2564,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                         }
                     }
                 }
-                let vcf_records = snpfrag.phased_output_vcf(min_phase_score, min_homozygous_freq, output_phasing, min_variant_qual);
+                let vcf_records = snpfrag.phased_output_vcf(min_phase_score, min_homozygous_freq, output_phasing, min_qual_for_candidate, min_qual_for_singlesnp_rnaedit);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
