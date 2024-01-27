@@ -555,7 +555,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, min_mapq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
         /*
         Generate the initial profile from the pileup of input bam file
         bam_path: bam file path
@@ -820,9 +820,9 @@ impl Profile {
                     read_positions.insert(qname.clone(), q_pos as u32);
                     let seq = record.seq();
                     let base_qual = record.qual();
+                    let baseq = base_qual[q_pos];
                     let strand = if record.strand() == Forward { 0 } else { 1 };
                     let base = seq[q_pos] as char;
-                    let baseq = base_qual[q_pos];
 
                     let leading_softclips = alignment.record().cigar().leading_softclips();
                     let trailing_softclips = alignment.record().cigar().trailing_softclips();
@@ -862,6 +862,11 @@ impl Profile {
                             }
                         }
                     }
+
+                    if baseq < min_baseq {
+                        continue;
+                    }
+
                     if polyA_flag {
                         continue;
                     }
