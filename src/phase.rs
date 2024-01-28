@@ -13,7 +13,7 @@ use rayon::prelude::*;
 use rand::seq::SliceRandom;
 use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
-use std::cmp::{min, Ordering};
+use std::cmp::{max, min, Ordering};
 
 
 #[derive(Debug, Clone, Default)]
@@ -43,6 +43,8 @@ pub struct CandidateSNP {
     // A->G, T-C, rna_editing variant does not have haplotype information, no phasing
     pub filter: bool,
     // filter out this SNP or not in phasing process
+    pub allele_imbalance: bool,
+    // imbalanced allele expression
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1941,6 +1943,35 @@ impl SNPFrag {
                     phase_score = 0.0;  // all reads belong to unknown group, maybe caused by single SNP
                 }
             }
+
+            // used for calculating allele imbalance expression
+            let mut hap1_allele_cnt: [u32; 2] = [0, 0];
+            let mut hap2_allele_cnt: [u32; 2] = [0, 0];
+            for k in 0..sigma.len() {
+                if delta_i * sigma[k] == ps[k] {
+                    if sigma[k] == 1 {
+                        hap1_allele_cnt[0] += 1;
+                    } else {
+                        hap2_allele_cnt[0] += 1;
+                    }
+                } else {
+                    if sigma[k] == 1 {
+                        hap1_allele_cnt[1] += 1;
+                    } else {
+                        hap2_allele_cnt[1] += 1;
+                    }
+                }
+            }
+            let mut allele_imbalance: bool = false;
+            if max(hap1_allele_cnt[0], hap1_allele_cnt[1]) > max(hap2_allele_cnt[0], hap2_allele_cnt[1]) * 2 {
+                allele_imbalance = true;
+            } else if max(hap2_allele_cnt[0], hap2_allele_cnt[1]) * 2 < max(hap1_allele_cnt[0], hap1_allele_cnt[1]) {
+                allele_imbalance = true;
+            }
+            // if phase_score > 8.0 {
+            //     println!("IMB {}: {}, {:?}, {:?}", snp.pos, phase_score, hap1_allele_cnt, hap2_allele_cnt);
+            // }
+            self.candidate_snps[ti].allele_imbalance = allele_imbalance;
             self.candidate_snps[ti].phase_score = phase_score;
         }
     }
@@ -2214,7 +2245,11 @@ impl SNPFrag {
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
                             }
-                            rd.info = "RDS=.".to_string().into_bytes();
+                            if snp.allele_imbalance == true {
+                                rd.info = "RDS=.;AlleleImbalance".to_string().into_bytes();
+                            } else {
+                                rd.info = "RDS=.".to_string().into_bytes();
+                            }
                             rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                         }
                     }
@@ -2587,6 +2622,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
     vf.write("##FILTER=<ID=RnaEdit,Description=\"RNA editing\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
+    vf.write("##INFO=<ID=AlleleImbalance,Number=0,Type=Flag,Description=\"Imbalanced allele expression.\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
