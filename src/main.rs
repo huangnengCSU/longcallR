@@ -164,6 +164,10 @@ struct Args {
     #[arg(long, default_value_t = 0.15)]
     read_assignment_cutoff: f64,
 
+    /// Imbalance allele expression cutoff, allele1 / allele2 > cutoff or allele2 / allele1 > cutoff.
+    #[arg(long, default_value_t = 2.0)]
+    imbalance_allele_expression_cutoff: f32,
+
     /// Without phasing, only using genotype probability
     #[clap(long, action = ArgAction::SetTrue)]
     genotype_only: bool,
@@ -216,6 +220,7 @@ fn main() {
     let max_depth = arg.max_depth;
     let min_read_length = arg.min_read_length;
     let read_assignment_cutoff = arg.read_assignment_cutoff;
+    let imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
     let min_homozygous_freq = arg.min_homozygous_freq;
     let phasing_output = arg.no_phase_vcf;  // default=true
     let debug_snp = arg.debug_snp; // default=false
@@ -280,7 +285,7 @@ fn main() {
                 unsafe { snpfrag.init_assignment(); }
                 snpfrag.phase(max_enum_snps, random_flip_fraction);
                 read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                snpfrag.add_phase_score(min_allele_cnt);
+                snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
             }
             vcf_records = snpfrag.phased_output_vcf(min_phase_score, min_homozygous_freq, phasing_output, min_qual_for_candidate, min_qual_for_singlesnp_rnaedit);
         }
@@ -364,6 +369,7 @@ fn main() {
                                    max_enum_snps,
                                    random_flip_fraction,
                                    read_assignment_cutoff,
+                                   imbalance_allele_expression_cutoff,
                                    phasing_output);
     }
 }

@@ -1890,7 +1890,7 @@ impl SNPFrag {
         }
     }
 
-    pub fn add_phase_score(&mut self, min_allele_cnt: u32) {
+    pub fn add_phase_score(&mut self, min_allele_cnt: u32, imbalance_allele_expression_cutoff: f32) {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[ti];
@@ -1963,9 +1963,9 @@ impl SNPFrag {
                 }
             }
             let mut allele_imbalance: bool = false;
-            if max(hap1_allele_cnt[0], hap1_allele_cnt[1]) > max(hap2_allele_cnt[0], hap2_allele_cnt[1]) * 2 {
+            if max(hap1_allele_cnt[0], hap1_allele_cnt[1]) as f32 > max(hap2_allele_cnt[0], hap2_allele_cnt[1]) as f32 * imbalance_allele_expression_cutoff {
                 allele_imbalance = true;
-            } else if max(hap2_allele_cnt[0], hap2_allele_cnt[1]) * 2 < max(hap1_allele_cnt[0], hap1_allele_cnt[1]) {
+            } else if max(hap2_allele_cnt[0], hap2_allele_cnt[1]) as f32 * imbalance_allele_expression_cutoff < max(hap1_allele_cnt[0], hap1_allele_cnt[1]) as f32 {
                 allele_imbalance = true;
             }
             // if phase_score > 8.0 {
@@ -2546,6 +2546,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   max_enum_snps: usize,
                                   random_flip_fraction: f32,
                                   read_assignment_cutoff: f64,
+                                  imbalance_allele_expression_cutoff: f32,
                                   output_phasing: bool) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
@@ -2591,7 +2592,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     // snpfrag.keep_reliable_snps_in_component();
                     snpfrag.phase(max_enum_snps, random_flip_fraction);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                    snpfrag.add_phase_score(min_allele_cnt);
+                    snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     {
                         let mut queue = read_haplotag_queue.lock().unwrap();
                         for a in read_assignments.iter() {
