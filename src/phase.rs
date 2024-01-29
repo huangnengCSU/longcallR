@@ -869,32 +869,36 @@ impl SNPFrag {
                                     frag_elem.p = 0;    // not covered
                                 }
                                 // calculate the cost of links of two snps as hapcut (optioanl)
-                                if fragment.list.len() > 0 {
-                                    for prev_frag_elem in fragment.list.iter() {
-                                        if prev_frag_elem.p == 0 || frag_elem.p == 0 {
-                                            continue;
-                                        }
-                                        let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
-                                        let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
-                                        let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
-                                        let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
-                                        // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
-                                        if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
-                                            let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
-                                            edge.frag_idxes.push(fragment.fragment_idx);
-                                            edge.w += w;
-                                        } else {
-                                            let mut edge = Edge::default();
-                                            edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
-                                            edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
-                                            edge.w = w;
-                                            edge.frag_idxes.push(fragment.fragment_idx);
-                                            self.edges.insert(edge.snp_idxes, edge);
-                                        }
-                                    }
-                                }
+                                // if fragment.list.len() > 0 {
+                                //     for prev_frag_elem in fragment.list.iter() {
+                                //         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
+                                //             continue;
+                                //         }
+                                //         let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
+                                //         let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
+                                //         let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
+                                //         let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
+                                //         // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
+                                //         if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
+                                //             let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
+                                //             edge.frag_idxes.push(fragment.fragment_idx);
+                                //             edge.w += w;
+                                //         } else {
+                                //             let mut edge = Edge::default();
+                                //             edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
+                                //             edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
+                                //             edge.w = w;
+                                //             edge.frag_idxes.push(fragment.fragment_idx);
+                                //             self.edges.insert(edge.snp_idxes, edge);
+                                //         }
+                                //     }
+                                // }
                                 // println!("M: {:?}", frag_elem);
-                                fragment.list.push(frag_elem);
+
+                                // filtered SNP and rna editing site will not be used for haplotype phasing, not covered SNP will not be used for haplotype phasing
+                                if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false && frag_elem.p != 0 {
+                                    fragment.list.push(frag_elem);
+                                }
                                 idx += 1;
                                 if idx >= self.hete_snps.len() {
                                     pos_on_query += 1;
@@ -923,32 +927,38 @@ impl SNPFrag {
                                 frag_elem.strand = strand;
                                 frag_elem.p = 0;
                                 // calculate the cost of links of two snps as hapcut (optioanl)
-                                if fragment.list.len() > 0 {
-                                    for prev_frag_elem in fragment.list.iter() {
-                                        if prev_frag_elem.p == 0 || frag_elem.p == 0 {
-                                            continue;
-                                        }
-                                        let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
-                                        let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
-                                        let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
-                                        let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
-                                        // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
-                                        if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
-                                            let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
-                                            edge.frag_idxes.push(fragment.fragment_idx);
-                                            edge.w += w;
-                                        } else {
-                                            let mut edge = Edge::default();
-                                            edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
-                                            edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
-                                            edge.w = w;
-                                            edge.frag_idxes.push(fragment.fragment_idx);
-                                            self.edges.insert(edge.snp_idxes, edge);
-                                        }
-                                    }
-                                }
+                                // if fragment.list.len() > 0 {
+                                //     for prev_frag_elem in fragment.list.iter() {
+                                //         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
+                                //             continue;
+                                //         }
+                                //         let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
+                                //         let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
+                                //         let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
+                                //         let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
+                                //         // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
+                                //         if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
+                                //             let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
+                                //             edge.frag_idxes.push(fragment.fragment_idx);
+                                //             edge.w += w;
+                                //         } else {
+                                //             let mut edge = Edge::default();
+                                //             edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
+                                //             edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
+                                //             edge.w = w;
+                                //             edge.frag_idxes.push(fragment.fragment_idx);
+                                //             self.edges.insert(edge.snp_idxes, edge);
+                                //         }
+                                //     }
+                                // }
                                 // println!("D: {:?}", frag_elem);
-                                fragment.list.push(frag_elem);
+
+                                // Deletion will not be used for haplotype phasing
+                                // filtered SNP and rna editing site will not be used for haplotype phasing
+                                // if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false {
+                                //     fragment.list.push(frag_elem);
+                                // }
+
                                 idx += 1;
                                 if idx >= self.hete_snps.len() {
                                     pos_on_ref += 1;
@@ -972,32 +982,38 @@ impl SNPFrag {
                                 frag_elem.strand = strand;
                                 frag_elem.p = 0;
                                 // calculate the cost of links of two snps as hapcut (optioanl)
-                                if fragment.list.len() > 0 {
-                                    for prev_frag_elem in fragment.list.iter() {
-                                        if prev_frag_elem.p == 0 || frag_elem.p == 0 {
-                                            continue;
-                                        }
-                                        let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
-                                        let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
-                                        let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
-                                        let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
-                                        // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
-                                        if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
-                                            let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
-                                            edge.frag_idxes.push(fragment.fragment_idx);
-                                            edge.w += w;
-                                        } else {
-                                            let mut edge = Edge::default();
-                                            edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
-                                            edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
-                                            edge.w = w;
-                                            edge.frag_idxes.push(fragment.fragment_idx);
-                                            self.edges.insert(edge.snp_idxes, edge);
-                                        }
-                                    }
-                                }
+                                // if fragment.list.len() > 0 {
+                                //     for prev_frag_elem in fragment.list.iter() {
+                                //         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
+                                //             continue;
+                                //         }
+                                //         let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
+                                //         let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
+                                //         let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
+                                //         let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
+                                //         // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
+                                //         if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
+                                //             let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
+                                //             edge.frag_idxes.push(fragment.fragment_idx);
+                                //             edge.w += w;
+                                //         } else {
+                                //             let mut edge = Edge::default();
+                                //             edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
+                                //             edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
+                                //             edge.w = w;
+                                //             edge.frag_idxes.push(fragment.fragment_idx);
+                                //             self.edges.insert(edge.snp_idxes, edge);
+                                //         }
+                                //     }
+                                // }
                                 // println!("N: {:?}", frag_elem);
-                                fragment.list.push(frag_elem);
+
+                                // Intron will not be used for haplotype phasing
+                                // filtered SNP and rna editing site will not be used for haplotype phasing
+                                // if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false {
+                                //     fragment.list.push(frag_elem);
+                                // }
+
                                 idx += 1;
                                 if idx >= self.hete_snps.len() {
                                     pos_on_ref += 1;
@@ -1014,11 +1030,19 @@ impl SNPFrag {
                     }
                 }
             }
+
+            // filter fragment with no heterozygous links (deletion, intron, not reference allele and alternate allele do not count as heterozygous links)
+            let mut link_hete_cnt = 0;
             for fe in fragment.list.iter() {
-                // record each snp cover by which fragments
-                self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
+                if fe.p != 0 {
+                    link_hete_cnt += 1;
+                }
             }
-            if fragment.list.len() > 0 {
+            if link_hete_cnt >= 2 {
+                for fe in fragment.list.iter() {
+                    // record each snp cover by which fragments
+                    self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
+                }
                 self.fragments.push(fragment);
             }
         }
