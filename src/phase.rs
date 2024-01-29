@@ -1,19 +1,19 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::{cmp, fs};
+use std::{fs};
 use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
-use rust_htslib::htslib::{drand48, fai_load, printf, uint32_u};
-use std::sync::{mpsc, Arc, Mutex, Condvar};
+use rust_htslib::htslib::{drand48};
+use std::sync::{Mutex};
 use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
 use rand::seq::SliceRandom;
 use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
-use std::cmp::{max, min, Ordering};
+use std::cmp::{max, Ordering};
 
 
 #[derive(Debug, Clone, Default)]
@@ -91,6 +91,8 @@ pub struct Fragment {
     // haplotype assignment of the fragment, 0,1,2. 0: unassigned, 1: hap1, 2: hap2
     pub assignment_score: f64,
     // probability of the haplotype assignment
+    pub exons: Vec<[i64; 2]>,
+    // exons of the read on the reference, 0-based, [start, end)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -839,20 +841,27 @@ impl SNPFrag {
             let mut fragment = Fragment::default();
             fragment.read_id = qname.clone();
             fragment.fragment_idx = self.fragments.len();
+
+            let mut exon_start = -1;
+            let mut exon_end = -1;
+            exon_start = pos_on_ref;
+            exon_end = exon_start;
+
             for cg in cigar.iter() {
-                if pos_on_ref > self.candidate_snps[*self.hete_snps.last().unwrap()].pos {
-                    break;
-                }
-                if idx >= self.hete_snps.len() {
-                    break;
-                }
+                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
+                // if pos_on_ref > self.candidate_snps[*self.hete_snps.last().unwrap()].pos {
+                //     break;
+                // }
+                // if idx >= self.hete_snps.len() {
+                //     break;
+                // }
                 match cg.char() as u8 {
                     b'S' | b'H' => {
                         continue;
                     }
                     b'M' => {
                         for _ in 0..cg.len() {
-                            assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
+                            // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = self.hete_snps[idx];
@@ -900,13 +909,16 @@ impl SNPFrag {
                                     fragment.list.push(frag_elem);
                                 }
                                 idx += 1;
-                                if idx >= self.hete_snps.len() {
-                                    pos_on_query += 1;
-                                    pos_on_ref += 1;
-                                    break;
+                                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
+                                // if idx >= self.hete_snps.len() {
+                                //     pos_on_query += 1;
+                                //     pos_on_ref += 1;
+                                //     break;
+                                // }
+                                if idx < self.hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                                 }
-                                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
-                                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                             }
                             pos_on_query += 1;
                             pos_on_ref += 1;
@@ -917,7 +929,7 @@ impl SNPFrag {
                     }
                     b'D' => {
                         for _ in 0..cg.len() {
-                            assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
+                            // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = self.hete_snps[idx];
@@ -960,19 +972,26 @@ impl SNPFrag {
                                 // }
 
                                 idx += 1;
-                                if idx >= self.hete_snps.len() {
-                                    pos_on_ref += 1;
-                                    break;
+                                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
+                                // if idx >= self.hete_snps.len() {
+                                //     pos_on_ref += 1;
+                                //     break;
+                                // }
+                                if idx < self.hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                                 }
-                                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
-                                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                             }
                             pos_on_ref += 1;
                         }
                     }
                     b'N' => {
+                        exon_end = pos_on_ref;
+                        fragment.exons.push([exon_start, exon_end]);
+                        exon_start = -1;
+                        exon_end = -1;
                         for _ in 0..cg.len() {
-                            assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
+                            // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = self.hete_snps[idx];
@@ -1015,21 +1034,35 @@ impl SNPFrag {
                                 // }
 
                                 idx += 1;
-                                if idx >= self.hete_snps.len() {
-                                    pos_on_ref += 1;
-                                    break;
+                                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
+                                // if idx >= self.hete_snps.len() {
+                                //     pos_on_ref += 1;
+                                //     break;
+                                // }
+                                if idx < self.hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                                 }
-                                snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
-                                alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                             }
                             pos_on_ref += 1;
                         }
+                        exon_start = pos_on_ref;
+                        exon_end = exon_start;
                     }
                     _ => {
                         panic!("Error: unknown cigar operation");
                     }
                 }
             }
+            // the whole read is a single exon, no intron.
+            if exon_start != -1 && exon_end != -1 && pos_on_ref > exon_end {
+                exon_end = pos_on_ref;
+            }
+            if exon_end != exon_start {
+                fragment.exons.push([exon_start, exon_end]);
+            }
+            exon_start = -1;
+            exon_end = -1;
 
             // filter fragment with no heterozygous links (deletion, intron, not reference allele and alternate allele do not count as heterozygous links)
             let mut link_hete_cnt = 0;
@@ -1043,126 +1076,127 @@ impl SNPFrag {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
                 }
+                // println!("Fragment: {:?}", fragment);
                 self.fragments.push(fragment);
             }
         }
     }
 
-    pub fn filter_fp_snps(&mut self, strand_bias_threshold: f32, phase_score_cutoff: Option<f64>) {
-        /*
-        *? Filter false positive SNPs, which may be cause by strand bias or in a dense cluster of variants (100bp length has over 3 snps).
-         */
-
-
-        // 1. filter dense cluster of variants
-        let mut homo_hete_snps: Vec<i64> = Vec::new();
-        for i in self.hete_snps.iter() {
-            homo_hete_snps.push(self.candidate_snps[*i].pos);
-        }
-        for i in self.homo_snps.iter() {
-            homo_hete_snps.push(self.candidate_snps[*i].pos);
-        }
-        // sort homo_hete_snps in ascending order
-        homo_hete_snps.sort();
-
-        let mut filter_window: HashSet<i64> = HashSet::new();   // record the SNP position in a dense cluster of variants
-        for i in 0..homo_hete_snps.len() {
-            for j in i..homo_hete_snps.len() {
-                // TODO: dense cluster of snps?
-                if homo_hete_snps[j] - homo_hete_snps[i] > 300 {
-                    // if (j - 1) - i + 1 >= 9 {
-                    //     for tk in i..j {
-                    //         filter_window.insert(homo_hete_snps[tk]);
-                    //     }
-                    // }
-                    if (j - 1 - i + 1) >= 5 && ((homo_hete_snps[j - 1] - homo_hete_snps[i] + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
-                        for tk in i..j {
-                            filter_window.insert(homo_hete_snps[tk]);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-
-        // println!("dense cluster filter: {:?}", filter_window);
-
-        if filter_window.len() > 0 {
-            // filter homo snps in a dense cluster of variants
-            let mut filtered_homo_snps: Vec<usize> = Vec::new();
-            let mut filtered_hete_snps: Vec<usize> = Vec::new();
-
-            for i in self.homo_snps.iter() {
-                if !filter_window.contains(&self.candidate_snps[*i].pos) {
-                    filtered_homo_snps.push(*i);
-                } else {
-                    self.candidate_snps[*i].filter = true;
-                }
-            }
-            self.homo_snps = filtered_homo_snps;
-
-            for i in self.hete_snps.iter() {
-                if !filter_window.contains(&self.candidate_snps[*i].pos) {
-                    filtered_hete_snps.push(*i);
-                } else {
-                    self.candidate_snps[*i].filter = true;
-                }
-            }
-            self.hete_snps = filtered_hete_snps;
-        }
-
-        // // 2. filtering strand bias
-        // let mut filter_window: HashSet<usize> = HashSet::new();
-        // for i in 0..self.candidate_snps.len() {
-        //     let snp = &mut self.candidate_snps[i];
-        //     if snp.filter == true { continue; }
-        //     let mut variant_strand_cnt = [0, 0];    // variant strand [forward, reverse]
-        //     for k in snp.snp_cover_fragments.iter() {
-        //         for fe in self.fragments[*k].list.iter() {
-        //             if fe.snp_idx == i {
-        //                 if fe.p != 0 {
-        //                     if fe.base != snp.reference {
-        //                         if fe.strand == 0 {
-        //                             variant_strand_cnt[0] += 1;
-        //                         } else {
-        //                             variant_strand_cnt[1] += 1;
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
-        //     println!("{:?} strand bias: {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
-        //     if total_variant_cnt > 0 {
-        //         // variant strand bias
-        //         if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold || variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
-        //             snp.filter = true;  // current snp is filtered because of strand bias
-        //             println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
-        //             continue;
-        //         }
-        //     }
-        //     filter_window.insert(i);   // index of snp
-        // }
-        // if filter_window.len() > 0 {
-        //     let mut filtered_homo_snps: Vec<usize> = Vec::new();
-        //     let mut filtered_hete_snps: Vec<usize> = Vec::new();
-        //
-        //     for i in self.homo_snps.iter() {
-        //         if !filter_window.contains(i) {
-        //             filtered_homo_snps.push(*i);
-        //         }
-        //     }
-        //     self.homo_snps = filtered_homo_snps;
-        //
-        //     for i in self.hete_snps.iter() {
-        //         if !filter_window.contains(i) {
-        //             filtered_hete_snps.push(*i);
-        //         }
-        //     }
-        //     self.hete_snps = filtered_hete_snps;
-        // }
-    }
+    // pub fn filter_fp_snps(&mut self, strand_bias_threshold: f32, phase_score_cutoff: Option<f64>) {
+    //     /*
+    //     *? Filter false positive SNPs, which may be cause by strand bias or in a dense cluster of variants (100bp length has over 3 snps).
+    //      */
+    //
+    //
+    //     // 1. filter dense cluster of variants
+    //     let mut homo_hete_snps: Vec<i64> = Vec::new();
+    //     for i in self.hete_snps.iter() {
+    //         homo_hete_snps.push(self.candidate_snps[*i].pos);
+    //     }
+    //     for i in self.homo_snps.iter() {
+    //         homo_hete_snps.push(self.candidate_snps[*i].pos);
+    //     }
+    //     // sort homo_hete_snps in ascending order
+    //     homo_hete_snps.sort();
+    //
+    //     let mut filter_window: HashSet<i64> = HashSet::new();   // record the SNP position in a dense cluster of variants
+    //     for i in 0..homo_hete_snps.len() {
+    //         for j in i..homo_hete_snps.len() {
+    //             // TODO: dense cluster of snps?
+    //             if homo_hete_snps[j] - homo_hete_snps[i] > 300 {
+    //                 // if (j - 1) - i + 1 >= 9 {
+    //                 //     for tk in i..j {
+    //                 //         filter_window.insert(homo_hete_snps[tk]);
+    //                 //     }
+    //                 // }
+    //                 if (j - 1 - i + 1) >= 5 && ((homo_hete_snps[j - 1] - homo_hete_snps[i] + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
+    //                     for tk in i..j {
+    //                         filter_window.insert(homo_hete_snps[tk]);
+    //                     }
+    //                 }
+    //                 break;
+    //             }
+    //         }
+    //     }
+    //
+    //     // println!("dense cluster filter: {:?}", filter_window);
+    //
+    //     if filter_window.len() > 0 {
+    //         // filter homo snps in a dense cluster of variants
+    //         let mut filtered_homo_snps: Vec<usize> = Vec::new();
+    //         let mut filtered_hete_snps: Vec<usize> = Vec::new();
+    //
+    //         for i in self.homo_snps.iter() {
+    //             if !filter_window.contains(&self.candidate_snps[*i].pos) {
+    //                 filtered_homo_snps.push(*i);
+    //             } else {
+    //                 self.candidate_snps[*i].filter = true;
+    //             }
+    //         }
+    //         self.homo_snps = filtered_homo_snps;
+    //
+    //         for i in self.hete_snps.iter() {
+    //             if !filter_window.contains(&self.candidate_snps[*i].pos) {
+    //                 filtered_hete_snps.push(*i);
+    //             } else {
+    //                 self.candidate_snps[*i].filter = true;
+    //             }
+    //         }
+    //         self.hete_snps = filtered_hete_snps;
+    //     }
+    //
+    //     // // 2. filtering strand bias
+    //     // let mut filter_window: HashSet<usize> = HashSet::new();
+    //     // for i in 0..self.candidate_snps.len() {
+    //     //     let snp = &mut self.candidate_snps[i];
+    //     //     if snp.filter == true { continue; }
+    //     //     let mut variant_strand_cnt = [0, 0];    // variant strand [forward, reverse]
+    //     //     for k in snp.snp_cover_fragments.iter() {
+    //     //         for fe in self.fragments[*k].list.iter() {
+    //     //             if fe.snp_idx == i {
+    //     //                 if fe.p != 0 {
+    //     //                     if fe.base != snp.reference {
+    //     //                         if fe.strand == 0 {
+    //     //                             variant_strand_cnt[0] += 1;
+    //     //                         } else {
+    //     //                             variant_strand_cnt[1] += 1;
+    //     //                         }
+    //     //                     }
+    //     //                 }
+    //     //             }
+    //     //         }
+    //     //     }
+    //     //     let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
+    //     //     println!("{:?} strand bias: {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
+    //     //     if total_variant_cnt > 0 {
+    //     //         // variant strand bias
+    //     //         if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold || variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
+    //     //             snp.filter = true;  // current snp is filtered because of strand bias
+    //     //             println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
+    //     //             continue;
+    //     //         }
+    //     //     }
+    //     //     filter_window.insert(i);   // index of snp
+    //     // }
+    //     // if filter_window.len() > 0 {
+    //     //     let mut filtered_homo_snps: Vec<usize> = Vec::new();
+    //     //     let mut filtered_hete_snps: Vec<usize> = Vec::new();
+    //     //
+    //     //     for i in self.homo_snps.iter() {
+    //     //         if !filter_window.contains(i) {
+    //     //             filtered_homo_snps.push(*i);
+    //     //         }
+    //     //     }
+    //     //     self.homo_snps = filtered_homo_snps;
+    //     //
+    //     //     for i in self.hete_snps.iter() {
+    //     //         if !filter_window.contains(i) {
+    //     //             filtered_hete_snps.push(*i);
+    //     //         }
+    //     //     }
+    //     //     self.hete_snps = filtered_hete_snps;
+    //     // }
+    // }
 
     pub fn keep_reliable_snps_in_component(&mut self) {
         let mut gqmap: HashMap<usize, f64> = HashMap::new();
@@ -2358,7 +2392,6 @@ impl SNPFrag {
         // assert_eq!(self.haplotype.len(), self.snps.len());
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let hp = snp.haplotype;
             if snp.filter == true && snp.rna_editing == false {
                 // dense SNP
                 let mut rd: VCFRecord = VCFRecord::default();
@@ -2451,7 +2484,7 @@ fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
     for r in reader.lines() {
         let line = r.unwrap().clone();
         let parts: Vec<&str> = line.split('\t').collect();
-        contig_lengths.push((parts[0].clone().to_string(), parts[1].clone().parse().unwrap()));
+        contig_lengths.push((parts[0].to_string(), parts[1].parse().unwrap()));
     }
     return contig_lengths;
 }
