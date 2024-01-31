@@ -635,8 +635,9 @@ impl SNPFrag {
             genotype_prob[2] = 10.0_f64.powf(logprob[2]);
             let sum_genotype_prob = genotype_prob[0] + genotype_prob[1] + genotype_prob[2];
             // println!("3:{}:{},{:?}", position, sum_genotype_prob, genotype_prob);
-            let correction_factor = 10e-301_f64.max(10.0_f64.powf(max_logprob));     // each logprob is subtracted by max_logprob, so we need to add max_logprob back. And if max_logprob is too small, we set it to 10e-301 to avoid underflow
-            genotype_prob = [correction_factor * genotype_prob[0] / sum_genotype_prob, correction_factor * genotype_prob[1] / sum_genotype_prob, correction_factor * genotype_prob[2] / sum_genotype_prob];
+            // let correction_factor = 10e-301_f64.max(10.0_f64.powf(max_logprob));     // each logprob is subtracted by max_logprob, so we need to add max_logprob back. And if max_logprob is too small, we set it to 10e-301 to avoid underflow
+            // genotype_prob = [correction_factor * genotype_prob[0] / sum_genotype_prob, correction_factor * genotype_prob[1] / sum_genotype_prob, correction_factor * genotype_prob[2] / sum_genotype_prob];
+            genotype_prob = [genotype_prob[0] / sum_genotype_prob, genotype_prob[1] / sum_genotype_prob, genotype_prob[2] / sum_genotype_prob];
             // println!("4:{}:{},{:?}", position, correction_factor, genotype_prob);
 
             // QUAL phred-scaled quality score for the assertion made in ALT. i.e. give -10log_10 prob(call in ALT is wrong).
