@@ -725,8 +725,14 @@ impl SNPFrag {
             } else if bf.ref_base == 'T' {
                 identical_baseqs = &bf.baseq.t;
                 different_baseqs = [&bf.baseq.a, &bf.baseq.c, &bf.baseq.g];
+            } else if bf.ref_base == 'N' {
+                println!("{}:{} ref base {}", profile.region.chr, position, bf.ref_base);
+                position += 1;
+                continue;
             } else {
-                panic!("Error: unknown reference base");
+                println!("{}:{} unknown ref base {}", profile.region.chr, position, bf.ref_base);
+                position += 1;
+                continue;
             }
 
             for bq in identical_baseqs.iter() {
