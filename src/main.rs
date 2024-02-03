@@ -81,8 +81,12 @@ struct Args {
     min_mapq: u8,
 
     /// Minimim base quality for allele
-    #[arg(long, default_value_t = 7)]
+    #[arg(long, default_value_t = 10)]
     min_baseq: u8,
+
+    /// threshold for differental average base quality of two alleles
+    #[arg(long, default_value_t = 10)]
+    diff_baseq: u8,
 
     /// Minimum allele frequency for candidate SNPs
     #[arg(long, default_value_t = 0.20)]
@@ -127,6 +131,10 @@ struct Args {
     /// Ignore with distance to read end
     #[arg(long, default_value_t = 20)]
     distance_to_read_end: u32,
+
+    /// threshold for differental average distance to read end of two alleles
+    #[arg(long, default_value_t = 200)]
+    diff_distance_to_read_end: i64,
 
     /// PolyA tail length threshold
     #[arg(long, default_value_t = 5)]
@@ -201,6 +209,7 @@ fn main() {
     let random_flip_fraction = arg.random_flip_fraction;
     let min_mapq = arg.min_mapq;
     let min_baseq = arg.min_baseq;
+    let diff_baseq = arg.diff_baseq;
     let min_allele_freq = arg.min_allele_freq;
     let min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let min_qual_for_candidate = arg.min_qual_for_candidate;
@@ -211,6 +220,7 @@ fn main() {
     let distance_to_splicing_site = arg.distance_to_splicing_site;
     let window_size = arg.window_size;
     let distance_to_read_end = arg.distance_to_read_end;
+    let diff_distance_to_read_end = arg.diff_distance_to_read_end;
     let polya_tail_length = arg.polya_tail_length;
     let dense_win_size = arg.dense_win_size;
     let min_dense_cnt = arg.min_dense_cnt;
@@ -244,7 +254,7 @@ fn main() {
         //     println!("bf: {:?}", bf);
         // }
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
         // snpfrag.filter_fp_snps(strand_bias_threshold, None);
         for i in snpfrag.hete_snps.iter() {
             println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
@@ -263,7 +273,7 @@ fn main() {
         profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         snpfrag.get_fragments(bam_path, &region);
         for edge in snpfrag.edges.iter() {
@@ -347,6 +357,7 @@ fn main() {
                                    &platform,
                                    min_mapq,
                                    min_baseq,
+                                   diff_baseq,
                                    min_allele_freq,
                                    min_allele_freq_include_intron,
                                    min_qual_for_candidate,
@@ -360,6 +371,7 @@ fn main() {
                                    distance_to_splicing_site,
                                    window_size,
                                    distance_to_read_end,
+                                   diff_distance_to_read_end,
                                    polya_tail_length,
                                    dense_win_size,
                                    min_dense_cnt,
