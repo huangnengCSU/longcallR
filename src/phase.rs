@@ -129,12 +129,15 @@ impl SNPFrag {
                               min_qual_for_candidate: u32,
                               min_coverage: u32,
                               max_coverage: u32,
+                              min_baseq: u8,
                               min_homozygous_freq: f32,
                               strand_bias_threshold: f32,
                               cover_strand_bias_threshold: f32,
                               distance_to_splicing_site: u32,
                               window_size: u32,
                               distance_to_read_end: u32,
+                              diff_distance_to_read_end: i64,
+                              diff_baseq: u8,
                               dense_win_size: u32,
                               min_dense_cnt: u32,
                               avg_dense_dist: f32) {
@@ -164,18 +167,149 @@ impl SNPFrag {
 
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
 
+            // filtering average distance to read end is significant different for allele1 and allele2
+            // filtering average base quality is significant different for allele1 and allele2
+            let mut allele1_dists: Vec<i64> = Vec::new();
+            let mut allele2_dists: Vec<i64> = Vec::new();
+            let mut allele1_quals: Vec<u8> = Vec::new();
+            let mut allele2_quals: Vec<u8> = Vec::new();
+            match allele1 {
+                'a' => {
+                    allele1_dists = bf.distance_to_end.a.clone();
+                    allele1_quals = bf.baseq.a.clone();
+                }
+                'A' => {
+                    allele1_dists = bf.distance_to_end.a.clone();
+                    allele1_quals = bf.baseq.a.clone();
+                }
+                'c' => {
+                    allele1_dists = bf.distance_to_end.c.clone();
+                    allele1_quals = bf.baseq.c.clone();
+                }
+                'C' => {
+                    allele1_dists = bf.distance_to_end.c.clone();
+                    allele1_quals = bf.baseq.c.clone();
+                }
+                'g' => {
+                    allele1_dists = bf.distance_to_end.g.clone();
+                    allele1_quals = bf.baseq.g.clone();
+                }
+                'G' => {
+                    allele1_dists = bf.distance_to_end.g.clone();
+                    allele1_quals = bf.baseq.g.clone();
+                }
+                't' => {
+                    allele1_dists = bf.distance_to_end.t.clone();
+                    allele1_quals = bf.baseq.t.clone();
+                }
+                'T' => {
+                    allele1_dists = bf.distance_to_end.t.clone();
+                    allele1_quals = bf.baseq.t.clone();
+                }
+                _ => {
+                    println!("Error: unknown allele");
+                }
+            }
+            match allele2 {
+                'a' => {
+                    allele2_dists = bf.distance_to_end.a.clone();
+                    allele2_quals = bf.baseq.a.clone();
+                }
+                'A' => {
+                    allele2_dists = bf.distance_to_end.a.clone();
+                    allele2_quals = bf.baseq.a.clone();
+                }
+                'c' => {
+                    allele2_dists = bf.distance_to_end.c.clone();
+                    allele2_quals = bf.baseq.c.clone();
+                }
+                'C' => {
+                    allele2_dists = bf.distance_to_end.c.clone();
+                    allele2_quals = bf.baseq.c.clone();
+                }
+                'g' => {
+                    allele2_dists = bf.distance_to_end.g.clone();
+                    allele2_quals = bf.baseq.g.clone();
+                }
+                'G' => {
+                    allele2_dists = bf.distance_to_end.g.clone();
+                    allele2_quals = bf.baseq.g.clone();
+                }
+                't' => {
+                    allele2_dists = bf.distance_to_end.t.clone();
+                    allele2_quals = bf.baseq.t.clone();
+                }
+                'T' => {
+                    allele2_dists = bf.distance_to_end.t.clone();
+                    allele2_quals = bf.baseq.t.clone();
+                }
+                _ => {
+                    println!("Error: unknown allele");
+                }
+            }
+
+
+            {
+                let mut avg_alleles_baseq = 0.0;
+                for baseq in allele1_quals.iter() {
+                    avg_alleles_baseq += *baseq as f32;
+                }
+                for baseq in allele2_quals.iter() {
+                    avg_alleles_baseq += *baseq as f32;
+                }
+                avg_alleles_baseq /= (allele1_quals.len() + allele2_quals.len()) as f32;
+                if avg_alleles_baseq < min_baseq as f32 {
+                    println!("{}:{} low allele average baseq: {}", profile.region.chr, position, avg_alleles_baseq);
+                    position += 1;
+                    continue;
+                }
+            }
+
+            // let mut allele1_median_dist = 0;
+            // let mut allele2_median_dist = 0;
+            // if allele1_dists.len() >= 5 && allele2_dists.len() >= 5 {
+            //     allele1_dists.sort();
+            //     allele2_dists.sort();
+            //     let mid1 = allele1_dists.len() / 2;
+            //     let mid2 = allele2_dists.len() / 2;
+            //     allele1_median_dist = allele1_dists[mid1];
+            //     allele2_median_dist = allele2_dists[mid2];
+            //     if (allele1_median_dist - allele2_median_dist).abs() > diff_distance_to_read_end {
+            //         println!("{} allele1_median_dist: {}, allele2_median_dist: {}", position, allele1_median_dist, allele2_median_dist);
+            //         position += 1;
+            //         continue;
+            //     }
+            // }
+
+            // let mut allele1_median_qual = 0;
+            // let mut allele2_median_qual = 0;
+            // if allele1_dists.len() >= 5 && allele2_dists.len() >= 5 {
+            //     allele1_quals.sort();
+            //     allele2_quals.sort();
+            //     let mid1 = allele1_quals.len() / 2;
+            //     let mid2 = allele2_quals.len() / 2;
+            //     allele1_median_qual = allele1_quals[mid1];
+            //     allele2_median_qual = allele2_quals[mid2];
+            //     if (allele1_median_qual as i32 - allele2_median_qual as i32).abs() as u8 > diff_baseq {
+            //         println!("{} allele1_median_qual: {}, allele2_median_qual: {}", position, allele1_median_qual, allele2_median_qual);
+            //         position += 1;
+            //         continue;
+            //     }
+            // }
+
+
             // 2.filtering with depth, considering intron reads
             let depth_include_intron = bf.get_depth_include_intron();
             if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // maybe caused by erroneous intron alignment
-                println!("allele freq include intron: {}, {}, {}, {}", position, allele1_cnt, allele2_cnt, depth_include_intron);
+                println!("allele freq include intron: {}:{}, {}, {}, {}", profile.region.chr, position, allele1_cnt, allele2_cnt, depth_include_intron);
                 position += 1;
                 continue;
             }
 
             // 3.filtering with deletion frequency
             if bf.d > allele1_cnt {
-                println!("indels: {}, {}, {}, {}", position, bf.d, allele1_cnt, allele2_cnt);
+                println!("indels: {}:{}, {}, {}, {}", profile.region.chr, position, bf.d, allele1_cnt, allele2_cnt);
                 position += 1;
                 continue;
             }
@@ -184,7 +318,7 @@ impl SNPFrag {
             let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
             if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
                 // strand bias
-                println!("cover strand bias: {}, {}, {}, {}", position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
+                println!("cover strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
                 // println!("{:?}", bf);
                 position += 1;
                 continue;
@@ -224,7 +358,7 @@ impl SNPFrag {
                     let total_cnt = fcnt + bcnt;
                     if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
                         // strand bias
-                        println!("strand bias: {}, {}, {}, {}", position, fcnt, bcnt, total_cnt);
+                        println!("strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, fcnt, bcnt, total_cnt);
                         // println!("{:?}", bf);
                         strand_bias = true;
                         continue;
@@ -418,8 +552,8 @@ impl SNPFrag {
                 if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.20 {
                     if N_cnts.len() > 0 {
                         if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
-                            println!("close to the splicing site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                            println!("{} high local error rate: {}, {}", position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
+                            println!("close to the splicing site: {}:{}, {}, {}", profile.region.chr, position, max_N_cnt, min_N_cnt);
+                            println!("{}:{} high local error rate: {}, {}", profile.region.chr, position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
                             position += 1;
                             continue;
                         }
@@ -437,7 +571,7 @@ impl SNPFrag {
                 }
             }
             if insertion_concerned {
-                println!("insertion cause false variant: {}, {}, {}", position, num_variant_allele, ins_cnt);
+                println!("insertion cause false variant: {}:{}, {}, {}", profile.region.chr, position, num_variant_allele, ins_cnt);
                 position += 1;
                 continue;
             }
@@ -654,7 +788,7 @@ impl SNPFrag {
 
             // filter low variant quality
             if variant_quality < min_qual_for_candidate as f64 {
-                println!("{} low variant quality", position);
+                println!("{}:{} low variant quality", profile.region.chr, position);
                 position += 1;
                 continue;
             }
@@ -690,11 +824,11 @@ impl SNPFrag {
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
                 if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
-                    println!("{:?} allele1 {:?} low frequency {}", position, allele1, allele1_freq);
+                    println!("{}:{} allele1 {:?} low frequency {}", profile.region.chr, position, allele1, allele1_freq);
                     position += 1;
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
-                    println!("{:?} allele2 {:?} low frequency {}", position, allele2, allele2_freq);
+                    println!("{}:{} allele2 {:?} low frequency {}", profile.region.chr, position, allele2, allele2_freq);
                     position += 1;
                     continue;
                 }
@@ -860,7 +994,7 @@ impl SNPFrag {
                     b'S' | b'H' => {
                         continue;
                     }
-                    b'M' => {
+                    b'M' | b'X' | b'=' => {
                         for _ in 0..cg.len() {
                             // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
@@ -1051,7 +1185,7 @@ impl SNPFrag {
                         exon_end = exon_start;
                     }
                     _ => {
-                        panic!("Error: unknown cigar operation");
+                        panic!("Error: unknown cigar operation: {}", cg.char());
                     }
                 }
             }
@@ -2582,6 +2716,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   platform: &String,
                                   min_mapq: u8,
                                   min_baseq: u8,
+                                  diff_baseq: u8,
                                   min_allele_freq: f32,
                                   min_allele_freq_include_intron: f32,
                                   min_qual_for_candidate: u32,
@@ -2595,6 +2730,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   distance_to_splicing_site: u32,
                                   window_size: u32,
                                   distance_to_read_end: u32,
+                                  diff_distance_to_read_end: i64,
                                   polya_tail_len: u32,
                                   dense_win_size: u32,
                                   min_dense_cnt: u32,
@@ -2628,7 +2764,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, dense_win_size, min_dense_cnt, avg_dense_dist);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
             // for snp in snpfrag.candidate_snps.iter() {
             //     println!("snp: {:?}", snp);
             // }
