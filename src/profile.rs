@@ -372,6 +372,18 @@ pub struct BaseStrands {
     pub t: [i32; 2],
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct DistanceToEnd {
+    pub a: Vec<i64>,
+    // allele A to the end of read for every read
+    pub c: Vec<i64>,
+    // allele C to the end of read for every read
+    pub g: Vec<i64>,
+    // allele G to the end of read for every read
+    pub t: Vec<i64>,
+    // allele T to the end of read for every read
+}
+
 
 #[derive(Default, Debug, Clone)]
 pub struct BaseFreq {
@@ -397,6 +409,7 @@ pub struct BaseFreq {
     // number of backward reads covering this position, excluding intron
     pub baseq: BaseQual,
     pub base_strands: BaseStrands,
+    pub distance_to_end: DistanceToEnd,
 }
 
 impl BaseFreq {
@@ -604,7 +617,7 @@ impl Profile {
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default(), distance_to_end: DistanceToEnd::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -716,7 +729,7 @@ impl Profile {
                             let strand = if record.strand() == Forward { 0 } else { 1 };
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default(), distance_to_end: DistanceToEnd::default() });   // fall in insertion
                                 }
                             }
                             let q_pos = read_positions.get(&qname).unwrap();
@@ -863,15 +876,23 @@ impl Profile {
                         }
                     }
 
-                    if baseq < min_baseq {
-                        continue;
-                    }
+                    // if baseq < min_baseq {
+                    //     continue;
+                    // }
 
                     if polyA_flag {
                         continue;
                     }
                     if homopolymer_flag {
                         continue;
+                    }
+
+                    // calculate distance to read end of each allele, for filtering variants that the average distance of each allele is significantly different
+                    let mut dist = 0;
+                    if (q_pos as i64 - leading_softclips).abs() < (q_pos as i64 - (seq.len() as i64 - trailing_softclips)).abs() {
+                        dist = q_pos as i64 - leading_softclips;    // positive value
+                    } else {
+                        dist = (q_pos as i64 - (seq.len() as i64 - trailing_softclips));    // negative value
                     }
 
                     match base {
@@ -883,6 +904,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.a[1] += 1;
                             }
+                            bf.distance_to_end.a.push(dist);
                         }
                         'a' => {
                             bf.a += 1;
@@ -892,6 +914,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.a[1] += 1;
                             }
+                            bf.distance_to_end.a.push(dist);
                         }
                         'C' => {
                             bf.c += 1;
@@ -901,6 +924,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.c[1] += 1;
                             }
+                            bf.distance_to_end.c.push(dist);
                         }
                         'c' => {
                             bf.c += 1;
@@ -910,6 +934,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.c[1] += 1;
                             }
+                            bf.distance_to_end.c.push(dist);
                         }
                         'G' => {
                             bf.g += 1;
@@ -919,6 +944,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.g[1] += 1;
                             }
+                            bf.distance_to_end.g.push(dist);
                         }
                         'g' => {
                             bf.g += 1;
@@ -928,6 +954,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.g[1] += 1;
                             }
+                            bf.distance_to_end.g.push(dist);
                         }
                         'T' => {
                             bf.t += 1;
@@ -937,6 +964,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.t[1] += 1;
                             }
+                            bf.distance_to_end.t.push(dist);
                         }
                         't' => {
                             bf.t += 1;
@@ -946,6 +974,7 @@ impl Profile {
                             } else {
                                 bf.base_strands.t[1] += 1;
                             }
+                            bf.distance_to_end.t.push(dist);
                         }
                         _ => {
                             panic!("Invalid nucleotide base: {}", base);
@@ -964,7 +993,7 @@ impl Profile {
                             }
                             if len > insert_bf.len() as u32 {
                                 for _ in 0..(len - insert_bf.len() as u32) {
-                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default() });   // fall in insertion
+                                    insert_bf.push(BaseFreq { a: 0, c: 0, g: 0, t: 0, n: 0, d: 0, ni: 0, i: true, ref_base: '\x00', intron: false, forward_cnt: 0, backward_cnt: 0, baseq: BaseQual::default(), base_strands: BaseStrands::default(), distance_to_end: DistanceToEnd::default() });   // fall in insertion
                                 }
                             }
                             for tmpi in 1..=len {
