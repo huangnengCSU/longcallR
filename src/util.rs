@@ -213,6 +213,7 @@ pub fn multithread_produce3(bam_file: String, thread_size: usize, contigs: Optio
             for region in isolated_regions {
                 results.lock().unwrap().push(region);
             }
+            println!("{:?} finished getting isolated regions", ctg);
         });
     });
     return results.into_inner().unwrap().clone();
