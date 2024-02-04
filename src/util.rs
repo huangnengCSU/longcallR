@@ -2,8 +2,10 @@ use std::cmp::min;
 use rust_htslib::{bam, bam::Record, bam::Format, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
-use std::process;
+use std::{fs, process};
 use std::collections::{VecDeque, HashMap};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use clap::builder::Str;
 use threadpool::ThreadPool;
 use crate::bam_reader::Region;
@@ -11,6 +13,62 @@ use crate::base_matrix::BaseMatrix;
 use crate::base_matrix::{*};
 use crate::isolated_region::find_isolated_regions;
 use crate::profile::{*};
+
+
+pub fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
+    let mut contig_lengths: Vec<(String, u32)> = Vec::new();
+    let file = File::open(fai_path).unwrap();
+    let reader = BufReader::new(file);
+    for r in reader.lines() {
+        let line = r.unwrap().clone();
+        let parts: Vec<&str> = line.split('\t').collect();
+        contig_lengths.push((parts[0].to_string(), parts[1].parse().unwrap()));
+    }
+    return contig_lengths;
+}
+
+pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32) -> Vec<Region> {
+    let mut isolated_regions: Vec<Region> = Vec::new();
+    let mut depth_vec: Vec<u32> = vec![0; ref_len as usize];
+    let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+    let header = bam.header().clone();
+    bam.fetch(chr).unwrap();
+    for r in bam.records() {
+        let record = r.unwrap();
+        let ref_start = record.reference_start();   // 0-based, left-closed
+        let ref_end = record.reference_end();   // 0-based, right-open
+        for i in ref_start..ref_end {
+            depth_vec[i as usize] += 1;
+        }
+    }
+    let mut region_start = -1;
+    let mut region_end = -1;
+    for i in 0..ref_len {
+        if depth_vec[i as usize] == 0 {
+            if region_end > region_start {
+                assert!(region_start >= 0);
+                assert!(region_end >= 0);
+                isolated_regions.push(Region { chr: chr.to_string(), start: (region_start + 1) as u32, end: (region_end + 2) as u32 });
+                region_start = -1;
+                region_end = -1;
+            }
+        } else {
+            if region_start == -1 {
+                region_start = i as i32;
+                region_end = i as i32;
+            } else {
+                region_end = i as i32;
+            }
+        }
+    }
+    if region_end > region_start {
+        isolated_regions.push(Region { chr: chr.to_string(), start: (region_start + 1) as u32, end: (region_end + 2) as u32 });
+        region_start = -1;
+        region_end = -1;
+    }
+    return isolated_regions;
+}
+
 
 pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::Sender<Region>, tx_high: mpsc::Sender<Region>) {
     let pool = ThreadPool::new(thread_size);
@@ -192,24 +250,32 @@ pub fn multithread_produce2(bam_file: String, thread_size: usize, tx_isolated_re
     pool.join();
 }
 
-pub fn multithread_produce3(bam_file: String, thread_size: usize, contigs: Option<Vec<String>>) -> Vec<Region> {
+pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usize, contigs: Option<Vec<String>>) -> Vec<Region> {
     let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
     let bam_header = bam.header().clone();
+    let fai_path = ref_file + ".fai";
+    if fs::metadata(&fai_path).is_err() {
+        panic!("Reference index file .fai does not exist.");
+    }
+    let contig_lengths = parse_fai(fai_path.as_str());
     let mut contig_names: VecDeque<String> = VecDeque::new();
     if contigs.is_some() {
         for ctg in contigs.unwrap().iter() {
             contig_names.push_back(ctg.clone());
         }
     } else {
-        for ctg in bam_header.target_names() {
-            contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
+        // for ctg in bam_header.target_names() {
+        //     contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
+        // }
+        for (ctg, _) in contig_lengths.iter() {
+            contig_names.push_back(ctg.clone());
         }
     }
     pool.install(|| {
         contig_names.par_iter().for_each(|ctg| {
-            let isolated_regions = find_isolated_regions(bam_file.as_str(), 1, Some(ctg.as_str()));
+            let isolated_regions = find_isolated_regions_with_depth(bam_file.as_str(), ctg, contig_lengths.iter().find(|(chr, _)| chr == ctg).unwrap().1);
             for region in isolated_regions {
                 results.lock().unwrap().push(region);
             }
