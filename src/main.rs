@@ -237,7 +237,7 @@ fn main() {
     let debug_block = arg.debug_block; // default=false
 
     if debug_block {
-        let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
+        let regions = multithread_produce3(bam_path.to_string().clone(), ref_path.to_string().clone(), threads, input_contigs);
         for reg in regions.iter() {
             println!("{}:{}-{}", reg.chr, reg.start, reg.end);
         }
@@ -345,7 +345,7 @@ fn main() {
             let _ = bam_writer.write(&record).unwrap();
         }
     } else {
-        let regions = multithread_produce3(bam_path.to_string().clone(), threads, input_contigs);
+        let regions = multithread_produce3(bam_path.to_string().clone(), ref_path.to_string().clone(), threads, input_contigs);
 // multithread_phase_maxcut(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
         multithread_phase_haplotag(bam_path.to_string().clone(),
                                    ref_path.to_string().clone(),
