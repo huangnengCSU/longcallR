@@ -5,6 +5,7 @@ use std::hash::Hash;
 use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
 use crate::profile::Profile;
+use crate::util::parse_fai;
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
 use rust_htslib::htslib::{drand48};
 use std::sync::{Mutex};
@@ -2618,17 +2619,17 @@ impl SNPFrag {
     }
 }
 
-fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
-    let mut contig_lengths: Vec<(String, u32)> = Vec::new();
-    let file = File::open(fai_path).unwrap();
-    let reader = BufReader::new(file);
-    for r in reader.lines() {
-        let line = r.unwrap().clone();
-        let parts: Vec<&str> = line.split('\t').collect();
-        contig_lengths.push((parts[0].to_string(), parts[1].parse().unwrap()));
-    }
-    return contig_lengths;
-}
+// fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
+//     let mut contig_lengths: Vec<(String, u32)> = Vec::new();
+//     let file = File::open(fai_path).unwrap();
+//     let reader = BufReader::new(file);
+//     for r in reader.lines() {
+//         let line = r.unwrap().clone();
+//         let parts: Vec<&str> = line.split('\t').collect();
+//         contig_lengths.push((parts[0].to_string(), parts[1].parse().unwrap()));
+//     }
+//     return contig_lengths;
+// }
 
 // pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
 //     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
