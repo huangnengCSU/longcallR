@@ -15,6 +15,7 @@ use rand::seq::SliceRandom;
 use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
 use std::cmp::{max, Ordering};
+use chrono::Local;
 
 
 #[derive(Debug, Clone, Default)]
@@ -2812,6 +2813,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
         });
     });
 
+    println!("{} Start writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
     let mut vf = File::create(vcf_file).unwrap();
     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
     for ctglen in contig_lengths.iter() {
@@ -2831,6 +2833,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
     vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=PQ,Number=1,Type=Float,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
     vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
+
     for rd in vcf_records_queue.lock().unwrap().iter() {
         if rd.alternative.len() == 1 {
             vf.write(format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
@@ -2857,7 +2860,10 @@ pub fn multithread_phase_haplotag(bam_file: String,
                              rd.genotype).as_bytes()).unwrap();
         }
     }
+    drop(vf);
+    println!("{} Finish writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
 
+    println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
     let mut read_assignments: HashMap<String, i32> = HashMap::new();
     for rd in read_haplotag_queue.lock().unwrap().iter() {
         read_assignments.insert(rd.0.clone(), rd.1.clone());
@@ -2880,5 +2886,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
         }
         let _ = bam_writer.write(&record).unwrap();
     }
+    drop(bam_writer);
+    println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
 }
 

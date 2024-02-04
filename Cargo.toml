@@ -15,6 +15,7 @@ threadpool = "1.0"
 ndarray = "0.15.0"
 rayon = "1.8"
 rand = "0.8.5"
+chrono = "0.4.33"
 
 [profile.release]
 #debug = true
