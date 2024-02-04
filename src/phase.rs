@@ -1909,6 +1909,10 @@ impl SNPFrag {
                 phasing_increase = false;
             }
             num_iters += 1;
+            if num_iters > 10 {
+                println!("Cross optimization may not converge: {}:{}-{}", self.region.chr, self.region.start, self.region.end);
+                break;
+            }
         }
 
         let prob = SNPFrag::cal_overall_probability(&self, &processed_snps, &covered_fragments);
