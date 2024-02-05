@@ -4,8 +4,7 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufRead, BufReader, Write};
 use crate::bam_reader::Region;
-use crate::profile::Profile;
-use crate::util::parse_fai;
+use crate::util::{parse_fai, Profile};
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
 use rust_htslib::htslib::{drand48};
 use std::sync::{Mutex};
@@ -2775,7 +2774,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
-            profile.append_reference(&ref_seqs);
+            // profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);

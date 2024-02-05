@@ -1,18 +1,22 @@
 use std::cmp::min;
-use rust_htslib::{bam, bam::Record, bam::Format, bam::{Read, ext::BamRecordExtensions}};
+use rust_htslib::{bam, bam::Format, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
 use std::{fs, process};
 use std::collections::{VecDeque, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::time::Instant;
+use bio::bio_types::strand::ReqStrand::Forward;
+use chrono::Local;
 use clap::builder::Str;
+use seq_io::fasta::{Reader, Record};
 use threadpool::ThreadPool;
 use crate::bam_reader::Region;
 use crate::base_matrix::BaseMatrix;
 use crate::base_matrix::{*};
 use crate::isolated_region::find_isolated_regions;
-use crate::profile::{*};
+use crate::profile::{BaseFreq, BaseQual, BaseStrands, DistanceToEnd};
 
 
 pub fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
@@ -421,3 +425,211 @@ pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usi
 //         bam_records_queue.lock().unwrap().clear();
 //     }
 // }
+
+pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
+    let mut references: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut reader = Reader::from_path(ref_path).unwrap();
+    while let Some(record) = reader.next() {
+        let record = record.expect("Error reading record");
+        references.insert(record.id().unwrap().to_string(), record.full_seq().to_vec());
+    }
+    return references;
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct Profile {
+    pub freq_vec: Vec<BaseFreq>,
+    pub region: Region,
+}
+
+impl Profile {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
+        // When region is large and the number of reads is large, the runtime of init_profile_with_pileup is time-consuming.
+        // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
+
+        let start_time = Instant::now();
+        println!("{} Start to construct FreqVec for region: {}:{}-{}", Local::now().format("%Y-%m-%d %H:%M:%S"), region.chr, region.start, region.end);
+        let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+        bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
+        let vec_size = (region.end - region.start) as usize;    // end is exclusive
+        self.freq_vec = vec![BaseFreq::default(); vec_size];
+        self.region = region.clone();
+        let freq_vec_pos = region.start as usize - 1;    // the first position on reference, 0-based, inclusive
+        let polyA_win = polya_tail_length as i64;
+
+        // fill the ref_base field in each BaseFreq
+        for i in 0..vec_size {
+            self.freq_vec[i].ref_base = ref_seq[freq_vec_pos + i] as char;
+        }
+
+        for r in bam.records() {
+            let record = r.unwrap();
+            if record.mapq() < min_mapq || record.seq_len() < min_read_length || record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                continue;
+            }
+            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+            let seq = record.seq();
+            let base_qual = record.qual();
+            let strand = if record.strand() == Forward { 0 } else { 1 };
+            let start_pos = record.pos() as usize;  // 0-based
+            let cigar = record.cigar();
+            let leading_softclips = cigar.leading_softclips();
+            let trailing_softclips = cigar.trailing_softclips();
+
+            let mut pos_in_freq_vec = start_pos - freq_vec_pos;
+            let mut pos_in_read = if leading_softclips > 0 { leading_softclips as usize } else { 0 };
+            for cg in cigar.iter() {
+                match cg.char() as u8 {
+                    b'S' | b'H' => {
+                        continue;
+                    }
+                    b'M' | b'X' | b'=' => {
+                        for cgi in 0..cg.len() {
+                            let base = seq[pos_in_read] as char;
+                            let baseq = base_qual[pos_in_read];
+
+                            // close to left read end or right read end, check whether current position is in polyA tail
+                            // let ref_base = ref_seq[pos_in_freq_vec] as char;
+                            let ref_base = self.freq_vec[pos_in_freq_vec].ref_base;
+                            let mut polyA_flag = false;
+                            let mut homopolymer_flag = false;
+                            if (pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64 {
+                                for tmpi in (pos_in_read as i64 - polyA_win)..=(pos_in_read as i64 + 1) {
+                                    // pos_in_read is the current position, and the position 1-base to the left of polyA tail is often false positive variant allele. So the end for loop is pos_in_read+1 instead of pos_in_read.
+                                    // same reason for pos_in_read - polyA_win instead fo pos_in_read - polyA_win + 1
+                                    if tmpi < 0 || tmpi + polyA_win - 1 >= seq.len() as i64 {
+                                        continue;
+                                    }
+                                    let mut polyA_cnt = 0;
+                                    let mut polyT_cnt = 0;
+                                    let mut polyC_cnt = 0;
+                                    let mut polyG_cnt = 0;
+                                    for tmpj in 0..polyA_win {
+                                        if seq[(tmpi + tmpj) as usize] == b'A' && ref_base != 'A' {
+                                            polyA_cnt += 1;
+                                        } else if seq[(tmpi + tmpj) as usize] == b'T' && ref_base != 'T' {
+                                            polyT_cnt += 1;
+                                        } else if seq[(tmpi + tmpj) as usize] == b'C' && ref_base != 'C' {
+                                            polyC_cnt += 1;
+                                        } else if seq[(tmpi + tmpj) as usize] == b'G' && ref_base != 'G' {
+                                            polyG_cnt += 1;
+                                        }
+                                    }
+                                    if polyA_cnt >= polyA_win || polyT_cnt >= polyA_win {
+                                        polyA_flag = true;
+                                    }
+                                    if polyC_cnt >= polyA_win || polyG_cnt >= polyA_win {
+                                        homopolymer_flag = true;
+                                    }
+                                }
+                            }
+
+                            if !polyA_flag && !homopolymer_flag {
+
+                                // calculate distance to read end of each allele, for filtering variants that the average distance of each allele is significantly different
+                                let mut dist = 0;
+                                if (pos_in_read as i64 - leading_softclips).abs() < (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() {
+                                    dist = pos_in_read as i64 - leading_softclips;    // positive value
+                                } else {
+                                    dist = (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips));    // negative value
+                                }
+
+                                match base {
+                                    'A' | 'a' => {
+                                        self.freq_vec[pos_in_freq_vec].a += 1;
+                                        self.freq_vec[pos_in_freq_vec].baseq.a.push(baseq);
+                                        if strand == 0 {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.a[0] += 1;
+                                        } else {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.a[1] += 1;
+                                        }
+                                        self.freq_vec[pos_in_freq_vec].distance_to_end.a.push(dist);
+                                    }
+                                    'C' | 'c' => {
+                                        self.freq_vec[pos_in_freq_vec].c += 1;
+                                        self.freq_vec[pos_in_freq_vec].baseq.c.push(baseq);
+                                        if strand == 0 {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.c[0] += 1;
+                                        } else {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.c[1] += 1;
+                                        }
+                                        self.freq_vec[pos_in_freq_vec].distance_to_end.c.push(dist);
+                                    }
+                                    'G' | 'g' => {
+                                        self.freq_vec[pos_in_freq_vec].g += 1;
+                                        self.freq_vec[pos_in_freq_vec].baseq.g.push(baseq);
+                                        if strand == 0 {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.g[0] += 1;
+                                        } else {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.g[1] += 1;
+                                        }
+                                        self.freq_vec[pos_in_freq_vec].distance_to_end.g.push(dist);
+                                    }
+                                    'T' | 't' => {
+                                        self.freq_vec[pos_in_freq_vec].t += 1;
+                                        self.freq_vec[pos_in_freq_vec].baseq.t.push(baseq);
+                                        if strand == 0 {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.t[0] += 1;
+                                        } else {
+                                            self.freq_vec[pos_in_freq_vec].base_strands.t[1] += 1;
+                                        }
+                                        self.freq_vec[pos_in_freq_vec].distance_to_end.t.push(dist);
+                                    }
+                                    _ => {
+                                        panic!("Invalid nucleotide base: {}", base);
+                                    }
+                                }
+                                if strand == 0 {
+                                    self.freq_vec[pos_in_freq_vec].forward_cnt += 1;
+                                } else {
+                                    self.freq_vec[pos_in_freq_vec].backward_cnt += 1;
+                                }
+                            }
+
+                            pos_in_freq_vec += 1;
+                            pos_in_read += 1;
+                        }
+                    }
+                    b'D' => {
+                        for _ in 0..cg.len() {
+                            self.freq_vec[pos_in_freq_vec].d += 1;
+                            pos_in_freq_vec += 1;
+                        }
+                    }
+                    b'I' => {
+                        self.freq_vec[pos_in_freq_vec - 1].ni += 1; // insertion is counted as the previous position
+                        pos_in_read += cg.len() as usize;
+                    }
+                    b'N' => {
+                        for _ in 0..cg.len() {
+                            self.freq_vec[pos_in_freq_vec].n += 1;
+                            pos_in_freq_vec += 1;
+                        }
+                    }
+                    _ => {
+                        panic!("Error: unknown cigar operation: {}", cg.char());
+                    }
+                }
+            }
+        }
+        let end_time = Instant::now();
+        println!("Init profile with pileup: {}:{}-{} {} seconds", self.region.chr, self.region.start, self.region.end, end_time.duration_since(start_time).as_secs());
+    }
+    pub fn append_reference(&mut self, references: &HashMap<String, Vec<u8>>) {
+        /*
+        Fill the ``ref_base`` field in each BaseFreq.
+        Optional. If not called, the ``ref_base`` field in each BaseFreq will be '\0'
+         */
+        let chr = &self.region.chr;
+        let s = self.region.start - 1;    // 0-based, inclusive
+        let mut p = s as usize;
+        for i in 0..self.freq_vec.len() {
+            if self.freq_vec[i].i {
+                self.freq_vec[i].ref_base = '-'; // insertion
+            } else {
+                self.freq_vec[i].ref_base = references.get(chr).unwrap()[p] as char;
+                p += 1;
+            }
+        }
+    }
+}

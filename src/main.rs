@@ -32,9 +32,9 @@ use std::process::exit;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use rand::seq::SliceRandom;
-use crate::profile::{*};
 use crate::phase::{*};
 use crate::vcf::VCFRecord;
+use crate::util::Profile;
 
 
 #[derive(Parser, Debug)]
@@ -249,10 +249,12 @@ fn main() {
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
         profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
-        profile.append_reference(&ref_seqs);
-        // for bf in profile.freq_vec.iter() {
-        //     println!("bf: {:?}", bf);
-        // }
+        // profile.append_reference(&ref_seqs);
+        let mut freq_vec_pos = profile.region.start - 1; // 0-based
+        for bf in profile.freq_vec.iter() {
+            println!("bf {}:{}: {:?}", profile.region.chr, freq_vec_pos, bf);
+            freq_vec_pos += 1;
+        }
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
         // snpfrag.filter_fp_snps(strand_bias_threshold, None);
@@ -271,7 +273,7 @@ fn main() {
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
         profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
-        profile.append_reference(&ref_seqs);
+        // profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
