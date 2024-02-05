@@ -576,6 +576,7 @@ impl Profile {
         region: region to extract, 1-based, left closed, right open
          */
         // self.region = region.clone();
+        let start_time = Instant::now();
         let mut freq_vec_start = u32::MAX;  // 1-based
         let mut freq_vec_end = u32::MIN;    // 1-based
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
@@ -1105,6 +1106,8 @@ impl Profile {
             }
         }
         self.region = Region { chr: region.chr.clone(), start: freq_vec_start, end: freq_vec_end + 1 };
+        let end_time = Instant::now();
+        println!("Init profile with pileup: {}:{}-{} {} seconds", self.region.chr, self.region.start, self.region.end, end_time.duration_since(start_time).as_secs());
     }
     pub fn append_reference(&mut self, references: &HashMap<String, Vec<u8>>) {
         /*
