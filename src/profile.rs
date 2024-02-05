@@ -9,6 +9,7 @@ use ndarray::Array2;
 use bio::bio_types::strand::ReqStrand::Forward;
 use crate::runt::Runtime;
 use std::time::{Instant};
+use chrono::Local;
 
 const MAX_INS: u32 = 100;
 
@@ -577,6 +578,7 @@ impl Profile {
          */
         // self.region = region.clone();
         let start_time = Instant::now();
+        println!("{} Start to construct profile for region: {}:{}-{}", Local::now().format("%Y-%m-%d %H:%M:%S"), region.chr, region.start, region.end);
         let mut freq_vec_start = u32::MAX;  // 1-based
         let mut freq_vec_end = u32::MIN;    // 1-based
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
@@ -587,6 +589,7 @@ impl Profile {
         for p in pileups {
             let pileup = p.unwrap();
             let pos = pileup.pos(); // 0-based
+            // println!("pos: {} , {} of {}", pos, pos - region.start + 1, region.end - region.start);
             if pos + 1 < region.start || pos + 1 >= region.end {
                 continue;
             }
@@ -1374,6 +1377,7 @@ impl Profile {
         (s, e, parsed_seq_without_intron, profile_without_intron)
     }
 }
+
 
 pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
     let mut references: HashMap<String, Vec<u8>> = HashMap::new();
