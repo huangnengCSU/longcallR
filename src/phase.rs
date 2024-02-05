@@ -2875,22 +2875,25 @@ pub fn multithread_phase_haplotag(bam_file: String,
         read_assignments.insert(rd.0.clone(), rd.1.clone());
     }
 
-    let mut bam_reader = bam::Reader::from_path(&bam_file).unwrap();
+    let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
     let header = bam::Header::from_template(&bam_reader.header());
     let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
-    for r in bam_reader.records() {
-        let mut record = r.unwrap();
-        if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
-            continue;
-        }
-        let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-        if read_assignments.contains_key(&qname) {
-            let asg = read_assignments.get(&qname).unwrap();
-            if *asg != 0 {
-                let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+    for region in isolated_regions.iter() {
+        bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
+        for r in bam_reader.records() {
+            let mut record = r.unwrap();
+            if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                continue;
             }
+            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+            if read_assignments.contains_key(&qname) {
+                let asg = read_assignments.get(&qname).unwrap();
+                if *asg != 0 {
+                    let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+                }
+            }
+            let _ = bam_writer.write(&record).unwrap();
         }
-        let _ = bam_writer.write(&record).unwrap();
     }
     drop(bam_writer);
     println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
