@@ -1829,6 +1829,7 @@ impl SNPFrag {
         }
 
         while phasing_increase | haplotag_increase {
+            println!("{} {}:{}-{} cross optimization iterations: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), self.region.chr, self.region.start, self.region.end, num_iters);
             // optimize sigma
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
             for k in covered_fragments.iter() {
@@ -2135,7 +2136,7 @@ impl SNPFrag {
 
             if num_hap1 < min_allele_cnt || num_hap2 < min_allele_cnt {
                 // filter SNPs with low allele count, no confident phase
-                println!("Low allele count: {}, {}, {}", snp.pos, num_hap1, num_hap2);
+                println!("Low allele count: {}:{}, {}, {}", self.region.chr, snp.pos, num_hap1, num_hap2);
                 phase_score = 0.0;
             } else {
                 if sigma.len() > 0 {
@@ -2776,6 +2777,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
+            snpfrag.region = reg.clone();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
             // for snp in snpfrag.candidate_snps.iter() {
             //     println!("snp: {:?}", snp);
