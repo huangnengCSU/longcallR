@@ -132,6 +132,7 @@ impl SNPFrag {
                               max_coverage: u32,
                               min_baseq: u8,
                               min_homozygous_freq: f32,
+                              no_strand_bias: bool,
                               strand_bias_threshold: f32,
                               cover_strand_bias_threshold: f32,
                               distance_to_splicing_site: u32,
@@ -315,59 +316,62 @@ impl SNPFrag {
                 continue;
             }
 
-            // 4.filtering snps only covered by one strand reads (may caused by intron alignment error)
-            let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
-            if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
-                // strand bias
-                println!("cover strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
-                // println!("{:?}", bf);
-                position += 1;
-                continue;
-            }
+            if !no_strand_bias {
 
-            // 5.filtering with strand bias
-            let mut variant_allele: Vec<char> = Vec::new();
-            // if allele1 != bf.ref_base {
-            if allele1 != bf.ref_base && allele1_cnt >= 4 {
-                variant_allele.push(allele1);
-            }
-            // if allele2 != bf.ref_base {
-            if allele2 != bf.ref_base && allele2_cnt >= 4 {
-                variant_allele.push(allele2);
-            }
-            if variant_allele.len() > 0 {
-                // variant allele
-                let mut strand_bias = false;
-                for allele_base in variant_allele.iter() {
-                    let mut fcnt = 0;
-                    let mut bcnt = 0;
-                    match allele_base {
-                        'a' => { [fcnt, bcnt] = bf.base_strands.a; }
-                        'A' => { [fcnt, bcnt] = bf.base_strands.a; }
-                        'c' => { [fcnt, bcnt] = bf.base_strands.c; }
-                        'C' => { [fcnt, bcnt] = bf.base_strands.c; }
-                        'g' => { [fcnt, bcnt] = bf.base_strands.g; }
-                        'G' => { [fcnt, bcnt] = bf.base_strands.g; }
-                        't' => { [fcnt, bcnt] = bf.base_strands.t; }
-                        'T' => { [fcnt, bcnt] = bf.base_strands.t; }
-                        _ => {
-                            println!("Error: unknown allele");
-                            position += 1;
+                // 4.filtering snps only covered by one strand reads (may caused by intron alignment error)
+                let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
+                if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
+                    // strand bias
+                    println!("cover strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
+                    // println!("{:?}", bf);
+                    position += 1;
+                    continue;
+                }
+
+                // 5.filtering with strand bias
+                let mut variant_allele: Vec<char> = Vec::new();
+                // if allele1 != bf.ref_base {
+                if allele1 != bf.ref_base && allele1_cnt >= 4 {
+                    variant_allele.push(allele1);
+                }
+                // if allele2 != bf.ref_base {
+                if allele2 != bf.ref_base && allele2_cnt >= 4 {
+                    variant_allele.push(allele2);
+                }
+                if variant_allele.len() > 0 {
+                    // variant allele
+                    let mut strand_bias = false;
+                    for allele_base in variant_allele.iter() {
+                        let mut fcnt = 0;
+                        let mut bcnt = 0;
+                        match allele_base {
+                            'a' => { [fcnt, bcnt] = bf.base_strands.a; }
+                            'A' => { [fcnt, bcnt] = bf.base_strands.a; }
+                            'c' => { [fcnt, bcnt] = bf.base_strands.c; }
+                            'C' => { [fcnt, bcnt] = bf.base_strands.c; }
+                            'g' => { [fcnt, bcnt] = bf.base_strands.g; }
+                            'G' => { [fcnt, bcnt] = bf.base_strands.g; }
+                            't' => { [fcnt, bcnt] = bf.base_strands.t; }
+                            'T' => { [fcnt, bcnt] = bf.base_strands.t; }
+                            _ => {
+                                println!("Error: unknown allele");
+                                position += 1;
+                                continue;
+                            }
+                        }
+                        let total_cnt = fcnt + bcnt;
+                        if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
+                            // strand bias
+                            println!("strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, fcnt, bcnt, total_cnt);
+                            // println!("{:?}", bf);
+                            strand_bias = true;
                             continue;
                         }
                     }
-                    let total_cnt = fcnt + bcnt;
-                    if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
-                        // strand bias
-                        println!("strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, fcnt, bcnt, total_cnt);
-                        // println!("{:?}", bf);
-                        strand_bias = true;
+                    if strand_bias {
+                        position += 1;
                         continue;
                     }
-                }
-                if strand_bias {
-                    position += 1;
-                    continue;
                 }
             }
 
@@ -2734,6 +2738,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   min_qual_for_candidate: u32,
                                   min_qual_for_singlesnp_rnaedit: u32,
                                   min_allele_cnt: u32,
+                                  no_strand_bias: bool,
                                   strand_bias_threshold: f32,
                                   cover_strand_bias_threshold: f32,
                                   min_depth: u32,
@@ -2777,7 +2782,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             // profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
             // for snp in snpfrag.candidate_snps.iter() {
             //     println!("snp: {:?}", snp);
             // }
