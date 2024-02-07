@@ -765,32 +765,32 @@ impl SNPFrag {
             logprob[0] += (background_prob[0] as f64).log10();
             logprob[1] += (background_prob[1] as f64).log10();
             logprob[2] += (background_prob[2] as f64).log10();
-
             let max_logprob = logprob[0].max(logprob[1]).max(logprob[2]);
             // println!("1:{}:{},{:?}", position, max_logprob, logprob);
-
             logprob[0] = logprob[0] - max_logprob;
             logprob[1] = logprob[1] - max_logprob;
             logprob[2] = logprob[2] - max_logprob;
             // println!("2:{}:{},{:?}", position, max_logprob, logprob);
-
             let mut genotype_prob = logprob.clone();
             genotype_prob[0] = 10.0_f64.powf(logprob[0]);
             genotype_prob[1] = 10.0_f64.powf(logprob[1]);
             genotype_prob[2] = 10.0_f64.powf(logprob[2]);
             let sum_genotype_prob = genotype_prob[0] + genotype_prob[1] + genotype_prob[2];
             // println!("3:{}:{},{:?}", position, sum_genotype_prob, genotype_prob);
-            // let correction_factor = 10e-301_f64.max(10.0_f64.powf(max_logprob));     // each logprob is subtracted by max_logprob, so we need to add max_logprob back. And if max_logprob is too small, we set it to 10e-301 to avoid underflow
-            // genotype_prob = [correction_factor * genotype_prob[0] / sum_genotype_prob, correction_factor * genotype_prob[1] / sum_genotype_prob, correction_factor * genotype_prob[2] / sum_genotype_prob];
             genotype_prob = [genotype_prob[0] / sum_genotype_prob, genotype_prob[1] / sum_genotype_prob, genotype_prob[2] / sum_genotype_prob];
             // println!("4:{}:{},{:?}", position, correction_factor, genotype_prob);
-
             // QUAL phred-scaled quality score for the assertion made in ALT. i.e. give -10log_10 prob(call in ALT is wrong).
             // If ALT is `.` (no variant) then this is -10log_10 p(variant), and if ALT is not `.` this is -10log_10 p(no variant).
             let variant_quality = -10.0 * ((10e-301_f64.max(genotype_prob[2])).log10());    // if variant_quality is greater than 3000, we set it to 3000
 
             // calculate GQ: The value of GQ is simply the difference between the second lowest PL and the lowest PL (which is always 0, normalized PL)
-            let mut sorted_pl = genotype_prob.clone();
+            let mut log10_likelihood = loglikelihood.clone();
+            let max_log10_likelihood = log10_likelihood[0].max(log10_likelihood[1]).max(log10_likelihood[2]);
+            log10_likelihood[0] = 10.0_f64.powf(log10_likelihood[0] - max_log10_likelihood);
+            log10_likelihood[1] = 10.0_f64.powf(log10_likelihood[1] - max_log10_likelihood);
+            log10_likelihood[2] = 10.0_f64.powf(log10_likelihood[2] - max_log10_likelihood);
+            let sum_log10_likelihood = log10_likelihood[0] + log10_likelihood[1] + log10_likelihood[2];
+            let mut sorted_pl = [log10_likelihood[0] / sum_log10_likelihood, log10_likelihood[1] / sum_log10_likelihood, log10_likelihood[2] / sum_log10_likelihood];
             sorted_pl[0] = -10.0 * sorted_pl[0].log10();    // phred scale likelihood of genotype: 1/1
             sorted_pl[1] = -10.0 * sorted_pl[1].log10();    // phred scale likelihood of genotype: 0/1
             sorted_pl[2] = -10.0 * sorted_pl[2].log10();    // phred scale likelihood of genotype: 0/0
@@ -2759,7 +2759,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   read_assignment_cutoff: f64,
                                   imbalance_allele_expression_cutoff: f32,
                                   output_phasing: bool) {
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
     // let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
@@ -2882,6 +2882,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
     let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
     let header = bam::Header::from_template(&bam_reader.header());
     let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
+    bam_writer.set_threads(thread_size).unwrap();
     for region in isolated_regions.iter() {
         bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
         for r in bam_reader.records() {
