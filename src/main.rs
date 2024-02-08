@@ -112,7 +112,7 @@ struct Args {
     #[arg(long, default_value_t = 3)]
     min_allele_cnt: u32,
 
-    /// Use strand bias or not
+    /// When set, ignore strand bias
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_strand_bias: bool,
 
@@ -188,6 +188,10 @@ struct Args {
     #[clap(long, action = ArgAction::SetFalse)]
     no_phase_vcf: bool,
 
+    /// When set, do not output phased bam file.
+    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    no_bam_output: bool,
+
     /// debug SNP
     #[clap(long, action = ArgAction::SetTrue)]
     debug_snp: bool,
@@ -238,6 +242,7 @@ fn main() {
     let imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
     let min_homozygous_freq = arg.min_homozygous_freq;
     let phasing_output = arg.no_phase_vcf;  // default=true
+    let no_bam_output = arg.no_bam_output; // default=false
     let debug_snp = arg.debug_snp; // default=false
     let debug_block = arg.debug_block; // default=false
 
@@ -333,23 +338,24 @@ fn main() {
                          rd.genotype);
             }
         }
-
-        let mut bam_reader = bam::Reader::from_path(&bam_path).unwrap();
-        let header = bam::Header::from_template(&bam_reader.header());
-        let mut bam_writer = bam::Writer::from_path(out_bam, &header, Format::Bam).unwrap();
-        for r in bam_reader.records() {
-            let mut record = r.unwrap();
-            if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
-                continue;
-            }
-            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-            if read_assignments.contains_key(&qname) {
-                let asg = read_assignments.get(&qname).unwrap();
-                if *asg != 0 {
-                    let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+        if !no_bam_output {
+            let mut bam_reader = bam::Reader::from_path(&bam_path).unwrap();
+            let header = bam::Header::from_template(&bam_reader.header());
+            let mut bam_writer = bam::Writer::from_path(out_bam, &header, Format::Bam).unwrap();
+            for r in bam_reader.records() {
+                let mut record = r.unwrap();
+                if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                    continue;
                 }
+                let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                if read_assignments.contains_key(&qname) {
+                    let asg = read_assignments.get(&qname).unwrap();
+                    if *asg != 0 {
+                        let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+                    }
+                }
+                let _ = bam_writer.write(&record).unwrap();
             }
-            let _ = bam_writer.write(&record).unwrap();
         }
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), ref_path.to_string().clone(), threads, input_contigs);
@@ -390,6 +396,7 @@ fn main() {
                                    random_flip_fraction,
                                    read_assignment_cutoff,
                                    imbalance_allele_expression_cutoff,
-                                   phasing_output);
+                                   phasing_output,
+                                   no_bam_output);
     }
 }
