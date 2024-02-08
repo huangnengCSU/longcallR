@@ -29,7 +29,7 @@ pub struct CandidateSNP {
     pub reference: char,
     pub depth: u32,
     pub variant_type: i32,
-    // 1: heterozygous SNP, 2: homozygous SNP
+    // 1: heterozygous SNP, 2: homozygous SNP, 3: triallelic SNP
     pub variant_quality: f64,
     // the confidence that the variant exists at this site given the data, phred-scaled
     pub genotype_probability: [f64; 3],
@@ -815,17 +815,35 @@ impl SNPFrag {
                 candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
-                candidate_snp.variant_type = 2; // homozygous SNP
+
+                if allele1 != bf.ref_base && allele2 != bf.ref_base && allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
+                    candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP
+                } else {
+                    candidate_snp.variant_type = 2; // homozygous SNP
+                }
+
+
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
-                if bf.ref_base == 'A' && allele1 == 'G' {
-                    candidate_snp.rna_editing = true;
-                    candidate_snp.filter = true;
-                }
-                if bf.ref_base == 'T' && allele1 == 'C' {
-                    candidate_snp.rna_editing = true;
-                    candidate_snp.filter = true;
+                if candidate_snp.variant_type == 2 {
+                    if bf.ref_base == 'A' && allele1 == 'G' {
+                        candidate_snp.rna_editing = true;
+                        candidate_snp.filter = true;
+                    }
+                    if bf.ref_base == 'T' && allele1 == 'C' {
+                        candidate_snp.rna_editing = true;
+                        candidate_snp.filter = true;
+                    }
+                } else if candidate_snp.variant_type == 3 {
+                    if bf.ref_base == 'A' && (allele1 == 'G' || allele2 == 'G') {
+                        candidate_snp.rna_editing = true;
+                        candidate_snp.filter = true;
+                    }
+                    if bf.ref_base == 'T' && (allele1 == 'C' || allele2 == 'C') {
+                        candidate_snp.rna_editing = true;
+                        candidate_snp.filter = true;
+                    }
                 }
                 // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
@@ -2316,6 +2334,9 @@ impl SNPFrag {
                 } else if snp.variant_type == 2 {
                     rd.alternative = vec![vec![snp.alleles[0] as u8]];
                     rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                } else if snp.variant_type == 3 {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                    rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
                 }
                 rd.qual = snp.variant_quality as i32;
                 rd.filter = "dn".to_string().into_bytes();
@@ -2325,7 +2346,34 @@ impl SNPFrag {
                 continue;
             }
 
-            if snp.variant_type == 2 {
+            if snp.variant_type == 3 {
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
+                rd.reference = vec![snp.reference as u8];
+                rd.id = vec!['.' as u8];
+                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                rd.qual = snp.variant_quality as i32;
+                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}", "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]);
+                if snp.rna_editing == true {
+                    rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                    }
+                    // rd.filter = "RnaEdit".to_string().into_bytes();
+                } else {
+                    rd.info = "RDS=.".to_string().into_bytes();
+                    if snp.variant_quality < min_qual_for_candidate as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                    }
+                }
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
+            } else if snp.variant_type == 2 {
                 let mut rd: VCFRecord = VCFRecord::default();
                 rd.chromosome = snp.chromosome.clone();
                 rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
@@ -2758,7 +2806,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   random_flip_fraction: f32,
                                   read_assignment_cutoff: f64,
                                   imbalance_allele_expression_cutoff: f32,
-                                  output_phasing: bool) {
+                                  output_phasing: bool,
+                                  no_bam_output: bool) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
@@ -2873,34 +2922,35 @@ pub fn multithread_phase_haplotag(bam_file: String,
     drop(vf);
     println!("{} Finish writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
 
-    println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
-    let mut read_assignments: HashMap<String, i32> = HashMap::new();
-    for rd in read_haplotag_queue.lock().unwrap().iter() {
-        read_assignments.insert(rd.0.clone(), rd.1.clone());
-    }
-
-    let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
-    let header = bam::Header::from_template(&bam_reader.header());
-    let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
-    bam_writer.set_threads(thread_size).unwrap();
-    for region in isolated_regions.iter() {
-        bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
-        for r in bam_reader.records() {
-            let mut record = r.unwrap();
-            if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
-                continue;
-            }
-            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-            if read_assignments.contains_key(&qname) {
-                let asg = read_assignments.get(&qname).unwrap();
-                if *asg != 0 {
-                    let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
-                }
-            }
-            let _ = bam_writer.write(&record).unwrap();
+    if !no_bam_output {
+        println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+        let mut read_assignments: HashMap<String, i32> = HashMap::new();
+        for rd in read_haplotag_queue.lock().unwrap().iter() {
+            read_assignments.insert(rd.0.clone(), rd.1.clone());
         }
+        let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
+        let header = bam::Header::from_template(&bam_reader.header());
+        let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
+        bam_writer.set_threads(thread_size).unwrap();
+        for region in isolated_regions.iter() {
+            bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
+            for r in bam_reader.records() {
+                let mut record = r.unwrap();
+                if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                    continue;
+                }
+                let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                if read_assignments.contains_key(&qname) {
+                    let asg = read_assignments.get(&qname).unwrap();
+                    if *asg != 0 {
+                        let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+                    }
+                }
+                let _ = bam_writer.write(&record).unwrap();
+            }
+        }
+        drop(bam_writer);
+        println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
     }
-    drop(bam_writer);
-    println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
 }
 
