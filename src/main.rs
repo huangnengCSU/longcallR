@@ -258,7 +258,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
+        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), &platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         // profile.append_reference(&ref_seqs);
         let mut freq_vec_pos = profile.region.start - 1; // 0-based
         for bf in profile.freq_vec.iter() {
@@ -282,7 +282,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         let mut profile = Profile::default();
         let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
+        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), &platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
         // profile.append_reference(&ref_seqs);
         let mut snpfrag = SNPFrag::default();
         snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);

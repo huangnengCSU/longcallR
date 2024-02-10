@@ -2827,7 +2827,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             // println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
-            profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
+            profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             // profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
@@ -2853,6 +2853,18 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     // snpfrag.keep_reliable_snps_in_component();
                     snpfrag.phase(max_enum_snps, random_flip_fraction);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
+                    // println!("{}:{}-{} hap1:", snpfrag.region.chr, snpfrag.region.start, snpfrag.region.end);
+                    // for frag in snpfrag.fragments.iter() {
+                    //     if frag.haplotag == -1 {
+                    //         println!("{:?}", frag.exons);
+                    //     }
+                    // }
+                    // println!("{}:{}-{} hap2:", snpfrag.region.chr, snpfrag.region.start, snpfrag.region.end);
+                    // for frag in snpfrag.fragments.iter() {
+                    //     if frag.haplotag == 1 {
+                    //         println!("{:?}", frag.exons);
+                    //     }
+                    // }
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     {
                         let mut queue = read_haplotag_queue.lock().unwrap();

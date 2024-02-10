@@ -443,7 +443,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, platform: &String, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
         // When region is large and the number of reads is large, the runtime of init_profile_with_pileup is time-consuming.
         // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
 
@@ -493,7 +493,12 @@ impl Profile {
                             let ref_base = self.freq_vec[pos_in_freq_vec].ref_base;
                             let mut polyA_flag = false;
                             let mut homopolymer_flag = false;
-                            if (pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64 {
+                            let mut trimed_flag = false;    // trime the end of ont reads
+                            // the end of ont reads are trimed since the accuracy of the ends is low
+                            if platform == "ont" && ((pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64) {
+                                trimed_flag = true;
+                            }
+                            if !trimed_flag && ((pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64) {
                                 for tmpi in (pos_in_read as i64 - polyA_win)..=(pos_in_read as i64 + 1) {
                                     // pos_in_read is the current position, and the position 1-base to the left of polyA tail is often false positive variant allele. So the end for loop is pos_in_read+1 instead of pos_in_read.
                                     // same reason for pos_in_read - polyA_win instead fo pos_in_read - polyA_win + 1
@@ -524,7 +529,7 @@ impl Profile {
                                 }
                             }
 
-                            if !polyA_flag && !homopolymer_flag {
+                            if !trimed_flag && !polyA_flag && !homopolymer_flag {
 
                                 // calculate distance to read end of each allele, for filtering variants that the average distance of each allele is significantly different
                                 let mut dist = 0;
