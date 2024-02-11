@@ -16,6 +16,7 @@ use crate::bam_reader::Region;
 use crate::base_matrix::BaseMatrix;
 use crate::base_matrix::{*};
 use crate::isolated_region::find_isolated_regions;
+use crate::Platform;
 use crate::profile::{BaseFreq, BaseQual, BaseStrands, DistanceToEnd};
 
 
@@ -443,7 +444,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, platform: &String, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, platform: &Platform, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
         // When region is large and the number of reads is large, the runtime of init_profile_with_pileup is time-consuming.
         // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
 
@@ -495,8 +496,13 @@ impl Profile {
                             let mut homopolymer_flag = false;
                             let mut trimed_flag = false;    // trime the end of ont reads
                             // the end of ont reads are trimed since the accuracy of the ends is low
-                            if platform == "ont" && ((pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64) {
-                                trimed_flag = true;
+                            match platform {
+                                Platform::ont => {
+                                    if ((pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64) {
+                                        trimed_flag = true;
+                                    }
+                                }
+                                _ => {}
                             }
                             if !trimed_flag && ((pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64) {
                                 for tmpi in (pos_in_read as i64 - polyA_win)..=(pos_in_read as i64 + 1) {

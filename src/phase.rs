@@ -15,6 +15,7 @@ use crate::base_matrix::load_reference;
 use crate::vcf::VCFRecord;
 use std::cmp::{max, Ordering};
 use chrono::Local;
+use crate::Platform;
 
 
 #[derive(Debug, Clone, Default)]
@@ -2779,7 +2780,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   thread_size: usize,
                                   isolated_regions: Vec<Region>,
                                   genotype_only: bool,
-                                  platform: &String,
+                                  platform: &Platform,
                                   min_mapq: u8,
                                   min_baseq: u8,
                                   diff_baseq: u8,
