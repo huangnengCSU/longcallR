@@ -771,17 +771,17 @@ impl SNPFrag {
             logprob[1] = logprob[1] - max_logprob;
             logprob[2] = logprob[2] - max_logprob;
             // println!("2:{}:{},{:?}", position, max_logprob, logprob);
-            let mut genotype_prob = logprob.clone();
-            genotype_prob[0] = 10.0_f64.powf(logprob[0]);
-            genotype_prob[1] = 10.0_f64.powf(logprob[1]);
-            genotype_prob[2] = 10.0_f64.powf(logprob[2]);
-            let sum_genotype_prob = genotype_prob[0] + genotype_prob[1] + genotype_prob[2];
-            // println!("3:{}:{},{:?}", position, sum_genotype_prob, genotype_prob);
-            genotype_prob = [genotype_prob[0] / sum_genotype_prob, genotype_prob[1] / sum_genotype_prob, genotype_prob[2] / sum_genotype_prob];
-            // println!("4:{}:{},{:?}", position, correction_factor, genotype_prob);
+            let mut variant_prob = logprob.clone();
+            variant_prob[0] = 10.0_f64.powf(logprob[0]);
+            variant_prob[1] = 10.0_f64.powf(logprob[1]);
+            variant_prob[2] = 10.0_f64.powf(logprob[2]);
+            let sum_variant_prob = variant_prob[0] + variant_prob[1] + variant_prob[2];
+            // println!("3:{}:{},{:?}", position, sum_variant_prob, variant_prob);
+            variant_prob = [variant_prob[0] / sum_variant_prob, variant_prob[1] / sum_variant_prob, variant_prob[2] / sum_variant_prob];
+            // println!("4:{}:{},{:?}", position, correction_factor, variant_prob);
             // QUAL phred-scaled quality score for the assertion made in ALT. i.e. give -10log_10 prob(call in ALT is wrong).
             // If ALT is `.` (no variant) then this is -10log_10 p(variant), and if ALT is not `.` this is -10log_10 p(no variant).
-            let variant_quality = -10.0 * ((10e-301_f64.max(genotype_prob[2])).log10());    // if variant_quality is greater than 3000, we set it to 3000
+            let variant_quality = -10.0 * ((10e-301_f64.max(variant_prob[2])).log10());    // if variant_quality is greater than 3000, we set it to 3000
 
             // calculate GQ: The value of GQ is simply the difference between the second lowest PL and the lowest PL (which is always 0, normalized PL)
             let mut log10_likelihood = loglikelihood.clone();
@@ -790,12 +790,14 @@ impl SNPFrag {
             log10_likelihood[1] = 10.0_f64.powf(log10_likelihood[1] - max_log10_likelihood);
             log10_likelihood[2] = 10.0_f64.powf(log10_likelihood[2] - max_log10_likelihood);
             let sum_log10_likelihood = log10_likelihood[0] + log10_likelihood[1] + log10_likelihood[2];
-            let mut sorted_pl = [log10_likelihood[0] / sum_log10_likelihood, log10_likelihood[1] / sum_log10_likelihood, log10_likelihood[2] / sum_log10_likelihood];
-            sorted_pl[0] = -10.0 * sorted_pl[0].log10();    // phred scale likelihood of genotype: 1/1
-            sorted_pl[1] = -10.0 * sorted_pl[1].log10();    // phred scale likelihood of genotype: 0/1
-            sorted_pl[2] = -10.0 * sorted_pl[2].log10();    // phred scale likelihood of genotype: 0/0
-            sorted_pl.sort_by(cmp_f64);
-            let genotype_quality = sorted_pl[1] - sorted_pl[0];
+            let mut genotype_prob = [log10_likelihood[0] / sum_log10_likelihood, log10_likelihood[1] / sum_log10_likelihood, log10_likelihood[2] / sum_log10_likelihood];
+            // println!("{}:{},{},{},{}", profile.region.chr, position, genotype_prob[0], genotype_prob[1], genotype_prob[2]);
+            let mut phred_genotype_prob = [0.0, 0.0, 0.0];
+            phred_genotype_prob[0] = -10.0 * genotype_prob[0].log10();    // phred scale likelihood of genotype: 1/1
+            phred_genotype_prob[1] = -10.0 * genotype_prob[1].log10();    // phred scale likelihood of genotype: 0/1
+            phred_genotype_prob[2] = -10.0 * genotype_prob[2].log10();    // phred scale likelihood of genotype: 0/0
+            phred_genotype_prob.sort_by(cmp_f64);
+            let genotype_quality = phred_genotype_prob[1] - phred_genotype_prob[0];
 
             // filter low variant quality
             if variant_quality < min_qual_for_candidate as f64 {
