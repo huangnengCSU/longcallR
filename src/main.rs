@@ -215,6 +215,10 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_bam_output: bool,
 
+    /// haplotype_bam_output
+    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    haplotype_bam_output: bool,
+
     /// debug SNP
     #[clap(long, action = ArgAction::SetTrue)]
     debug_snp: bool,
@@ -241,6 +245,7 @@ fn main() {
     let genotype_only = arg.genotype_only;
     let phasing_output = arg.no_phase_vcf;  // default=true
     let no_bam_output = arg.no_bam_output; // default=false
+    let haplotype_bam_output = arg.haplotype_bam_output; // default=false
     let debug_snp = arg.debug_snp; // default=false
     let debug_block = arg.debug_block; // default=false
 
@@ -562,6 +567,7 @@ fn main() {
                                    read_assignment_cutoff,
                                    imbalance_allele_expression_cutoff,
                                    phasing_output,
-                                   no_bam_output);
+                                   no_bam_output,
+                                   haplotype_bam_output);
     }
 }

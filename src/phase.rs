@@ -2810,9 +2810,12 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   read_assignment_cutoff: f64,
                                   imbalance_allele_expression_cutoff: f32,
                                   output_phasing: bool,
-                                  no_bam_output: bool) {
+                                  no_bam_output: bool,
+                                  haplotype_bam_output: bool) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
+    let read_haplotag1_queue = Mutex::new(VecDeque::new());
+    let read_haplotag2_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
     // let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
     // let header = bam::Header::from_template(bam.header());
@@ -2870,9 +2873,37 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     // }
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     {
-                        let mut queue = read_haplotag_queue.lock().unwrap();
-                        for a in read_assignments.iter() {
-                            queue.push_back((a.0.clone(), a.1.clone()));
+                        if haplotype_bam_output {
+                            let mut queue1 = read_haplotag1_queue.lock().unwrap();
+                            let mut queue2 = read_haplotag2_queue.lock().unwrap();
+                            let mut hap1_read_count = 0;
+                            let mut hap2_read_count = 0;
+                            let mut haplotype_read_count_pass = false;
+                            for a in read_assignments.iter() {
+                                if *a.1 == 1 {
+                                    hap1_read_count += 1;
+                                } else if *a.1 == 2 {
+                                    hap2_read_count += 1;
+                                }
+                                if hap1_read_count >= 10 && hap2_read_count >= 10 {
+                                    haplotype_read_count_pass = true;
+                                    break;
+                                }
+                            }
+                            if haplotype_read_count_pass {
+                                for a in read_assignments.iter() {
+                                    if *a.1 == 1 {
+                                        queue1.push_back(a.0.clone());
+                                    } else if *a.1 == 2 {
+                                        queue2.push_back(a.0.clone());
+                                    }
+                                }
+                            }
+                        } else {
+                            let mut queue = read_haplotag_queue.lock().unwrap();
+                            for a in read_assignments.iter() {
+                                queue.push_back((a.0.clone(), a.1.clone()));
+                            }
                         }
                     }
                 }
@@ -2938,34 +2969,72 @@ pub fn multithread_phase_haplotag(bam_file: String,
     println!("{} Finish writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
 
     if !no_bam_output {
-        println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
-        let mut read_assignments: HashMap<String, i32> = HashMap::new();
-        for rd in read_haplotag_queue.lock().unwrap().iter() {
-            read_assignments.insert(rd.0.clone(), rd.1.clone());
-        }
-        let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
-        let header = bam::Header::from_template(&bam_reader.header());
-        let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
-        bam_writer.set_threads(thread_size).unwrap();
-        for region in isolated_regions.iter() {
-            bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
-            for r in bam_reader.records() {
-                let mut record = r.unwrap();
-                if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
-                    continue;
+        if !haplotype_bam_output {
+            println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+            let mut read_assignments: HashMap<String, i32> = HashMap::new();
+            for rd in read_haplotag_queue.lock().unwrap().iter() {
+                read_assignments.insert(rd.0.clone(), rd.1.clone());
+            }
+            let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
+            let header = bam::Header::from_template(&bam_reader.header());
+            let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
+            bam_writer.set_threads(thread_size).unwrap();
+            for region in isolated_regions.iter() {
+                bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
+                for r in bam_reader.records() {
+                    let mut record = r.unwrap();
+                    if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                        continue;
+                    }
+                    let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                    if read_assignments.contains_key(&qname) {
+                        let asg = read_assignments.get(&qname).unwrap();
+                        if *asg != 0 {
+                            let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+                        }
+                    }
+                    let _ = bam_writer.write(&record).unwrap();
                 }
-                let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-                if read_assignments.contains_key(&qname) {
-                    let asg = read_assignments.get(&qname).unwrap();
-                    if *asg != 0 {
-                        let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
+            }
+            drop(bam_writer);
+            println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+        } else {
+            println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+            let mut hap1_read_assignments: HashSet<String> = HashSet::new();
+            let mut hap2_read_assignments: HashSet<String> = HashSet::new();
+            for rname in read_haplotag1_queue.lock().unwrap().iter() {
+                hap1_read_assignments.insert(rname.clone());
+            }
+            for rname in read_haplotag2_queue.lock().unwrap().iter() {
+                hap2_read_assignments.insert(rname.clone());
+            }
+            println!("hap1: {}", hap1_read_assignments.len());
+            println!("hap2: {}", hap2_read_assignments.len());
+            let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
+            let header = bam::Header::from_template(&bam_reader.header());
+            let mut hap1_bam_writer = bam::Writer::from_path(phased_bam_file.replace("phased", "hap1"), &header, Format::Bam).unwrap();
+            let mut hap2_bam_writer = bam::Writer::from_path(phased_bam_file.replace("phased", "hap2"), &header, Format::Bam).unwrap();
+            hap1_bam_writer.set_threads(thread_size).unwrap();
+            hap2_bam_writer.set_threads(thread_size).unwrap();
+            for region in isolated_regions.iter() {
+                bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
+                for r in bam_reader.records() {
+                    let mut record = r.unwrap();
+                    if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                        continue;
+                    }
+                    let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                    if hap1_read_assignments.contains(&qname) {
+                        let _ = hap1_bam_writer.write(&record).unwrap();
+                    } else if hap2_read_assignments.contains(&qname) {
+                        let _ = hap2_bam_writer.write(&record).unwrap();
                     }
                 }
-                let _ = bam_writer.write(&record).unwrap();
             }
+            drop(hap1_bam_writer);
+            drop(hap2_bam_writer);
+            println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
         }
-        drop(bam_writer);
-        println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
     }
 }
 
