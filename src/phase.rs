@@ -79,6 +79,14 @@ pub struct FragElem {
     // error rate of observe current base
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct Exon {
+    pub start: i64,
+    // start position on the reference, 0-based, inclusive
+    pub end: i64,
+    // end position on the reference, 0-based, exclusive
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Fragment {
     pub fragment_idx: usize,
@@ -93,7 +101,7 @@ pub struct Fragment {
     // haplotype assignment of the fragment, 0,1,2. 0: unassigned, 1: hap1, 2: hap2
     pub assignment_score: f64,
     // probability of the haplotype assignment
-    pub exons: Vec<[i64; 2]>,
+    pub exons: Vec<Exon>,
     // exons of the read on the reference, 0-based, [start, end)
 }
 
@@ -1154,7 +1162,8 @@ impl SNPFrag {
                     }
                     b'N' => {
                         exon_end = pos_on_ref;
-                        fragment.exons.push([exon_start, exon_end]);
+                        // fragment.exons.push([exon_start, exon_end]);
+                        fragment.exons.push(Exon { start: exon_start, end: exon_end });
                         exon_start = -1;
                         exon_end = -1;
                         for _ in 0..cg.len() {
@@ -1226,7 +1235,8 @@ impl SNPFrag {
                 exon_end = pos_on_ref;
             }
             if exon_end != exon_start {
-                fragment.exons.push([exon_start, exon_end]);
+                // fragment.exons.push([exon_start, exon_end]);
+                fragment.exons.push(Exon { start: exon_start, end: exon_end });
             }
             exon_start = -1;
             exon_end = -1;
@@ -2773,6 +2783,111 @@ impl SNPFrag {
 //     }
 // }
 
+fn exon_cluster(mut exons: Vec<Exon>, smallest_start: i64, largest_end: i64, min_sup: i32, merge_threshold: f32) -> Vec<Exon> {
+    let mut cover_vec = vec![0; (largest_end - smallest_start) as usize];
+    let mut cover_exon_idx: Vec<Vec<usize>> = vec![Vec::new(); (largest_end - smallest_start) as usize];
+    for idx in 0..exons.len() {
+        let e = &exons[idx];
+        for j in e.start..e.end {
+            cover_vec[j as usize - smallest_start as usize] += 1;
+        }
+        cover_exon_idx[e.start as usize - smallest_start as usize].push(idx);
+    }
+
+    // for overlapped exons, merge them into one cluster
+    let mut clustersI: Vec<Vec<Exon>> = Vec::new();
+    let mut ts = -1;    // index in cover_vec
+    let mut te = -1;    // index in cover_vec
+    for i in 0..cover_vec.len() {
+        if cover_vec[i] == 0 {
+            if ts >= 0 && te >= 0 {
+                let mut t_cluster: Vec<Exon> = Vec::new();
+                for ti in (ts as usize)..=(te as usize) {
+                    for idx in cover_exon_idx[ti].iter() {
+                        t_cluster.push(exons[*idx].clone());
+                    }
+                }
+                clustersI.push(t_cluster);
+                ts = -1;
+                te = -1;
+            }
+            continue;
+        } else {
+            if ts == -1 && te == -1 {
+                ts = i as i64;
+                te = i as i64;
+            } else {
+                te = i as i64;
+            }
+        }
+    }
+    if ts >= 0 && te >= 0 {
+        let mut t_cluster: Vec<Exon> = Vec::new();
+        for ti in (ts as usize)..=(te as usize) {
+            for idx in cover_exon_idx[ti].iter() {
+                t_cluster.push(exons[*idx].clone());
+            }
+        }
+        clustersI.push(t_cluster);
+    }
+
+    // for c in clustersI.iter() {
+    //     println!("clusterI: {:?}", c.len());
+    // }
+
+    // for each level I cluster, divide them into level II clusters (as hierarchical clustering)
+
+    for c in clustersI.iter() {
+        let mut exon_hashmap: HashMap<Exon, i32> = HashMap::new();
+        for e in c.iter() {
+            if exon_hashmap.contains_key(e) {
+                let count = exon_hashmap.get_mut(e).unwrap();
+                *count += 1;
+            } else {
+                exon_hashmap.insert(e.clone(), 1);
+            }
+        }
+
+        // ignore exons without enough support
+        let mut filter_exons: Vec<Exon> = Vec::new();
+        for (e, count) in exon_hashmap.iter() {
+            if *count < min_sup {
+                filter_exons.push(e.clone());
+            }
+        }
+        for e in filter_exons.iter() {
+            exon_hashmap.remove(e);
+        }
+        println!("exon_hashmap: {:?}", exon_hashmap);
+
+        // merge close exons based on similarity (start, end, length, support)
+        let remain_exons = exon_hashmap.keys().cloned().collect::<Vec<Exon>>();
+        // pairwise similarity
+        let mut pairwise_similarities: HashMap<(Exon, Exon), f32> = HashMap::new();
+        for i in 0..remain_exons.len() {
+            for j in (i + 1)..remain_exons.len() {
+                let e1 = &remain_exons[i];
+                let e2 = &remain_exons[j];
+                let sim = ((e1.start - e2.start).pow(2) as f32 + (e1.end - e2.end).pow(2) as f32).sqrt() / ((e1.end - e1.start).min(e2.end - e2.start) as f32);
+                if e1.start <= e2.start {
+                    pairwise_similarities.insert((e1.clone(), e2.clone()), sim);
+                } else {
+                    pairwise_similarities.insert((e2.clone(), e1.clone()), sim);
+                }
+            }
+        }
+        // TODO: merge exons if the similarity is smaller than threshold_for_merge
+    }
+
+    let mut clusters: Vec<Exon> = Vec::new();
+    for c in clustersI.iter() {
+        for e in c.iter() {
+            clusters.push(e.clone());
+        }
+    }
+    return clusters;
+}
+
 pub fn multithread_phase_haplotag(bam_file: String,
                                   ref_file: String,
                                   vcf_file: String,
@@ -2811,7 +2926,9 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   imbalance_allele_expression_cutoff: f32,
                                   output_phasing: bool,
                                   no_bam_output: bool,
-                                  haplotype_bam_output: bool) {
+                                  haplotype_bam_output: bool,
+                                  output_read_assignment: bool,
+                                  exon_consensus: bool) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag1_queue = Mutex::new(VecDeque::new());
@@ -2873,7 +2990,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     // }
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     {
-                        if haplotype_bam_output {
+                        if haplotype_bam_output || exon_consensus {
                             let mut queue1 = read_haplotag1_queue.lock().unwrap();
                             let mut queue2 = read_haplotag2_queue.lock().unwrap();
                             let mut hap1_read_count = 0;
@@ -2890,7 +3007,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                     break;
                                 }
                             }
-                            if haplotype_read_count_pass {
+                            if haplotype_bam_output && haplotype_read_count_pass {
                                 for a in read_assignments.iter() {
                                     if *a.1 == 1 {
                                         queue1.push_back(a.0.clone());
@@ -2898,6 +3015,41 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                         queue2.push_back(a.0.clone());
                                     }
                                 }
+                            }
+                            if exon_consensus && haplotype_read_count_pass {
+                                let mut hap1_exons: Vec<Exon> = Vec::new();
+                                let mut hap2_exons: Vec<Exon> = Vec::new();
+                                let mut hap1_smallest_start = 0;
+                                let mut hap1_largest_end = 0;
+                                let mut hap2_smallest_start = 0;
+                                let mut hap2_largest_end = 0;
+                                // collect exons
+                                for frag in snpfrag.fragments.iter() {
+                                    if frag.assignment == 1 {
+                                        for e in frag.exons.iter() {
+                                            hap1_exons.push(e.clone());
+                                            if hap1_smallest_start == 0 || e.start < hap1_smallest_start {
+                                                hap1_smallest_start = e.start;
+                                            }
+                                            if e.end > hap1_largest_end {
+                                                hap1_largest_end = e.end;
+                                            }
+                                        }
+                                    } else if frag.assignment == 2 {
+                                        for e in frag.exons.iter() {
+                                            hap2_exons.push(e.clone());
+                                            if hap2_smallest_start == 0 || e.start < hap2_smallest_start {
+                                                hap2_smallest_start = e.start;
+                                            }
+                                            if e.end > hap2_largest_end {
+                                                hap2_largest_end = e.end;
+                                            }
+                                        }
+                                    }
+                                }
+                                // consensus exons
+                                let hap1_consensus_exons = exon_cluster(hap1_exons.clone(), hap1_smallest_start, hap1_largest_end, 5, 0.1);
+                                let hap2_consensus_exons = exon_cluster(hap2_exons.clone(), hap2_smallest_start, hap2_largest_end, 5, 0.1);
                             }
                         } else {
                             let mut queue = read_haplotag_queue.lock().unwrap();
@@ -2967,6 +3119,15 @@ pub fn multithread_phase_haplotag(bam_file: String,
     }
     drop(vf);
     println!("{} Finish writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
+
+    if output_read_assignment {
+        let mut assignment_writer = File::create(phased_bam_file.replace(".phased.bam", ".assignment.tsv")).unwrap();
+        for rd in read_haplotag_queue.lock().unwrap().iter() {
+            // println!("{}:{}", rd.0, rd.1);
+            assignment_writer.write(format!("{}\t{}\n", rd.0, rd.1).as_bytes()).unwrap();
+        }
+        drop(assignment_writer);
+    }
 
     if !no_bam_output {
         if !haplotype_bam_output {
