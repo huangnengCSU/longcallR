@@ -18,6 +18,8 @@ use crate::base_matrix::{*};
 use crate::isolated_region::find_isolated_regions;
 use crate::Platform;
 use crate::profile::{BaseFreq, BaseQual, BaseStrands, DistanceToEnd};
+use fishers_exact::fishers_exact;
+use mathru::statistics::test::{ChiSquare, Test};
 
 
 pub fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
@@ -643,4 +645,42 @@ impl Profile {
             }
         }
     }
+}
+
+pub fn independent_test(data: [u32; 4]) -> f64 {
+    // use chi-square test or fisher's exact test to test whether two variables are independent
+    // N<40 or T<1, use fisher's exact test
+    // N>=40, T>=5 in >80% of cells, use chi-square test
+    // N>=40, T>=5 in <=80% of cells, use fisher's exact test
+    // return true if independent, false if not independent
+    let mut phred_pvalue = 0.0;
+    let N = data[0] + data[1] + data[2] + data[3];
+    let mut TL = [0.0; 4];
+    TL[0] = (((data[0] + data[1]) * (data[0] + data[2])) as f32) / (N as f32);
+    TL[1] = (((data[0] + data[1]) * (data[1] + data[3])) as f32) / (N as f32);
+    TL[2] = (((data[2] + data[3]) * (data[0] + data[2])) as f32) / (N as f32);
+    TL[3] = (((data[2] + data[3]) * (data[1] + data[3])) as f32) / (N as f32);
+    let mut T = 0.0;
+    for i in 0..data.len() {
+        if TL[i] >= 5.0 {
+            T += 1.0;
+        }
+    }
+    T = T / data.len() as f32;
+
+    if N > 40 && T > 0.8 {
+        // use chi-square test
+        let x = vec![data[0] as f64, data[1] as f64];
+        let y = vec![data[2] as f64, data[3] as f64];
+        let p = ChiSquare::test_vector(&x, &y).p_value();
+        phred_pvalue = -10.0 * p.log10();
+    }
+
+    if N <= 40 {
+        // use fisher's exact test
+        let p = fishers_exact(&data).unwrap().two_tail_pvalue;
+        phred_pvalue = -10.0 * p.log10();
+    }
+
+    return phred_pvalue;
 }
