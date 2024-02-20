@@ -1,25 +1,231 @@
-use std::cmp::min;
 use rust_htslib::{bam, bam::Format, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
-use std::{fs, process};
+use std::{fs, fs::File};
 use std::collections::{VecDeque, HashMap};
-use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
 use bio::bio_types::strand::ReqStrand::Forward;
+use bio::io::fasta;
 use chrono::Local;
-use clap::builder::Str;
 use seq_io::fasta::{Reader, Record};
-use threadpool::ThreadPool;
-use crate::bam_reader::Region;
-use crate::base_matrix::BaseMatrix;
-use crate::base_matrix::{*};
-use crate::isolated_region::find_isolated_regions;
 use crate::Platform;
-use crate::profile::{BaseFreq, BaseQual, BaseStrands, DistanceToEnd};
 use fishers_exact::fishers_exact;
 use mathru::statistics::test::{ChiSquare, Test};
+
+#[derive(Default,Clone,Debug)]
+pub struct Region {
+    pub(crate) chr: String,
+    pub(crate) start: u32,
+    // 1-based
+    pub(crate) end: u32,   // 1-based
+}
+
+impl Region {
+    pub fn new(region: String) -> Region {
+        // region format: chr:start-end
+        if !region.contains(":") {
+            let chr = region;
+            return Region {
+                chr,
+                start: 0,
+                end: 0,
+            };
+        } else if region.contains(":") && region.contains("-") {
+            let region_vec: Vec<&str> = region.split(":").collect();
+            let chr = region_vec[0].to_string();
+            let pos_vec: Vec<&str> = region_vec[1].split("-").collect();
+            let start = pos_vec[0].parse::<u32>().unwrap();
+            let end = pos_vec[1].parse::<u32>().unwrap();
+            assert!(start <= end);
+            return Region {
+                chr,
+                start,
+                end,
+            };
+        } else {
+            panic!("region format error!");
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct BaseQual {
+    pub a: Vec<u8>,
+    pub c: Vec<u8>,
+    pub g: Vec<u8>,
+    pub t: Vec<u8>,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct BaseStrands {
+    pub a: [i32; 2],
+    // [forward, backward]
+    pub c: [i32; 2],
+    pub g: [i32; 2],
+    pub t: [i32; 2],
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct DistanceToEnd {
+    pub a: Vec<i64>,
+    // allele A to the end of read for every read
+    pub c: Vec<i64>,
+    // allele C to the end of read for every read
+    pub g: Vec<i64>,
+    // allele G to the end of read for every read
+    pub t: Vec<i64>,
+    // allele T to the end of read for every read
+}
+
+
+#[derive(Default, Debug, Clone)]
+pub struct BaseFreq {
+    pub a: u32,
+    pub c: u32,
+    pub g: u32,
+    pub t: u32,
+    pub n: u32,
+    // number of introns
+    pub d: u32,
+    // number of deletions
+    pub ni: u32,
+    // number of insertions
+    pub i: bool,
+    // whether this position falls in an insertion
+    pub ref_base: char,
+    // reference base, A,C,G,T,N,-
+    pub intron: bool,
+    // whether this position is an intron
+    pub forward_cnt: u32,
+    // number of forward reads covering this position, excluding intron
+    pub backward_cnt: u32,
+    // number of backward reads covering this position, excluding intron
+    pub baseq: BaseQual,
+    pub base_strands: BaseStrands,
+    pub distance_to_end: DistanceToEnd,
+}
+
+impl BaseFreq {
+    pub fn subtract(&mut self, base: u8) {
+        match base {
+            b'A' => {
+                assert!(self.a > 0);
+                self.a -= 1;
+            }
+            b'C' => {
+                assert!(self.c > 0);
+                self.c -= 1;
+            }
+            b'G' => {
+                assert!(self.g > 0);
+                self.g -= 1;
+            }
+            b'T' => {
+                assert!(self.t > 0);
+                self.t -= 1;
+            }
+            b'N' => {
+                assert!(self.n > 0);
+                self.n -= 1;
+            }
+            b'-' => {
+                assert!(self.d > 0);
+                self.d -= 1;
+            }
+            b'*' => {
+                return;
+            }
+            _ => {
+                panic!("Invalid base: {}", base as char);
+            }
+        }
+    }
+
+    pub fn add(&mut self, base: u8) {
+        match base {
+            b'A' => {
+                self.a += 1;
+            }
+            b'C' => {
+                self.c += 1;
+            }
+            b'G' => {
+                self.g += 1;
+            }
+            b'T' => {
+                self.t += 1;
+            }
+            b'N' => {
+                self.n += 1;
+            }
+            b'-' => {
+                self.d += 1;
+            }
+            b'*' => {
+                return;
+            }
+            _ => {
+                panic!("Invalid base: {}", base as char);
+            }
+        }
+    }
+
+    pub fn get_depth_include_intron(&self) -> u32 {
+        self.a + self.c + self.g + self.t + self.d + self.n
+    }
+
+    pub fn get_depth_exclude_intron_deletion(&self) -> u32 {
+        self.a + self.c + self.g + self.t
+    }
+
+    pub fn get_two_major_alleles(&self) -> (char, u32, char, u32) {
+        let mut x: Vec<(char, u32)> = [('A', self.a), ('C', self.c), ('G', self.g), ('T', self.t)].iter().cloned().collect();
+        // sort by count: u32
+        x.sort_by(|a, b| b.1.cmp(&a.1));
+        (x[0].0, x[0].1, x[1].0, x[1].1)
+    }
+
+    pub fn get_none_ref_count(&self) -> u32 {
+        match self.ref_base {
+            'A' => self.c + self.g + self.t + self.d,
+            'C' => self.a + self.g + self.t + self.d,
+            'G' => self.a + self.c + self.t + self.d,
+            'T' => self.a + self.c + self.g + self.d,
+            _ => {
+                0
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct VCFRecord {
+    pub chromosome: Vec<u8>,
+    pub position: u64,
+    pub id: Vec<u8>,
+    pub reference: Vec<u8>,
+    pub alternative: Vec<Vec<u8>>,
+    pub qual: i32,
+    pub filter: Vec<u8>,
+    pub info: Vec<u8>,
+    pub format: Vec<u8>,
+    pub genotype: String,
+    /* private fields */
+}
+
+
+
+
+pub fn load_reference(ref_path: String) -> HashMap<String, Vec<u8>> {
+    let mut ref_seqs: HashMap<String, Vec<u8>> = HashMap::new();
+    let reader = fasta::Reader::from_file(ref_path).unwrap();
+    for r in reader.records() {
+        let ref_record = r.unwrap();
+        ref_seqs.insert(ref_record.id().to_string(), ref_record.seq().to_vec());
+    }
+    return ref_seqs;
+}
 
 
 pub fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
@@ -76,187 +282,6 @@ pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32)
     return isolated_regions;
 }
 
-
-pub fn multithread_produce(bam_file: String, thread_size: usize, tx_low: mpsc::Sender<Region>, tx_high: mpsc::Sender<Region>) {
-    let pool = ThreadPool::new(thread_size);
-    let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
-    let bam_header = bam.header().clone();
-    let mut contig_names: VecDeque<String> = VecDeque::new();
-    for ctg in bam_header.target_names() {
-        contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
-    }
-    while !contig_names.is_empty() {
-        let ctg = contig_names.pop_front().unwrap();
-        let tx_l = tx_low.clone();
-        let tx_h = tx_high.clone();
-        let bam_file_clone = bam_file.clone();
-        pool.execute(move || {
-            let (normal_depth_regions, high_depth_regions) = get_chrom_coverage_intervals(bam_file_clone.clone(), ctg.as_str(), 1000);
-            for region in normal_depth_regions {
-                tx_l.send(region).unwrap();
-            }
-            for region in high_depth_regions {
-                tx_h.send(region).unwrap();
-            }
-        });
-    }
-    pool.join();
-}
-
-pub fn multithread_work(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_low: mpsc::Receiver<Region>, rx_high: mpsc::Receiver<Region>) {
-    let pool = ThreadPool::new(thread_size);
-    let bam_records_queue: Arc<Mutex<VecDeque<bam::Record>>> = Arc::new(Mutex::new(VecDeque::new()));
-    let bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
-    let header = bam::Header::from_template(bam.header());
-    let bam_writer = bam::Writer::from_path(out_bam.clone(), &header, Format::Bam).unwrap();
-    let mut bam_writer = Arc::new(Mutex::new(bam_writer));
-    let ref_seqs = load_reference(ref_file.to_string());
-
-    // multiplethreads for low coverage regions
-    for normal_depth_region in rx_low {
-        let bam_file_clone = bam_file.clone();
-        let ref_seqs_clone = ref_seqs.clone();
-        let bam_records_queue = Arc::clone(&bam_records_queue);
-        let bam_writer_clone = Arc::clone(&bam_writer);
-        pool.execute(move || {
-            let mut base_matrix = BaseMatrix::new();
-            base_matrix.load_data(bam_file_clone.clone().to_string(), normal_depth_region);
-            base_matrix.load_ref_data(ref_seqs_clone.clone());
-            base_matrix.expand_insertion();
-            let (forward_donor_penalty,
-                forward_acceptor_penalty,
-                reverse_donor_penalty,
-                reverse_acceptor_penalty) = get_donor_acceptor_penalty(&base_matrix.expanded_matrix, 30.0);
-            let mut best_reduced_expanded_matrix: HashMap<String, Vec<u8>> = HashMap::new();
-            let mut best_column_indexes: Vec<usize> = Vec::new();
-            profile_realign(&base_matrix.expanded_matrix,
-                            &forward_donor_penalty,
-                            &forward_acceptor_penalty,
-                            &reverse_donor_penalty,
-                            &reverse_acceptor_penalty,
-                            &mut best_reduced_expanded_matrix,
-                            &mut best_column_indexes);
-            update_expanded_matrix_from_realign(&mut base_matrix.expanded_matrix, &best_reduced_expanded_matrix, &best_column_indexes);
-            update_bam_records_from_realign(&mut base_matrix.expanded_matrix, &mut base_matrix.bam_records, base_matrix.start_position, base_matrix.end_position);
-            let mut queue = bam_records_queue.lock().unwrap();
-            for (_, record) in base_matrix.bam_records {
-                queue.push_back(record);
-            }
-            if queue.len() > 100000 {
-                for record in queue.iter() {
-                    let re = bam_writer_clone.lock().unwrap().write(&record);
-                    if re != Ok(()) {
-                        println!("write failed");
-                        process::exit(1);
-                    }
-                }
-                queue.clear();
-            }
-        });
-    }
-    pool.join();
-    if bam_records_queue.lock().unwrap().len() > 0 {
-        for record in bam_records_queue.lock().unwrap().iter() {
-            let re = bam_writer.lock().unwrap().write(&record);
-            if re != Ok(()) {
-                println!("write failed");
-                process::exit(1);
-            }
-        }
-        bam_records_queue.lock().unwrap().clear();
-    }
-
-    let pool = ThreadPool::new(thread_size);
-    for high_depth_region in rx_high {
-        let bam_file_clone = bam_file.clone();
-        let ref_seqs_clone = ref_seqs.clone();
-        let bam_records_queue = Arc::clone(&bam_records_queue);
-        let bam_writer_clone = Arc::clone(&bam_writer);
-        pool.execute(move || {
-            let mut base_matrix = BaseMatrix::new();
-            base_matrix.load_data_without_extension(bam_file_clone.clone().to_string(), high_depth_region);
-            base_matrix.load_ref_data(ref_seqs_clone.clone());
-            base_matrix.expand_insertion();
-            let (forward_donor_penalty,
-                forward_acceptor_penalty,
-                reverse_donor_penalty,
-                reverse_acceptor_penalty) = get_donor_acceptor_penalty(&base_matrix.expanded_matrix, 30.0);
-            let mut best_reduced_expanded_matrix: HashMap<String, Vec<u8>> = HashMap::new();
-            let mut best_column_indexes: Vec<usize> = Vec::new();
-            profile_realign(&base_matrix.expanded_matrix,
-                            &forward_donor_penalty,
-                            &forward_acceptor_penalty,
-                            &reverse_donor_penalty,
-                            &reverse_acceptor_penalty,
-                            &mut best_reduced_expanded_matrix,
-                            &mut best_column_indexes);
-            update_expanded_matrix_from_realign(&mut base_matrix.expanded_matrix, &best_reduced_expanded_matrix, &best_column_indexes);
-            update_bam_records_from_realign(&mut base_matrix.expanded_matrix, &mut base_matrix.bam_records, base_matrix.start_position, base_matrix.end_position);
-            let mut queue = bam_records_queue.lock().unwrap();
-            for (_, record) in base_matrix.bam_records {
-                queue.push_back(record);
-            }
-            if queue.len() > 10000 {
-                for record in queue.iter() {
-                    let re = bam_writer_clone.lock().unwrap().write(&record);
-                    if re != Ok(()) {
-                        println!("write failed");
-                        process::exit(1);
-                    }
-                }
-                queue.clear();
-            }
-        });
-    }
-    pool.join();
-    if bam_records_queue.lock().unwrap().len() > 0 {
-        for record in bam_records_queue.lock().unwrap().iter() {
-            let re = bam_writer.lock().unwrap().write(&record);
-            if re != Ok(()) {
-                println!("write failed");
-                process::exit(1);
-            }
-        }
-        bam_records_queue.lock().unwrap().clear();
-    }
-}
-
-
-pub fn multithread_produce2(bam_file: String, thread_size: usize, tx_isolated_regions: mpsc::Sender<Region>) {
-    let pool = ThreadPool::new(&thread_size - 1);
-    let cond = Arc::new((Mutex::new(()), Condvar::new()));
-    let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
-    let bam_header = bam.header().clone();
-    let mut contig_names: VecDeque<String> = VecDeque::new();
-    for ctg in bam_header.target_names() {
-        contig_names.push_back(std::str::from_utf8(ctg).unwrap().to_string().clone());
-    }
-    while !contig_names.is_empty() {
-        let c = cond.clone();
-        let ctg = contig_names.pop_front().unwrap();
-        let tx_ir = tx_isolated_regions.clone();
-        let bam_file_clone = bam_file.clone();
-        pool.execute(move || {
-            {
-                let (lock, cvar) = &*c;
-                let _guard = lock.lock().unwrap();
-                cvar.notify_one();
-            }
-            let isolated_regions = find_isolated_regions(bam_file_clone.clone().as_str(), 1, Some(ctg.as_str()));
-            for region in isolated_regions {
-                tx_ir.send(region).unwrap();
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        });
-        let (lock, cvar) = &*cond;
-        let guard = lock.lock().unwrap();
-        if pool.queued_count() >= &thread_size - 1 {
-            let tt = cvar.wait(guard).unwrap();
-        }
-    }
-    pool.join();
-}
-
 pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usize, contigs: Option<Vec<String>>) -> Vec<Region> {
     let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
@@ -286,148 +311,10 @@ pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usi
             for region in isolated_regions {
                 results.lock().unwrap().push(region);
             }
-            println!("{:?} finished getting isolated regions", ctg);
         });
     });
     return results.into_inner().unwrap().clone();
 }
-
-// pub fn multithread_work2(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, rx_isolated_regions: mpsc::Receiver<Region>, min_mapq: u8) {
-//     let pool = ThreadPool::new(&thread_size - 1);
-//     let cond = Arc::new((Mutex::new(()), Condvar::new()));
-//     let bam_records_queue: Arc<Mutex<VecDeque<bam::Record>>> = Arc::new(Mutex::new(VecDeque::new()));
-//     let bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
-//     let header = bam::Header::from_template(bam.header());
-//     let bam_writer = bam::Writer::from_path(out_bam.clone(), &header, Format::Bam).unwrap();
-//     let mut bam_writer = Arc::new(Mutex::new(bam_writer));
-//     let ref_seqs = load_reference(ref_file.to_string());
-//
-//     // multiplethreads for low coverage regions
-//     for reg in rx_isolated_regions {
-//         let c = cond.clone();
-//         let bam_file_clone = bam_file.clone();
-//         let ref_seqs_clone = ref_seqs.clone();
-//         let bam_records_queue = Arc::clone(&bam_records_queue);
-//         let bam_writer_clone = Arc::clone(&bam_writer);
-//         pool.execute(move || {
-//             {
-//                 let (lock, cvar) = &*c;
-//                 let _guard = lock.lock().unwrap();
-//                 cvar.notify_one();
-//             }
-//             println!("Start {:?}", reg);
-//             let mut profile = Profile::default();
-//             let mut readnames: Vec<String> = Vec::new();
-//             profile.init_with_pileup(bam_file_clone.clone().as_str(), &reg, ref_seqs_clone.get(&reg.chr).unwrap(), min_mapq, 7, 10, 10000, 2000, 20, 5);
-//             profile.append_reference(&ref_seqs_clone);
-//             let mut parsed_reads = read_bam(bam_file_clone.clone().as_str(), &reg);
-//             for (rname, pr) in parsed_reads.iter_mut() {
-//                 pr.init_parsed_seq(&profile);
-//                 readnames.push(rname.clone());
-//             }
-//             // println!("Total number of reads: {}", &parsed_reads.len());
-//             profile.cal_intron_penalty();
-//             profile.cal_intron_intervals();
-//             // for bf in profile.freq_vec.iter() {
-//             //     println!("{:?}", bf);
-//             // }
-//             realign(&mut profile, &mut parsed_reads, &readnames);
-//             // let header = get_bam_header(bam_file_clone.clone().as_str());
-//             // write_bam(out_bam, &parsed_reads, &header);
-//             {
-//                 let mut queue = bam_records_queue.lock().unwrap();
-//                 for (_, pr) in parsed_reads.iter() {
-//                     queue.push_back(pr.bam_record.clone());
-//                 }
-//                 if queue.len() > 100000 {
-//                     for record in queue.iter() {
-//                         let re = bam_writer_clone.lock().unwrap().write(&record);
-//                         if re != Ok(()) {
-//                             println!("write failed");
-//                             process::exit(1);
-//                         }
-//                     }
-//                     queue.clear();
-//                 }
-//             }
-//             println!("End {:?}", reg);
-//             std::thread::sleep(std::time::Duration::from_millis(1));
-//         });
-//         let (lock, cvar) = &*cond;
-//         let guard = lock.lock().unwrap();
-//         if pool.queued_count() >= &thread_size - 1 {
-//             let tt = cvar.wait(guard).unwrap();
-//         }
-//     }
-//     pool.join();
-//     if bam_records_queue.lock().unwrap().len() > 0 {
-//         for record in bam_records_queue.lock().unwrap().iter() {
-//             let re = bam_writer.lock().unwrap().write(&record);
-//             if re != Ok(()) {
-//                 println!("write failed");
-//                 process::exit(1);
-//             }
-//         }
-//         bam_records_queue.lock().unwrap().clear();
-//     }
-// }
-
-
-// pub fn multithread_work3(bam_file: String, ref_file: String, out_bam: String, thread_size: usize, isolated_regions: Vec<Region>, min_mapq: u8) {
-//     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
-//     let bam_records_queue = Mutex::new(VecDeque::new());
-//     let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
-//     let header = bam::Header::from_template(bam.header());
-//     let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
-//     let ref_seqs = load_reference(ref_file);
-//
-//     // multiplethreads for low coverage regions
-//     pool.install(|| {
-//         isolated_regions.par_iter().for_each(|reg| {
-//             println!("Start {:?}", reg);
-//             let mut profile = Profile::default();
-//             let mut readnames: Vec<String> = Vec::new();
-//             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seqs.get(&reg.chr).unwrap(), min_mapq, 10, 10000, 2000, 20, 5);
-//             profile.append_reference(&ref_seqs);
-//             let mut parsed_reads = read_bam(&bam_file.as_str(), &reg);
-//             for (rname, pr) in parsed_reads.iter_mut() {
-//                 pr.init_parsed_seq(&profile);
-//                 readnames.push(rname.clone());
-//             }
-//             profile.cal_intron_penalty();
-//             profile.cal_intron_intervals();
-//             realign(&mut profile, &mut parsed_reads, &readnames);
-//             {
-//                 let mut queue = bam_records_queue.lock().unwrap();
-//                 for (_, pr) in parsed_reads.iter() {
-//                     queue.push_back(pr.bam_record.clone());
-//                 }
-//                 if queue.len() > 100000 {
-//                     for record in queue.iter() {
-//                         let re = bam_writer.lock().unwrap().write(&record);
-//                         if re != Ok(()) {
-//                             println!("write failed");
-//                             process::exit(1);
-//                         }
-//                     }
-//                     queue.clear();
-//                 }
-//             }
-//             println!("End {:?}", reg);
-//         });
-//     });
-//
-//     if bam_records_queue.lock().unwrap().len() > 0 {
-//         for record in bam_records_queue.lock().unwrap().iter() {
-//             let re = bam_writer.lock().unwrap().write(&record);
-//             if re != Ok(()) {
-//                 println!("write failed");
-//                 process::exit(1);
-//             }
-//         }
-//         bam_records_queue.lock().unwrap().clear();
-//     }
-// }
 
 pub fn read_references(ref_path: &str) -> HashMap<String, Vec<u8>> {
     let mut references: HashMap<String, Vec<u8>> = HashMap::new();
@@ -451,7 +338,6 @@ impl Profile {
         // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
 
         let start_time = Instant::now();
-        println!("{} Start to construct FreqVec for region: {}:{}-{}", Local::now().format("%Y-%m-%d %H:%M:%S"), region.chr, region.start, region.end);
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let vec_size = (region.end - region.start) as usize;    // end is exclusive
@@ -492,7 +378,6 @@ impl Profile {
                             let baseq = base_qual[pos_in_read];
 
                             // close to left read end or right read end, check whether current position is in polyA tail
-                            // let ref_base = ref_seq[pos_in_freq_vec] as char;
                             let ref_base = self.freq_vec[pos_in_freq_vec].ref_base;
                             let mut polyA_flag = false;
                             let mut homopolymer_flag = false;
@@ -626,7 +511,6 @@ impl Profile {
             }
         }
         let end_time = Instant::now();
-        println!("Init profile with pileup: {}:{}-{} {} seconds", self.region.chr, self.region.start, self.region.end, end_time.duration_since(start_time).as_secs());
     }
     pub fn append_reference(&mut self, references: &HashMap<String, Vec<u8>>) {
         /*

@@ -2,21 +2,17 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::{fs};
 use std::fs::File;
 use std::hash::Hash;
-use std::io::{BufRead, BufReader, Write};
-use crate::bam_reader::Region;
-use crate::util::{independent_test, parse_fai, Profile};
+use std::io::{Write};
+use crate::util::{Region, independent_test, parse_fai, Profile, load_reference, VCFRecord};
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
 use rust_htslib::htslib::{drand48};
 use std::sync::{Mutex};
 use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
 use rand::seq::SliceRandom;
-use crate::base_matrix::load_reference;
-use crate::vcf::VCFRecord;
-use std::cmp::{max, Ordering};
-use chrono::Local;
+use std::cmp::{Ordering};
 use crate::Platform;
-use probability::distribution::{Binomial, Discrete, Distribution};
+use probability::distribution::{Binomial, Distribution};
 
 
 #[derive(Debug, Clone, Default)]
@@ -158,21 +154,17 @@ impl SNPFrag {
         let mut position = profile.region.start - 1;    // 0-based
         for bfidx in 0..pileup.len() {
             let bf = &pileup[bfidx];
-            // println!("{:?}", bf);
             if bf.i {
-                // insertion base
                 continue;
             }
 
             // 1.filtering with depth
             let depth = bf.get_depth_exclude_intron_deletion();
             if depth < min_coverage {
-                // println!("depth: {}, {}", position, depth);
                 position += 1;
                 continue;
             }
             if depth > max_coverage {
-                // println!("depth: {}, {}", position, depth);
                 position += 1;
                 continue;
             }
@@ -271,118 +263,33 @@ impl SNPFrag {
                 }
                 avg_alleles_baseq /= (allele1_quals.len() + allele2_quals.len()) as f32;
                 if avg_alleles_baseq < min_baseq as f32 {
-                    println!("{}:{} low allele average baseq: {}", profile.region.chr, position, avg_alleles_baseq);
                     position += 1;
                     continue;
                 }
             }
 
-            // let mut allele1_median_dist = 0;
-            // let mut allele2_median_dist = 0;
-            // if allele1_dists.len() >= 5 && allele2_dists.len() >= 5 {
-            //     allele1_dists.sort();
-            //     allele2_dists.sort();
-            //     let mid1 = allele1_dists.len() / 2;
-            //     let mid2 = allele2_dists.len() / 2;
-            //     allele1_median_dist = allele1_dists[mid1];
-            //     allele2_median_dist = allele2_dists[mid2];
-            //     if (allele1_median_dist - allele2_median_dist).abs() > diff_distance_to_read_end {
-            //         println!("{} allele1_median_dist: {}, allele2_median_dist: {}", position, allele1_median_dist, allele2_median_dist);
-            //         position += 1;
-            //         continue;
-            //     }
-            // }
-
-            // let mut allele1_median_qual = 0;
-            // let mut allele2_median_qual = 0;
-            // if allele1_dists.len() >= 5 && allele2_dists.len() >= 5 {
-            //     allele1_quals.sort();
-            //     allele2_quals.sort();
-            //     let mid1 = allele1_quals.len() / 2;
-            //     let mid2 = allele2_quals.len() / 2;
-            //     allele1_median_qual = allele1_quals[mid1];
-            //     allele2_median_qual = allele2_quals[mid2];
-            //     if (allele1_median_qual as i32 - allele2_median_qual as i32).abs() as u8 > diff_baseq {
-            //         println!("{} allele1_median_qual: {}, allele2_median_qual: {}", position, allele1_median_qual, allele2_median_qual);
-            //         position += 1;
-            //         continue;
-            //     }
-            // }
-
-
-            // 2.filtering with depth, considering intron reads
+            // filtering with depth, considering intron reads
             let depth_include_intron = bf.get_depth_include_intron();
             if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // maybe caused by erroneous intron alignment
-                println!("allele freq include intron: {}:{}, {}, {}, {}", profile.region.chr, position, allele1_cnt, allele2_cnt, depth_include_intron);
                 position += 1;
                 continue;
             }
 
-            // 3.filtering with deletion frequency
+            // filtering with deletion frequency
             if bf.d > allele1_cnt {
-                println!("indels: {}:{}, {}, {}, {}", profile.region.chr, position, bf.d, allele1_cnt, allele2_cnt);
                 position += 1;
                 continue;
             }
 
             if !no_strand_bias {
 
-                // 4.filtering snps only covered by one strand reads (may caused by intron alignment error)
+                // filtering snps only covered by one strand reads (may caused by intron alignment error)
                 let total_cover_cnt = bf.forward_cnt + bf.backward_cnt;   // does not include intron reads
                 if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
-                    // strand bias
-                    println!("cover strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, bf.forward_cnt, bf.backward_cnt, total_cover_cnt);
-                    // println!("{:?}", bf);
                     position += 1;
                     continue;
                 }
-
-                // // 5.filtering with strand bias
-                // let mut variant_allele: Vec<char> = Vec::new();
-                // // if allele1 != bf.ref_base {
-                // if allele1 != bf.ref_base && allele1_cnt >= 4 {
-                //     variant_allele.push(allele1);
-                // }
-                // // if allele2 != bf.ref_base {
-                // if allele2 != bf.ref_base && allele2_cnt >= 4 {
-                //     variant_allele.push(allele2);
-                // }
-                // if variant_allele.len() > 0 {
-                //     // variant allele
-                //     let mut strand_bias = false;
-                //     for allele_base in variant_allele.iter() {
-                //         let mut fcnt = 0;
-                //         let mut bcnt = 0;
-                //         match allele_base {
-                //             'a' => { [fcnt, bcnt] = bf.base_strands.a; }
-                //             'A' => { [fcnt, bcnt] = bf.base_strands.a; }
-                //             'c' => { [fcnt, bcnt] = bf.base_strands.c; }
-                //             'C' => { [fcnt, bcnt] = bf.base_strands.c; }
-                //             'g' => { [fcnt, bcnt] = bf.base_strands.g; }
-                //             'G' => { [fcnt, bcnt] = bf.base_strands.g; }
-                //             't' => { [fcnt, bcnt] = bf.base_strands.t; }
-                //             'T' => { [fcnt, bcnt] = bf.base_strands.t; }
-                //             _ => {
-                //                 println!("Error: unknown allele");
-                //                 position += 1;
-                //                 continue;
-                //             }
-                //         }
-                //         let total_cnt = fcnt + bcnt;
-                //         if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
-                //             // strand bias
-                //             println!("strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, fcnt, bcnt, total_cnt);
-                //             // println!("{:?}", bf);
-                //             strand_bias = true;
-                //             continue;
-                //         }
-                //     }
-                //     if strand_bias {
-                //         position += 1;
-                //         continue;
-                //     }
-                // }
 
                 // use fisher's test or chi-square test to test strand bias
                 let mut allele_freq_mat = [0; 4];
@@ -468,12 +375,11 @@ impl SNPFrag {
                 if (allele_freq_mat[0] + allele_freq_mat[2]) > 0 && (allele_freq_mat[1] + allele_freq_mat[3]) > 0 {
                     let phred_pvalue = independent_test([allele_freq_mat[0] as u32, allele_freq_mat[1] as u32, allele_freq_mat[2] as u32, allele_freq_mat[3] as u32]);
                     if phred_pvalue > 100.0 {
-                        // println!("strand bias: {}:{}, {}, {}, {}, {}", profile.region.chr, position, allele_freq_mat[0], allele_freq_mat[1], allele_freq_mat[2], allele_freq_mat[3]);
                         position += 1;
                         continue;
                     }
                 } else {
-                    // 5.filtering with strand bias
+                    // filtering with strand bias
                     let mut variant_allele: Vec<char> = Vec::new();
                     // if allele1 != bf.ref_base {
                     if allele1 != bf.ref_base && allele1_cnt >= 4 {
@@ -507,8 +413,6 @@ impl SNPFrag {
                             let total_cnt = fcnt + bcnt;
                             if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
                                 // strand bias
-                                println!("strand bias: {}:{}, {}, {}, {}", profile.region.chr, position, fcnt, bcnt, total_cnt);
-                                // println!("{:?}", bf);
                                 strand_bias = true;
                                 continue;
                             }
@@ -520,85 +424,6 @@ impl SNPFrag {
                     }
                 }
             }
-
-
-            // // 7. filtering close to read end
-            // let mut left_depths: Vec<u32> = Vec::new();
-            // let mut right_depths: Vec<u32> = Vec::new();
-            // let mut lext = 0;
-            // let mut lidx = bfidx as i32;
-            // let mut rext = 0;
-            // let mut ridx = bfidx;
-            // let mut num_variant_allele = 0;
-            // if allele1 != bf.ref_base {
-            //     num_variant_allele += allele1_cnt;
-            // }
-            // if allele2 != bf.ref_base {
-            //     num_variant_allele += allele2_cnt;
-            // }
-            // while lext <= distance_to_read_end {
-            //     if lidx < 0 {
-            //         break;
-            //     }
-            //     let lbf = &pileup[lidx as usize];
-            //     if lbf.i {
-            //         // ignore insertion region
-            //         lidx -= 1;
-            //         continue;
-            //     }
-            //     if lbf.d as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32 >= 0.7 {
-            //         // ignore deletion region
-            //         lidx -= 1;
-            //         continue;
-            //     }
-            //     left_depths.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d + lbf.n);
-            //     lidx -= 1;
-            //     lext += 1;
-            // }
-            // println!("{} left_depths: \n{:?}", position, left_depths);
-            // while rext <= distance_to_read_end {
-            //     if ridx >= pileup.len() {
-            //         break;
-            //     }
-            //     let rbf = &pileup[ridx];
-            //     if rbf.i {
-            //         // ignore insertion region
-            //         ridx += 1;
-            //         continue;
-            //     }
-            //     if rbf.d as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32 >= 0.7 {
-            //         // ignore deletion region
-            //         ridx += 1;
-            //         continue;
-            //     }
-            //     right_depths.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d + rbf.n);
-            //     ridx += 1;
-            //     rext += 1;
-            // }
-            // println!("{} right_depths: \n{:?}", position, right_depths);
-            //
-            //
-            // if left_depths.len() > 0 {
-            //     let max_left_depth = left_depths.iter().max().unwrap().clone() as i32;
-            //     let min_left_depth = left_depths.iter().min().unwrap().clone() as i32;
-            //     if ((max_left_depth - min_left_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_left_depth < left_depths[0] as i32) {
-            //         println!("close to left read end: {}, {}, {}", position, max_left_depth, min_left_depth);
-            //         position += 1;
-            //         continue;
-            //     }
-            // }
-            //
-            //
-            // if right_depths.len() > 0 {
-            //     let max_right_depth = right_depths.iter().max().unwrap().clone() as i32;
-            //     let min_right_depth = right_depths.iter().min().unwrap().clone() as i32;
-            //     if ((max_right_depth - min_right_depth) > (num_variant_allele as f32 * 0.9) as i32) && (min_right_depth < right_depths[0] as i32) {
-            //         println!("close to right read end: {}, {}, {}", position, max_right_depth, min_right_depth);
-            //         position += 1;
-            //         continue;
-            //     }
-            // }
-
 
             // filtering by local high error rate
             let mut local_misalignment_ratio: Vec<f32> = Vec::new();
@@ -616,7 +441,6 @@ impl SNPFrag {
                     lidx -= 1;
                     continue;
                 }
-                // println!("Left bases: {}, {}, {}, {}, {}", lbf.a, lbf.c, lbf.g, lbf.t, lbf.d);
                 let local_error_rate = lbf.get_none_ref_count() as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
                 local_misalignment_ratio.push(local_error_rate);
                 lext += 1;
@@ -632,14 +456,11 @@ impl SNPFrag {
                     ridx += 1;
                     continue;
                 }
-                // println!("Right bases: {}, {}, {}, {}, {}", rbf.a, rbf.c, rbf.g, rbf.t, rbf.d);
                 let local_error_rate = rbf.get_none_ref_count() as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
                 local_misalignment_ratio.push(local_error_rate);
                 rext += 1;
                 ridx += 1;
             }
-            // println!("{:?}", bf);
-            // println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
 
             let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
             let mut INS_cnts: Vec<u32> = Vec::new();  // number of insertions
@@ -686,8 +507,6 @@ impl SNPFrag {
                 ridx += 1;
                 rext += 1;
             }
-            // println!("{} N_cnts: \n{:?}", position, N_cnts);
-            // println!("{} INS_cnts: \n{:?}", position, INS_cnts);
 
             let max_N_cnt = N_cnts.iter().max().unwrap().clone();
             let min_N_cnt = N_cnts.iter().min().unwrap().clone();
@@ -703,8 +522,6 @@ impl SNPFrag {
                 if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.20 {
                     if N_cnts.len() > 0 {
                         if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
-                            println!("close to the splicing site: {}:{}, {}, {}", profile.region.chr, position, max_N_cnt, min_N_cnt);
-                            println!("{}:{} high local error rate: {}, {}", profile.region.chr, position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
                             position += 1;
                             continue;
                         }
@@ -722,140 +539,9 @@ impl SNPFrag {
                 }
             }
             if insertion_concerned {
-                println!("insertion cause false variant: {}:{}, {}, {}", profile.region.chr, position, num_variant_allele, ins_cnt);
                 position += 1;
                 continue;
             }
-
-
-            /*let mut local_misalignment_ratio: Vec<f32> = Vec::new();
-            let mut lext = 1;
-            let mut lidx = bfidx as i32 - 1;
-            let mut rext = 1;
-            let mut ridx = bfidx + 1;
-            while lext <= distance_to_splicing_site {
-                if lidx < 0 {
-                    break;
-                }
-                let lbf = &pileup[lidx as usize];
-                if lbf.i {
-                    // ignore insertion region
-                    lidx -= 1;
-                    continue;
-                }
-                let local_error_rate = lbf.get_none_ref_count() as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
-                local_misalignment_ratio.push(local_error_rate);
-                lext += 1;
-                lidx -= 1;
-            }
-            while rext <= distance_to_splicing_site {
-                if ridx >= pileup.len() {
-                    break;
-                }
-                let rbf = &pileup[ridx];
-                if rbf.i {
-                    // ignore insertion region
-                    ridx += 1;
-                    continue;
-                }
-                let local_error_rate = rbf.get_none_ref_count() as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
-                local_misalignment_ratio.push(local_error_rate);
-                rext += 1;
-                ridx += 1;
-            }
-            println!("{} local_misalignment_ratio: \n{:?}", position, local_misalignment_ratio);
-            if local_misalignment_ratio.len() as u32 > distance_to_splicing_site {
-                let sum_local_misalignment_ratio = local_misalignment_ratio.iter().sum::<f32>();
-                let mut high_error_cnt = 0;
-                for error_rate in local_misalignment_ratio.iter() {
-                    // if mismatch rate > 10%, we think it is high error rate site for ONT reads
-                    if *error_rate > 0.10 {
-                        high_error_cnt += 1;
-                    }
-                }
-                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 > 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.10 {
-                    println!("{} high local error rate: {}, {}", position, high_error_cnt as f32 / local_misalignment_ratio.len() as f32, sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32);
-                    position += 1;
-                    continue;
-                }
-            }*/
-
-
-            /*// 6.filtering close to the donor and acceptor site
-            let mut N_cnts: Vec<u32> = Vec::new();  // number of N bases (intron)
-            let mut B_cnts: Vec<u32> = Vec::new();  // number of nucleotide bases
-            let mut lext = 0;
-            let mut lidx = bfidx as i32;
-            let mut rext = 1;
-            let mut ridx = bfidx + 1;
-            let mut num_variant_allele = 0;
-            if allele1 != bf.ref_base {
-                num_variant_allele += allele1_cnt;
-            }
-            if allele2 != bf.ref_base {
-                num_variant_allele += allele2_cnt;
-            }
-            while lext <= distance_to_splicing_site {
-                if lidx < 0 {
-                    break;
-                }
-                let lbf = &pileup[lidx as usize];
-                if lbf.i {
-                    // ignore insertion region
-                    lidx -= 1;
-                    continue;
-                }
-                N_cnts.push(lbf.n);
-                B_cnts.push(lbf.a + lbf.c + lbf.g + lbf.t + lbf.d);
-                lidx -= 1;
-                lext += 1;
-            }
-            N_cnts.reverse();
-            B_cnts.reverse();
-            while rext <= distance_to_splicing_site {
-                if ridx >= pileup.len() {
-                    break;
-                }
-                let rbf = &pileup[ridx];
-                if rbf.i {
-                    // ignore insertion region
-                    ridx += 1;
-                    continue;
-                }
-                N_cnts.push(rbf.n);
-                B_cnts.push(rbf.a + rbf.c + rbf.g + rbf.t + rbf.d);
-                ridx += 1;
-                rext += 1;
-            }
-            println!("{} N_cnts: \n{:?}", position, N_cnts);
-            println!("{} B_cnts: \n{:?}", position, B_cnts);
-            if N_cnts.len() > 0 {
-                let max_N_cnt = N_cnts.iter().max().unwrap().clone();
-                let min_N_cnt = N_cnts.iter().min().unwrap().clone();
-                if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
-                    println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                    position += 1;
-                    continue;
-                }
-                // if min_N_cnt == 0 {
-                //     if max_N_cnt - min_N_cnt > 10 {
-                //         println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                //         position += 1;
-                //         continue;
-                //     }
-                // } else {
-                //     // if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.5 {
-                //     if (max_N_cnt - min_N_cnt) as f32 / (min_N_cnt as f32) > 0.3 && max_N_cnt - min_N_cnt >= 8 {
-                //         println!("close to the donor and acceptor site: {}, {}, {}", position, max_N_cnt, min_N_cnt);
-                //         position += 1;
-                //         continue;
-                //     }
-                // }
-            }*/
-
-
-            // 8. filtering lying in long homopolymer regions
-
 
             // genotype likelihood
             let mut loglikelihood = [0.0, 0.0, 0.0];
@@ -877,7 +563,6 @@ impl SNPFrag {
                 identical_baseqs = &bf.baseq.t;
                 different_baseqs = [&bf.baseq.a, &bf.baseq.c, &bf.baseq.g];
             } else if bf.ref_base == 'N' {
-                println!("{}:{} ref base {}", profile.region.chr, position, bf.ref_base);
                 position += 1;
                 continue;
             } else {
@@ -947,7 +632,6 @@ impl SNPFrag {
 
             // filter low variant quality
             if variant_quality < min_qual_for_candidate as f64 {
-                println!("{}:{} low variant quality", profile.region.chr, position);
                 position += 1;
                 continue;
             }
@@ -1001,11 +685,9 @@ impl SNPFrag {
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
                 if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
-                    println!("{}:{} allele1 {:?} low frequency {}", profile.region.chr, position, allele1, allele1_freq);
                     position += 1;
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
-                    println!("{}:{} allele2 {:?} low frequency {}", profile.region.chr, position, allele2, allele2_freq);
                     position += 1;
                     continue;
                 }
@@ -1160,20 +842,12 @@ impl SNPFrag {
             exon_end = exon_start;
 
             for cg in cigar.iter() {
-                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
-                // if pos_on_ref > self.candidate_snps[*self.hete_snps.last().unwrap()].pos {
-                //     break;
-                // }
-                // if idx >= self.hete_snps.len() {
-                //     break;
-                // }
                 match cg.char() as u8 {
                     b'S' | b'H' => {
                         continue;
                     }
                     b'M' | b'X' | b'=' => {
                         for _ in 0..cg.len() {
-                            // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = self.hete_snps[idx];
@@ -1189,44 +863,11 @@ impl SNPFrag {
                                 } else {
                                     frag_elem.p = 0;    // not covered
                                 }
-                                // calculate the cost of links of two snps as hapcut (optioanl)
-                                // if fragment.list.len() > 0 {
-                                //     for prev_frag_elem in fragment.list.iter() {
-                                //         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
-                                //             continue;
-                                //         }
-                                //         let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
-                                //         let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
-                                //         let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
-                                //         let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
-                                //         // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
-                                //         if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
-                                //             let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
-                                //             edge.frag_idxes.push(fragment.fragment_idx);
-                                //             edge.w += w;
-                                //         } else {
-                                //             let mut edge = Edge::default();
-                                //             edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
-                                //             edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
-                                //             edge.w = w;
-                                //             edge.frag_idxes.push(fragment.fragment_idx);
-                                //             self.edges.insert(edge.snp_idxes, edge);
-                                //         }
-                                //     }
-                                // }
-                                // println!("M: {:?}", frag_elem);
-
                                 // filtered SNP and rna editing site will not be used for haplotype phasing, not covered SNP will not be used for haplotype phasing
                                 if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false && frag_elem.p != 0 {
                                     fragment.list.push(frag_elem);
                                 }
                                 idx += 1;
-                                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
-                                // if idx >= self.hete_snps.len() {
-                                //     pos_on_query += 1;
-                                //     pos_on_ref += 1;
-                                //     break;
-                                // }
                                 if idx < self.hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
                                     alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
@@ -1241,7 +882,6 @@ impl SNPFrag {
                     }
                     b'D' => {
                         for _ in 0..cg.len() {
-                            // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = self.hete_snps[idx];
@@ -1250,45 +890,7 @@ impl SNPFrag {
                                 frag_elem.baseq = 0;
                                 frag_elem.strand = strand;
                                 frag_elem.p = 0;
-                                // calculate the cost of links of two snps as hapcut (optioanl)
-                                // if fragment.list.len() > 0 {
-                                //     for prev_frag_elem in fragment.list.iter() {
-                                //         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
-                                //             continue;
-                                //         }
-                                //         let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
-                                //         let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
-                                //         let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
-                                //         let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
-                                //         // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
-                                //         if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
-                                //             let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
-                                //             edge.frag_idxes.push(fragment.fragment_idx);
-                                //             edge.w += w;
-                                //         } else {
-                                //             let mut edge = Edge::default();
-                                //             edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
-                                //             edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
-                                //             edge.w = w;
-                                //             edge.frag_idxes.push(fragment.fragment_idx);
-                                //             self.edges.insert(edge.snp_idxes, edge);
-                                //         }
-                                //     }
-                                // }
-                                // println!("D: {:?}", frag_elem);
-
-                                // Deletion will not be used for haplotype phasing
-                                // filtered SNP and rna editing site will not be used for haplotype phasing
-                                // if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false {
-                                //     fragment.list.push(frag_elem);
-                                // }
-
                                 idx += 1;
-                                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
-                                // if idx >= self.hete_snps.len() {
-                                //     pos_on_ref += 1;
-                                //     break;
-                                // }
                                 if idx < self.hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
                                     alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
@@ -1299,12 +901,10 @@ impl SNPFrag {
                     }
                     b'N' => {
                         exon_end = pos_on_ref;
-                        // fragment.exons.push([exon_start, exon_end]);
                         fragment.exons.push(Exon { start: exon_start, end: exon_end });
                         exon_start = -1;
                         exon_end = -1;
                         for _ in 0..cg.len() {
-                            // assert!(pos_on_ref <= snp_pos, "Error: pos_on_ref <= snp_pos");
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = self.hete_snps[idx];
@@ -1313,45 +913,7 @@ impl SNPFrag {
                                 frag_elem.baseq = 0;
                                 frag_elem.strand = strand;
                                 frag_elem.p = 0;
-                                // calculate the cost of links of two snps as hapcut (optioanl)
-                                // if fragment.list.len() > 0 {
-                                //     for prev_frag_elem in fragment.list.iter() {
-                                //         if prev_frag_elem.p == 0 || frag_elem.p == 0 {
-                                //             continue;
-                                //         }
-                                //         let q1 = 0.1_f64.powf((prev_frag_elem.baseq as f64) / 10.0); // probability of error for prev_frag_elem
-                                //         let q2 = 0.1_f64.powf((frag_elem.baseq as f64) / 10.0);  // probability of error for frag_elem
-                                //         let epsilon = q1 * (1.0 - q2) + (1.0 - q1) * q2; // probability of sequencing error only occurs on start node or end node.
-                                //         let w = (prev_frag_elem.p as f64) * (frag_elem.p as f64) * f64::log10((1.0 - epsilon) / epsilon);
-                                //         // println!("q1:{}, q2:{}, epsilon:{}, w:{}", q1, q2, epsilon, w);
-                                //         if self.edges.contains_key(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]) {
-                                //             let edge = self.edges.get_mut(&[prev_frag_elem.snp_idx, frag_elem.snp_idx]).unwrap();
-                                //             edge.frag_idxes.push(fragment.fragment_idx);
-                                //             edge.w += w;
-                                //         } else {
-                                //             let mut edge = Edge::default();
-                                //             edge.snp_idxes = [prev_frag_elem.snp_idx, frag_elem.snp_idx];
-                                //             edge.snp_poses = [prev_frag_elem.pos, frag_elem.pos];
-                                //             edge.w = w;
-                                //             edge.frag_idxes.push(fragment.fragment_idx);
-                                //             self.edges.insert(edge.snp_idxes, edge);
-                                //         }
-                                //     }
-                                // }
-                                // println!("N: {:?}", frag_elem);
-
-                                // Intron will not be used for haplotype phasing
-                                // filtered SNP and rna editing site will not be used for haplotype phasing
-                                // if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false {
-                                //     fragment.list.push(frag_elem);
-                                // }
-
                                 idx += 1;
-                                // since need to parse whole cigar to obtain exons, can not break before the end of cigar
-                                // if idx >= self.hete_snps.len() {
-                                //     pos_on_ref += 1;
-                                //     break;
-                                // }
                                 if idx < self.hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
                                     alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
@@ -1372,7 +934,6 @@ impl SNPFrag {
                 exon_end = pos_on_ref;
             }
             if exon_end != exon_start {
-                // fragment.exons.push([exon_start, exon_end]);
                 fragment.exons.push(Exon { start: exon_start, end: exon_end });
             }
             exon_start = -1;
@@ -1390,127 +951,10 @@ impl SNPFrag {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
                 }
-                // println!("Fragment: {:?}", fragment);
                 self.fragments.push(fragment);
             }
         }
     }
-
-    // pub fn filter_fp_snps(&mut self, strand_bias_threshold: f32, phase_score_cutoff: Option<f64>) {
-    //     /*
-    //     *? Filter false positive SNPs, which may be cause by strand bias or in a dense cluster of variants (100bp length has over 3 snps).
-    //      */
-    //
-    //
-    //     // 1. filter dense cluster of variants
-    //     let mut homo_hete_snps: Vec<i64> = Vec::new();
-    //     for i in self.hete_snps.iter() {
-    //         homo_hete_snps.push(self.candidate_snps[*i].pos);
-    //     }
-    //     for i in self.homo_snps.iter() {
-    //         homo_hete_snps.push(self.candidate_snps[*i].pos);
-    //     }
-    //     // sort homo_hete_snps in ascending order
-    //     homo_hete_snps.sort();
-    //
-    //     let mut filter_window: HashSet<i64> = HashSet::new();   // record the SNP position in a dense cluster of variants
-    //     for i in 0..homo_hete_snps.len() {
-    //         for j in i..homo_hete_snps.len() {
-    //             // TODO: dense cluster of snps?
-    //             if homo_hete_snps[j] - homo_hete_snps[i] > 300 {
-    //                 // if (j - 1) - i + 1 >= 9 {
-    //                 //     for tk in i..j {
-    //                 //         filter_window.insert(homo_hete_snps[tk]);
-    //                 //     }
-    //                 // }
-    //                 if (j - 1 - i + 1) >= 5 && ((homo_hete_snps[j - 1] - homo_hete_snps[i] + 1) as f32) / ((j - 1 - i + 1) as f32) <= 66.66 {
-    //                     for tk in i..j {
-    //                         filter_window.insert(homo_hete_snps[tk]);
-    //                     }
-    //                 }
-    //                 break;
-    //             }
-    //         }
-    //     }
-    //
-    //     // println!("dense cluster filter: {:?}", filter_window);
-    //
-    //     if filter_window.len() > 0 {
-    //         // filter homo snps in a dense cluster of variants
-    //         let mut filtered_homo_snps: Vec<usize> = Vec::new();
-    //         let mut filtered_hete_snps: Vec<usize> = Vec::new();
-    //
-    //         for i in self.homo_snps.iter() {
-    //             if !filter_window.contains(&self.candidate_snps[*i].pos) {
-    //                 filtered_homo_snps.push(*i);
-    //             } else {
-    //                 self.candidate_snps[*i].filter = true;
-    //             }
-    //         }
-    //         self.homo_snps = filtered_homo_snps;
-    //
-    //         for i in self.hete_snps.iter() {
-    //             if !filter_window.contains(&self.candidate_snps[*i].pos) {
-    //                 filtered_hete_snps.push(*i);
-    //             } else {
-    //                 self.candidate_snps[*i].filter = true;
-    //             }
-    //         }
-    //         self.hete_snps = filtered_hete_snps;
-    //     }
-    //
-    //     // // 2. filtering strand bias
-    //     // let mut filter_window: HashSet<usize> = HashSet::new();
-    //     // for i in 0..self.candidate_snps.len() {
-    //     //     let snp = &mut self.candidate_snps[i];
-    //     //     if snp.filter == true { continue; }
-    //     //     let mut variant_strand_cnt = [0, 0];    // variant strand [forward, reverse]
-    //     //     for k in snp.snp_cover_fragments.iter() {
-    //     //         for fe in self.fragments[*k].list.iter() {
-    //     //             if fe.snp_idx == i {
-    //     //                 if fe.p != 0 {
-    //     //                     if fe.base != snp.reference {
-    //     //                         if fe.strand == 0 {
-    //     //                             variant_strand_cnt[0] += 1;
-    //     //                         } else {
-    //     //                             variant_strand_cnt[1] += 1;
-    //     //                         }
-    //     //                     }
-    //     //                 }
-    //     //             }
-    //     //         }
-    //     //     }
-    //     //     let total_variant_cnt = variant_strand_cnt[0] + variant_strand_cnt[1];
-    //     //     println!("{:?} strand bias: {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
-    //     //     if total_variant_cnt > 0 {
-    //     //         // variant strand bias
-    //     //         if variant_strand_cnt[0] as f32 / total_variant_cnt as f32 >= strand_bias_threshold || variant_strand_cnt[1] as f32 / total_variant_cnt as f32 >= strand_bias_threshold {
-    //     //             snp.filter = true;  // current snp is filtered because of strand bias
-    //     //             println!("strand bias: {}, {}, {}, {}", snp.pos, variant_strand_cnt[0], variant_strand_cnt[1], total_variant_cnt);
-    //     //             continue;
-    //     //         }
-    //     //     }
-    //     //     filter_window.insert(i);   // index of snp
-    //     // }
-    //     // if filter_window.len() > 0 {
-    //     //     let mut filtered_homo_snps: Vec<usize> = Vec::new();
-    //     //     let mut filtered_hete_snps: Vec<usize> = Vec::new();
-    //     //
-    //     //     for i in self.homo_snps.iter() {
-    //     //         if !filter_window.contains(i) {
-    //     //             filtered_homo_snps.push(*i);
-    //     //         }
-    //     //     }
-    //     //     self.homo_snps = filtered_homo_snps;
-    //     //
-    //     //     for i in self.hete_snps.iter() {
-    //     //         if !filter_window.contains(i) {
-    //     //             filtered_hete_snps.push(*i);
-    //     //         }
-    //     //     }
-    //     //     self.hete_snps = filtered_hete_snps;
-    //     // }
-    // }
 
     pub fn keep_reliable_snps_in_component(&mut self) {
         let mut gqmap: HashMap<usize, f64> = HashMap::new();
@@ -1532,159 +976,6 @@ impl SNPFrag {
         }
     }
 
-    // pub fn optimization_using_maxcut(&mut self) {
-    //     // optimization using maxcut
-    //     let mut MAX_ITER = 3;
-    //     while MAX_ITER > 0 {
-    //         MAX_ITER -= 1;
-    //         println!("haplotype: {:?}", self.haplotype);
-    //         let mut haplotype_weights: Vec<Edge> = Vec::new();
-    //         let mut nodeset: HashSet<usize> = HashSet::new(); // all SNP nodes
-    //         let mut sum_hap_wts = 0.0;
-    //         for edge in self.edges.iter() {
-    //             let mut te = edge.1.clone();
-    //             nodeset.insert(te.snp_idxes[0]);
-    //             nodeset.insert(te.snp_idxes[1]);
-    //             // Haplotype weight = \delta_{i}\delta_{j}W_{ij}, \delta_{i} (\delta_{j}) is haplotype of node i (j), W_{ij} is the weight of edge ij.
-    //             te.w = te.w * self.haplotype[te.snp_idxes[0]] as f64 * self.haplotype[te.snp_idxes[1]] as f64;
-    //             sum_hap_wts += te.w;
-    //             haplotype_weights.push(te);
-    //         }
-    //         if haplotype_weights.len() == 0 { break; }
-    //         // Sort haplotype weights in ascending order to get the lowest value
-    //         haplotype_weights.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
-    //         // TODO: select k lowest value for calculation.
-    //         if haplotype_weights.first().unwrap().w >= 0.0 {
-    //             println!("All edges have positive haplotype weights. Phasing is done. Haplotype = {:?}", self.haplotype);
-    //             break;
-    //         }
-    //         let mut S1: HashSet<usize> = HashSet::new();    // whole S1
-    //         let mut S2: HashSet<usize> = HashSet::new();    // whole S2
-    //         let mut s1: HashSet<usize> = HashSet::new();    // s1 in current connected component
-    //         let mut s2: HashSet<usize> = HashSet::new();    // s2 in current connected component
-    //         // initial select the lowest weight edge
-    //         s1.insert(haplotype_weights[0].snp_idxes[0]);
-    //         s2.insert(haplotype_weights[0].snp_idxes[1]);
-    //
-    //         while s1.len() + s2.len() < nodeset.len() {
-    //             let union_s1_s2 = s1.union(&s2).cloned().collect();
-    //             let mut max_abs_weight: f64 = 0.0;
-    //             let mut max_weight_node: i32 = -1;
-    //             // Find the vertex maximizes the haplotype weights
-    //             for cand_node in nodeset.difference(&union_s1_s2) {
-    //                 // candidate node is from V-(s1+s2)
-    //                 let mut s1_weights: f64 = 0.0;
-    //                 let mut s2_weights: f64 = 0.0;
-    //
-    //                 // calculate the sum of weight for all edges from cand_node to set s1
-    //                 for s1_node in s1.iter() {
-    //                     if self.edges.contains_key(&[*cand_node, *s1_node]) {
-    //                         let tn = self.edges.get(&[*cand_node, *s1_node]).unwrap();
-    //                         s1_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
-    //                     } else if self.edges.contains_key(&[*s1_node, *cand_node]) {
-    //                         let tn = self.edges.get(&[*s1_node, *cand_node]).unwrap();
-    //                         s1_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
-    //                     }
-    //                 }
-    //
-    //                 // calculate the sum of weight for all edges from cand_node to set s2
-    //                 for s2_node in s2.iter() {
-    //                     if self.edges.contains_key(&[*cand_node, *s2_node]) {
-    //                         let tn = self.edges.get(&[*cand_node, *s2_node]).unwrap();
-    //                         s2_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
-    //                     } else if self.edges.contains_key(&[*s2_node, *cand_node]) {
-    //                         let tn = self.edges.get(&[*s2_node, *cand_node]).unwrap();
-    //                         s2_weights += tn.w * (self.haplotype[tn.snp_idxes[0]] as f64) * (self.haplotype[tn.snp_idxes[1]] as f64);
-    //                     }
-    //                 }
-    //
-    //                 // println!("s1_weights = {:?}", s1_weights);
-    //                 // println!("s2_weights = {:?}", s2_weights);
-    //
-    //                 // maximum value
-    //                 if (s1_weights - s2_weights).abs() > max_abs_weight.abs() {
-    //                     max_abs_weight = s1_weights - s2_weights;
-    //                     max_weight_node = *cand_node as i32;
-    //                 }
-    //             }
-    //
-    //             // disconnected component
-    //             if max_abs_weight.abs() == 0.0 && max_weight_node == -1 {
-    //                 // remove s1 and s2 nodes from nodeset and re-init s1 and s2 for next connected component
-    //                 for node in s1.union(&s2) {
-    //                     nodeset.remove(node);
-    //                 }
-    //                 // change the weight of processed edges to INF to avoid been selected in next connected component
-    //                 for edge in haplotype_weights.iter_mut() {
-    //                     if !nodeset.contains(&edge.snp_idxes[0]) || !nodeset.contains(&edge.snp_idxes[1]) {
-    //                         edge.w = f64::INFINITY;
-    //                     }
-    //                 }
-    //
-    //                 haplotype_weights.sort_by(|a, b| a.w.partial_cmp(&b.w).unwrap());
-    //                 if haplotype_weights.first().unwrap().w >= 0.0 {
-    //                     break;
-    //                 }
-    //
-    //                 // clear s1/s2 for current connected component and add the edge with the lowest haplotype weight of next connected component to s1/s2
-    //                 println!("Clear s1 and s2 for next connected component");
-    //                 println!("Current component s1 = {:?}", s1);
-    //                 println!("Current component s2 = {:?}", s2);
-    //                 for node in s1.iter() {
-    //                     S1.insert(*node);
-    //                 }
-    //                 for node in s2.iter() {
-    //                     S2.insert(*node);
-    //                 }
-    //                 s1.clear();
-    //                 s2.clear();
-    //                 s1.insert(haplotype_weights[0].snp_idxes[0]);
-    //                 s2.insert(haplotype_weights[0].snp_idxes[1]);
-    //                 continue;
-    //             }
-    //
-    //             if max_abs_weight > 0.0 {
-    //                 s1.insert(max_weight_node as usize);
-    //                 // println!("{:?} move to s1 {:?}", max_weight_node as usize, s1);
-    //             } else {
-    //                 s2.insert(max_weight_node as usize);
-    //                 // println!("{:?} move to s2 {:?}", max_weight_node as usize, s2);
-    //             }
-    //         }
-    //         println!("Current component s1 = {:?}", s1);
-    //         println!("Current component s2 = {:?}", s2);
-    //         for node in s1.iter() {
-    //             S1.insert(*node);
-    //         }
-    //         for node in s2.iter() {
-    //             S2.insert(*node);
-    //         }
-    //
-    //         // check sum of haplotype weight increase
-    //         let mut t_haplotype = self.haplotype.clone();
-    //         for i in S1.iter() {
-    //             if t_haplotype[*i] == 1 {
-    //                 t_haplotype[*i] = -1;
-    //             } else {
-    //                 t_haplotype[*i] = 1;
-    //             }
-    //         }
-    //         let mut t_sum_hap_wts = 0.0;
-    //         for edge in self.edges.iter() {
-    //             let mut te = edge.1.clone();
-    //             te.w = te.w * t_haplotype[te.snp_idxes[0]] as f64 * t_haplotype[te.snp_idxes[1]] as f64;
-    //             t_sum_hap_wts += te.w;
-    //         }
-    //         println!("latest haplotype weight: {:?}, previous haplotype weight: {:?}", t_sum_hap_wts, sum_hap_wts);
-    //         if t_sum_hap_wts > sum_hap_wts {
-    //             self.haplotype = t_haplotype;
-    //             self.phased = true;
-    //         }
-    //         println!("MaxCut optimization");
-    //         println!("haplotype: {:?}", self.haplotype);
-    //     }
-    // }
-
     pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
         // calculate P(sigma_k | delta)
         // sigma_k: the assignment of read k, 1 or -1.
@@ -1697,23 +988,17 @@ impl SNPFrag {
 
         for i in 0..delta.len() {
             if sigma_k * delta[i] == ps[i] {
-                // q1 = q1 * probs[i];
                 q1 = q1 * (1.0 - probs[i]);
             } else {
-                // q1 = q1 * (1.0 - probs[i]);
                 q1 = q1 * probs[i];
             }
         }
 
         for i in 0..delta.len() {
             if delta[i] == ps[i] {
-                // q2 = q2 * probs[i];
-                // q3 = q3 * (1.0 - probs[i]);
                 q2 = q2 * (1.0 - probs[i]);
                 q3 = q3 * probs[i];
             } else {
-                // q2 = q2 * (1.0 - probs[i]);
-                // q3 = q3 * probs[i];
                 q2 = q2 * probs[i];
                 q3 = q3 * (1.0 - probs[i]);
             }
@@ -1764,23 +1049,17 @@ impl SNPFrag {
 
         for k in 0..sigma.len() {
             if delta_i * sigma[k] == ps[k] {
-                // q1 = q1 * probs[k];
                 q1 = q1 * (1.0 - probs[k]);
             } else {
-                // q1 = q1 * (1.0 - probs[k]);
                 q1 = q1 * probs[k];
             }
         }
 
         for k in 0..sigma.len() {
             if sigma[k] == ps[k] {
-                // q2 = q2 * probs[k];
-                // q3 = q3 * (1.0 - probs[k]);
                 q2 = q2 * (1.0 - probs[k]);
                 q3 = q3 * probs[k];
             } else {
-                // q2 = q2 * (1.0 - probs[k]);
-                // q3 = q3 * probs[k];
                 q2 = q2 * probs[k];
                 q3 = q3 * (1.0 - probs[k]);
             }
@@ -1828,23 +1107,17 @@ impl SNPFrag {
 
         for k in 0..sigma.len() {
             if delta_i * sigma[k] == ps[k] {
-                // q1 = q1 + probs[k].log10();
                 q1 = q1 + (1.0 - probs[k]).log10();
             } else {
-                // q1 = q1 + (1.0 - probs[k]).log10();
                 q1 = q1 + probs[k].log10();
             }
         }
 
         for k in 0..sigma.len() {
             if sigma[k] == ps[k] {
-                // q2 = q2 + probs[k].log10();
-                // q3 = q3 + (1.0 - probs[k]).log10();
                 q2 = q2 + (1.0 - probs[k]).log10();
                 q3 = q3 + probs[k].log10();
             } else {
-                // q2 = q2 + (1.0 - probs[k]).log10();
-                // q3 = q3 + probs[k].log10();
                 q2 = q2 + probs[k].log10();
                 q3 = q3 + (1.0 - probs[k]).log10();
             }
@@ -1864,25 +1137,6 @@ impl SNPFrag {
         }
         return 10e-6_f64.max((inconsistent as f64) / ((consisitent + inconsistent) as f64));
     }
-
-    // pub fn cal_overall_probability(snpfrag: &SNPFrag, sigma: &Vec<i32>, delta: &Vec<i32>) -> f64 {
-    //     let mut logp = 0.0;
-    //     for k in 0..sigma.len() {
-    //         for fe in snpfrag.fragments[k].list.iter() {
-    //             if fe.p != 0 {
-    //                 let i = fe.snp_idx;
-    //                 if sigma[k] * delta[i] == fe.p {
-    //                     // logp += fe.prob.log10();
-    //                     logp += (1.0 - fe.prob).log10();
-    //                 } else {
-    //                     // logp += (1.0 - fe.prob).log10();
-    //                     logp += fe.prob.log10();
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     return logp;
-    // }
 
     pub fn cal_overall_probability(snpfrag: &SNPFrag, processed_snps: &HashSet<usize>, covered_fragments: &HashSet<usize>) -> f64 {
         let mut logp = 0.0;
@@ -1925,10 +1179,8 @@ impl SNPFrag {
                 }
             }
         }
-        // println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
         let mut rv = 0;
         if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else {
-            // println!("check_new_haplotag: logp = {}, pre_logp = {}", logp, pre_logp);
             rv = -1;
         }
         return rv;
@@ -1972,8 +1224,6 @@ impl SNPFrag {
         // If P(sigma, delta) increase, repeat Iteration;
         // Else break;
 
-        // self.optimization_using_maxcut();   // get the initial SNP haplotype, assume most of SNP haplotype is correct.
-
         let mut phasing_increase: bool = true;
         let mut haplotag_increase: bool = true;
         let mut num_iters = 0;
@@ -1983,7 +1233,6 @@ impl SNPFrag {
         for i in self.hete_snps.iter() {
             processed_snps.insert(*i);
             for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
-                // covered_fragments.insert(*k);
                 if !fragments_cnt.contains_key(k) {
                     fragments_cnt.insert(*k, 1);
                 } else {
@@ -2000,7 +1249,6 @@ impl SNPFrag {
         }
 
         while phasing_increase | haplotag_increase {
-            println!("{} {}:{}-{} cross optimization iterations: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), self.region.chr, self.region.start, self.region.end, num_iters);
             // optimize sigma
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
             for k in covered_fragments.iter() {
@@ -2019,10 +1267,8 @@ impl SNPFrag {
                 }
 
                 if SNPFrag::cal_log_sigma_delta(sigma_k, &delta, &ps, &probs) < SNPFrag::cal_log_sigma_delta(sigma_k * (-1), &delta, &ps, &probs) {
-                    // tmp_haplotag.push(sigma_k * (-1));  // flip sigma_k
                     tmp_haplotag.insert(*k, sigma_k * (-1));
                 } else {
-                    // tmp_haplotag.push(sigma_k);
                     tmp_haplotag.insert(*k, sigma_k);
                 }
             }
@@ -2062,10 +1308,8 @@ impl SNPFrag {
 
                 if SNPFrag::cal_log_delta_sigma(delta_i, &sigma, &ps, &probs) < SNPFrag::cal_log_delta_sigma(delta_i * (-1), &sigma, &ps, &probs) {
                     tmp_haplotype.insert(*i, delta_i * (-1));
-                    // tmp_haplotype.push(delta_i * (-1));
                 } else {
                     tmp_haplotype.insert(*i, delta_i);
-                    // tmp_haplotype.push(delta_i);
                 }
             }
 
@@ -2082,16 +1326,11 @@ impl SNPFrag {
             }
             num_iters += 1;
             if num_iters > 10 {
-                println!("Cross optimization may not converge: {}:{}-{}", self.region.chr, self.region.start, self.region.end);
                 break;
             }
         }
 
         let prob = SNPFrag::cal_overall_probability(&self, &processed_snps, &covered_fragments);
-        // println!("cross optimization iterations: {}", num_iters);
-        // println!("haplotype: {:?}", self.haplotype);
-        // println!("score: {:?}", prob);
-        // println!("assignment: {:?}", self.haplotag);
         return prob;
     }
 
@@ -2121,16 +1360,6 @@ impl SNPFrag {
             }
         }
 
-        // println!("Phasing informations:");
-        // for i in self.hete_snps.iter() {
-        //     println!("SNP {:?}", self.candidate_snps[*i]);
-        //     for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
-        //         if covered_fragments.contains(k) {
-        //             println!("Fragment {:?}", self.fragments[*k]);
-        //         }
-        //     }
-        // }
-        // println!();
 
         if self.hete_snps.len() <= max_enum_snps {
             // enumerate the haplotype, then optimize the assignment
@@ -2307,14 +1536,9 @@ impl SNPFrag {
 
             if num_hap1 < min_allele_cnt || num_hap2 < min_allele_cnt {
                 // filter SNPs with low allele count, no confident phase
-                println!("Low allele count: {}:{}, {}, {}", self.region.chr, snp.pos, num_hap1, num_hap2);
                 phase_score = 0.0;
             } else {
                 if sigma.len() > 0 {
-                    // println!("delta_i: {:?}", delta_i);
-                    // println!("sigma: {:?}", sigma);
-                    // println!("ps: {:?}", ps);
-                    // phase_score = -10.0_f64 * SNPFrag::cal_inconsistent_percentage(delta_i, &sigma, &ps, &probs).log10();
                     phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_log_delta_sigma(delta_i, &sigma, &ps, &probs)).log10();   // calaulate assignment score
                 } else {
                     phase_score = 0.0;  // all reads belong to unknown group, maybe caused by single SNP
@@ -2325,45 +1549,6 @@ impl SNPFrag {
             // use binomial test to check allele imbalance expression
             let mut hap1_allele_cnt: [u32; 2] = [0, 0];
             let mut hap2_allele_cnt: [u32; 2] = [0, 0];
-            // if sigma.len() > 100 {
-            //     // If the number of reads is large, down-sample to 100 reads for binomial test
-            //     let sampling_idxes = (0..sigma.len()).collect::<Vec<usize>>().choose_multiple(&mut rand::thread_rng(), 100).cloned().collect::<Vec<usize>>();
-            //     for k in sampling_idxes {
-            //         if sigma[k] == 1 {
-            //             // hap1
-            //             if ps[k] == 1 {
-            //                 hap1_allele_cnt[0] += 1;    // hap1 allele1
-            //             } else if ps[k] == -1 {
-            //                 hap1_allele_cnt[1] += 1;    // hap1 allele2
-            //             }
-            //         } else if sigma[k] == -1 {
-            //             // hap2
-            //             if ps[k] == 1 {
-            //                 hap2_allele_cnt[0] += 1;    // hap2 allele1
-            //             } else if ps[k] == -1 {
-            //                 hap2_allele_cnt[1] += 1;    // hap2 allele2
-            //             }
-            //         }
-            //     }
-            // } else {
-            //     for k in 0..sigma.len() {
-            //         if sigma[k] == 1 {
-            //             // hap1
-            //             if ps[k] == 1 {
-            //                 hap1_allele_cnt[0] += 1;    // hap1 allele1
-            //             } else if ps[k] == -1 {
-            //                 hap1_allele_cnt[1] += 1;    // hap1 allele2
-            //             }
-            //         } else if sigma[k] == -1 {
-            //             // hap2
-            //             if ps[k] == 1 {
-            //                 hap2_allele_cnt[0] += 1;    // hap2 allele1
-            //             } else if ps[k] == -1 {
-            //                 hap2_allele_cnt[1] += 1;    // hap2 allele2
-            //             }
-            //         }
-            //     }
-            // }
 
             for k in 0..sigma.len() {
                 if sigma[k] == 1 {
@@ -2407,39 +1592,7 @@ impl SNPFrag {
             let binom = Binomial::new(trails_cnt as usize, 0.5);
             let less_p = binom.distribution(observed_cnt as f64);
             let phred_pvalue = -10.0_f64 * less_p.log10();
-            if phred_pvalue > 50.0 {
-                allele_imbalance = true;
-                // println!("IMB {}: {}, {:?}, {:?}, {}, {}", snp.pos, phred_pvalue, hap1_allele_cnt, hap2_allele_cnt, observed_cnt, trails_cnt);
-            }
-
-
-            // // used for calculating allele imbalance expression
-            // let mut hap1_allele_cnt: [u32; 2] = [0, 0];
-            // let mut hap2_allele_cnt: [u32; 2] = [0, 0];
-            // for k in 0..sigma.len() {
-            //     if delta_i * sigma[k] == ps[k] {
-            //         if sigma[k] == 1 {
-            //             hap1_allele_cnt[0] += 1;
-            //         } else {
-            //             hap2_allele_cnt[0] += 1;
-            //         }
-            //     } else {
-            //         if sigma[k] == 1 {
-            //             hap1_allele_cnt[1] += 1;
-            //         } else {
-            //             hap2_allele_cnt[1] += 1;
-            //         }
-            //     }
-            // }
-            // let mut allele_imbalance: bool = false;
-            // if max(hap1_allele_cnt[0], hap1_allele_cnt[1]) as f32 > max(hap2_allele_cnt[0], hap2_allele_cnt[1]) as f32 * imbalance_allele_expression_cutoff {
-            //     allele_imbalance = true;
-            // } else if max(hap2_allele_cnt[0], hap2_allele_cnt[1]) as f32 * imbalance_allele_expression_cutoff < max(hap1_allele_cnt[0], hap1_allele_cnt[1]) as f32 {
-            //     allele_imbalance = true;
-            // }
-            // // if phase_score > 8.0 {
-            // //     println!("IMB {}: {}, {:?}, {:?}", snp.pos, phase_score, hap1_allele_cnt, hap2_allele_cnt);
-            // // }
+            if phred_pvalue > 50.0 { allele_imbalance = true; }
             self.candidate_snps[ti].allele_imbalance = allele_imbalance;
             self.candidate_snps[ti].phase_score = phase_score;
         }
@@ -2918,100 +2071,6 @@ impl SNPFrag {
     }
 }
 
-// fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
-//     let mut contig_lengths: Vec<(String, u32)> = Vec::new();
-//     let file = File::open(fai_path).unwrap();
-//     let reader = BufReader::new(file);
-//     for r in reader.lines() {
-//         let line = r.unwrap().clone();
-//         let parts: Vec<&str> = line.split('\t').collect();
-//         contig_lengths.push((parts[0].to_string(), parts[1].parse().unwrap()));
-//     }
-//     return contig_lengths;
-// }
-
-// pub fn multithread_phase_maxcut(bam_file: String, ref_file: String, vcf_file: String, thread_size: usize, isolated_regions: Vec<Region>) {
-//     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
-//     let vcf_records_queue = Mutex::new(VecDeque::new());
-//     let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
-//     // let header = bam::Header::from_template(bam.header());
-//     // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
-//     let ref_seqs = load_reference(ref_file.clone());
-//     let fai_path = ref_file + ".fai";
-//     if fs::metadata(&fai_path).is_err() {
-//         panic!("Reference index file .fai does not exist.");
-//     }
-//     let contig_lengths = parse_fai(fai_path.as_str());
-//
-//     // multiplethreads for low coverage regions
-//     pool.install(|| {
-//         isolated_regions.par_iter().for_each(|reg| {
-//             println!("Start {:?}", reg);
-//             let mut profile = Profile::default();
-//             let mut readnames: Vec<String> = Vec::new();
-//             profile.init_with_pileup(&bam_file.as_str(), &reg);
-//             profile.append_reference(&ref_seqs);
-//             let mut snpfrag = SNPFrag::default();
-//             snpfrag.get_candidate_snps(&profile, 0.3, 0.01, 10, 0.8, 0.9);
-//             if snpfrag.snps.len() == 0 { return; }
-//             for snp in snpfrag.snps.iter() {
-//                 println!("snp: {:?}", snp);
-//             }
-//             snpfrag.get_fragments(&bam_file, &reg);
-//             unsafe { snpfrag.init_haplotypes(); }
-//             snpfrag.optimization_using_maxcut();
-//             let vcf_records = snpfrag.output_vcf();
-//             {
-//                 let mut queue = vcf_records_queue.lock().unwrap();
-//                 for rd in vcf_records.iter() {
-//                     queue.push_back(rd.clone());
-//                 }
-//             }
-//         });
-//     });
-//
-//     let mut vf = File::create(vcf_file).unwrap();
-//     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
-//     vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
-//     for ctglen in contig_lengths.iter() {
-//         let chromosome = ctglen.0.clone();
-//         let chromosome_len = ctglen.1.clone();
-//         vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
-//     }
-//     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
-//     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
-//     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
-//     vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
-//     vf.write("##FORMAT=<ID=PQ,Number=1,Type=Integer,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
-//     vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
-//     for rd in vcf_records_queue.lock().unwrap().iter() {
-//         if rd.alternative.len() == 1 {
-//             vf.write(format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
-//                              rd.position,
-//                              std::str::from_utf8(&rd.id).unwrap(),
-//                              std::str::from_utf8(&rd.reference).unwrap(),
-//                              std::str::from_utf8(&rd.alternative[0]).unwrap(),
-//                              rd.qual,
-//                              std::str::from_utf8(&rd.filter).unwrap(),
-//                              std::str::from_utf8(&rd.info).unwrap(),
-//                              std::str::from_utf8(&rd.format).unwrap(),
-//                              rd.genotype).as_bytes()).unwrap();
-//         } else if rd.alternative.len() == 2 {
-//             vf.write(format!("{}\t{}\t{}\t{}\t{},{}\t{}\t{}\t{}\t{}\t{}\n", std::str::from_utf8(&rd.chromosome).unwrap(),
-//                              rd.position,
-//                              std::str::from_utf8(&rd.id).unwrap(),
-//                              std::str::from_utf8(&rd.reference).unwrap(),
-//                              std::str::from_utf8(&rd.alternative[0]).unwrap(),
-//                              std::str::from_utf8(&rd.alternative[1]).unwrap(),
-//                              rd.qual,
-//                              std::str::from_utf8(&rd.filter).unwrap(),
-//                              std::str::from_utf8(&rd.info).unwrap(),
-//                              std::str::from_utf8(&rd.format).unwrap(),
-//                              rd.genotype).as_bytes()).unwrap();
-//         }
-//     }
-// }
-
 fn exon_cluster(mut exons: Vec<Exon>, smallest_start: i64, largest_end: i64, min_sup: i32, merge_threshold: f32) -> Vec<Exon> {
     let mut cover_vec = vec![0; (largest_end - smallest_start) as usize];
     let mut cover_exon_idx: Vec<Vec<usize>> = vec![Vec::new(); (largest_end - smallest_start) as usize];
@@ -3087,7 +2146,6 @@ fn exon_cluster(mut exons: Vec<Exon>, smallest_start: i64, largest_end: i64, min
         for e in filter_exons.iter() {
             exon_hashmap.remove(e);
         }
-        println!("exon_hashmap: {:?}", exon_hashmap);
 
         // merge close exons based on similarity (start, end, length, support)
         let remain_exons = exon_hashmap.keys().cloned().collect::<Vec<Exon>>();
@@ -3163,9 +2221,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
     let read_haplotag1_queue = Mutex::new(VecDeque::new());
     let read_haplotag2_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
-    // let bam: bam::IndexedReader = bam::IndexedReader::from_path(&bam_file).unwrap();
-    // let header = bam::Header::from_template(bam.header());
-    // let mut bam_writer = Mutex::new(bam::Writer::from_path(&out_bam, &header, Format::Bam).unwrap());
     let ref_seqs = load_reference(ref_file.clone());
     let fai_path = ref_file + ".fai";
     if fs::metadata(&fai_path).is_err() {
@@ -3173,14 +2228,11 @@ pub fn multithread_phase_haplotag(bam_file: String,
     }
     let contig_lengths = parse_fai(fai_path.as_str());
 
-    // multiplethreads for low coverage regions
     pool.install(|| {
         isolated_regions.par_iter().for_each(|reg| {
-            // println!("Start {:?}", reg);
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
-            // profile.append_reference(&ref_seqs);
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
@@ -3200,18 +2252,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     unsafe { snpfrag.init_assignment(); }
                     snpfrag.phase(max_enum_snps, random_flip_fraction);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                    // println!("{}:{}-{} hap1:", snpfrag.region.chr, snpfrag.region.start, snpfrag.region.end);
-                    // for frag in snpfrag.fragments.iter() {
-                    //     if frag.haplotag == -1 {
-                    //         println!("{:?}", frag.exons);
-                    //     }
-                    // }
-                    // println!("{}:{}-{} hap2:", snpfrag.region.chr, snpfrag.region.start, snpfrag.region.end);
-                    // for frag in snpfrag.fragments.iter() {
-                    //     if frag.haplotag == 1 {
-                    //         println!("{:?}", frag.exons);
-                    //     }
-                    // }
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     {
                         if haplotype_bam_output || exon_consensus {
@@ -3293,8 +2333,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
             }
         });
     });
-
-    println!("{} Start writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
     let mut vf = File::create(vcf_file).unwrap();
     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
     for ctglen in contig_lengths.iter() {
@@ -3342,7 +2380,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
         }
     }
     drop(vf);
-    println!("{} Finish writing VCF file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
 
     if output_read_assignment {
         let mut assignment_writer = File::create(phased_bam_file.replace(".phased.bam", ".assignment.tsv")).unwrap();
@@ -3355,7 +2392,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
 
     if !no_bam_output {
         if !haplotype_bam_output {
-            println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
             let mut read_assignments: HashMap<String, i32> = HashMap::new();
             for rd in read_haplotag_queue.lock().unwrap().iter() {
                 read_assignments.insert(rd.0.clone(), rd.1.clone());
@@ -3382,9 +2418,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                 }
             }
             drop(bam_writer);
-            println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
         } else {
-            println!("{} Start writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
             let mut hap1_read_assignments: HashSet<String> = HashSet::new();
             let mut hap2_read_assignments: HashSet<String> = HashSet::new();
             for rname in read_haplotag1_queue.lock().unwrap().iter() {
@@ -3393,8 +2427,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
             for rname in read_haplotag2_queue.lock().unwrap().iter() {
                 hap2_read_assignments.insert(rname.clone());
             }
-            println!("hap1: {}", hap1_read_assignments.len());
-            println!("hap2: {}", hap2_read_assignments.len());
             let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
             let header = bam::Header::from_template(&bam_reader.header());
             let mut hap1_bam_writer = bam::Writer::from_path(phased_bam_file.replace("phased", "hap1"), &header, Format::Bam).unwrap();
@@ -3418,7 +2450,6 @@ pub fn multithread_phase_haplotag(bam_file: String,
             }
             drop(hap1_bam_writer);
             drop(hap2_bam_writer);
-            println!("{} Finish writing phased BAM file.", Local::now().format("%Y-%m-%d %H:%M:%S"));
         }
     }
 }

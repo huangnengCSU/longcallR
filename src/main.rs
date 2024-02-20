@@ -1,40 +1,11 @@
-mod align;
-mod align2;
-mod bam_reader;
-mod base_matrix;
-mod isolated_region;
-mod matrix;
-mod pileup2matrix;
 mod util;
-mod profile;
-mod runt;
 mod phase;
-mod vcf;
 
-// extern crate bio;
 use clap::{Parser, ArgAction, ValueEnum, Error};
-use bam_reader::{BamReader, Region};
-use rust_htslib::{bam, bam::Read, bam::Format, bam::record::Aux};
-use std::time::{Duration, Instant};
-// use bam_reader::{write_read_records1, write_read_records2, write_read_records3};
-use crate::base_matrix::*;
-use crate::matrix::ColumnBaseCount;
+use rust_htslib::{bam::Read};
 use crate::util::*;
-use align::nw_splice_aware;
-use bio::io::fasta;
-use isolated_region::{find_isolated_regions};
-use matrix::PileupMatrix;
-use pileup2matrix::generate_pileup_matrix;
-use rust_htslib::bam::record::CigarString;
-use std::collections::HashMap;
-use std::io;
-use std::process::exit;
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread;
 use rand::seq::SliceRandom;
-use crate::phase::{*};
-use crate::vcf::VCFRecord;
-use crate::util::Profile;
+use crate::phase::{multithread_phase_haplotag};
 
 
 #[derive(clap::ValueEnum, Debug, Clone)]
@@ -256,8 +227,6 @@ fn main() {
     let haplotype_bam_output = arg.haplotype_bam_output; // default=false
     let output_read_assignment = arg.output_read_assignment; // default=false
     let exon_consensus = arg.exon_consensus; // default=false
-    let debug_snp = arg.debug_snp; // default=false
-    let debug_block = arg.debug_block; // default=false
 
     let mut min_mapq = arg.min_mapq;
     let mut min_baseq = arg.min_baseq;
@@ -426,38 +395,6 @@ fn main() {
         }
     }
 
-    if debug_block {
-        let regions = multithread_produce3(bam_path.to_string().clone(), ref_path.to_string().clone(), threads, input_contigs);
-        for reg in regions.iter() {
-            println!("{}:{}-{}", reg.chr, reg.start, reg.end);
-        }
-        return;
-    }
-
-    if debug_snp {
-        let region = Region::new(input_region.unwrap());
-        let mut profile = Profile::default();
-        let ref_seqs = read_references(ref_path);
-        profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), &platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
-        // profile.append_reference(&ref_seqs);
-        let mut freq_vec_pos = profile.region.start - 1; // 0-based
-        for bf in profile.freq_vec.iter() {
-            println!("bf {}:{}: {:?}", profile.region.chr, freq_vec_pos, bf);
-            freq_vec_pos += 1;
-        }
-        let mut snpfrag = SNPFrag::default();
-        snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
-        // snpfrag.filter_fp_snps(strand_bias_threshold, None);
-        for i in snpfrag.hete_snps.iter() {
-            println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
-        }
-
-        for i in snpfrag.homo_snps.iter() {
-            println!("homo snp: {:?}", snpfrag.candidate_snps[*i]);
-        }
-        return;
-    }
-
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
         let regions = vec! {region};
@@ -502,88 +439,8 @@ fn main() {
                                    haplotype_bam_output,
                                    output_read_assignment,
                                    exon_consensus);
-
-        // let region = Region::new(input_region.unwrap());
-        // let mut profile = Profile::default();
-        // let ref_seqs = read_references(ref_path);
-        // profile.init_with_pileup(bam_path, &region, ref_seqs.get(&region.chr).unwrap(), &platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_length);
-        // // profile.append_reference(&ref_seqs);
-        // let mut snpfrag = SNPFrag::default();
-        // snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
-        // let mut read_assignments: HashMap<String, i32> = HashMap::new();
-        // snpfrag.get_fragments(bam_path, &region);
-        // for edge in snpfrag.edges.iter() {
-        //     println!("edge: {:?}->{:?}", snpfrag.candidate_snps[edge.0[0]], snpfrag.candidate_snps[edge.0[1]]);
-        // }
-        // // snpfrag.filter_fp_snps(strand_bias_threshold, None);
-        // let mut vcf_records: Vec<VCFRecord> = Vec::new();
-        // if genotype_only {
-        //     // without phasing
-        //     vcf_records = snpfrag.output_vcf(min_qual_for_singlesnp_rnaedit);
-        // } else {
-        //     if snpfrag.hete_snps.len() > 0 {
-        //         // for i in snpfrag.hete_snps.iter() {
-        //         //     println!("hete snp: {:?}", snpfrag.candidate_snps[*i]);
-        //         // }
-        //         let mut v: Vec<_> = snpfrag.edges.iter().collect();
-        //         v.sort_by(|x, y| x.0[0].cmp(&y.0[0]));
-        //         unsafe { snpfrag.init_haplotypes(); }
-        //         unsafe { snpfrag.init_assignment(); }
-        //         snpfrag.phase(max_enum_snps, random_flip_fraction);
-        //         read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-        //         snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
-        //     }
-        //     vcf_records = snpfrag.phased_output_vcf(min_phase_score, min_homozygous_freq, phasing_output, min_qual_for_candidate, min_qual_for_singlesnp_rnaedit);
-        // }
-        //
-        // for rd in vcf_records.iter() {
-        //     if rd.alternative.len() == 1 {
-        //         println!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", std::str::from_utf8(&rd.chromosome).unwrap(),
-        //                  rd.position,
-        //                  std::str::from_utf8(&rd.id).unwrap(),
-        //                  std::str::from_utf8(&rd.reference).unwrap(),
-        //                  std::str::from_utf8(&rd.alternative[0]).unwrap(),
-        //                  rd.qual,
-        //                  std::str::from_utf8(&rd.filter).unwrap(),
-        //                  std::str::from_utf8(&rd.info).unwrap(),
-        //                  std::str::from_utf8(&rd.format).unwrap(),
-        //                  rd.genotype);
-        //     } else if rd.alternative.len() == 2 {
-        //         println!("{}\t{}\t{}\t{}\t{},{}\t{}\t{}\t{}\t{}\t{}", std::str::from_utf8(&rd.chromosome).unwrap(),
-        //                  rd.position,
-        //                  std::str::from_utf8(&rd.id).unwrap(),
-        //                  std::str::from_utf8(&rd.reference).unwrap(),
-        //                  std::str::from_utf8(&rd.alternative[0]).unwrap(),
-        //                  std::str::from_utf8(&rd.alternative[1]).unwrap(),
-        //                  rd.qual,
-        //                  std::str::from_utf8(&rd.filter).unwrap(),
-        //                  std::str::from_utf8(&rd.info).unwrap(),
-        //                  std::str::from_utf8(&rd.format).unwrap(),
-        //                  rd.genotype);
-        //     }
-        // }
-        // if !no_bam_output {
-        //     let mut bam_reader = bam::Reader::from_path(&bam_path).unwrap();
-        //     let header = bam::Header::from_template(&bam_reader.header());
-        //     let mut bam_writer = bam::Writer::from_path(out_bam, &header, Format::Bam).unwrap();
-        //     for r in bam_reader.records() {
-        //         let mut record = r.unwrap();
-        //         if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
-        //             continue;
-        //         }
-        //         let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-        //         if read_assignments.contains_key(&qname) {
-        //             let asg = read_assignments.get(&qname).unwrap();
-        //             if *asg != 0 {
-        //                 let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
-        //             }
-        //         }
-        //         let _ = bam_writer.write(&record).unwrap();
-        //     }
-        // }
     } else {
         let regions = multithread_produce3(bam_path.to_string().clone(), ref_path.to_string().clone(), threads, input_contigs);
-// multithread_phase_maxcut(bam_path.to_string().clone(), ref_path.to_string().clone(), output_file.to_string().clone(), threads, regions);
         multithread_phase_haplotag(bam_path.to_string().clone(),
                                    ref_path.to_string().clone(),
                                    out_vcf.clone(),
