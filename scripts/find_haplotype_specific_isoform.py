@@ -26,6 +26,8 @@ if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument("-i", "--isoform", type=str, required=True, help="read isoform file")
     args.add_argument("-a", "--haplotype", type=str, required=True, help="read haplotype file")
+    args.add_argument("-s", "--min_support", type=int, default=8,
+                      help="minimum support of reads from one haplotype for haplotype-specific isoform")
     args = args.parse_args()
     read_isoform = read_isoform_file(args.isoform)
     read_haplotype = read_haplotype_file(args.haplotype)
@@ -42,8 +44,7 @@ if __name__ == "__main__":
                 elif read_haplotype[read_id] == "2":
                     hap2_cnt += 1
                     hap2_reads.append(read_id)
-        if (hap1_cnt + hap2_cnt >= 8 and (hap1_cnt == 0 or hap2_cnt == 0)):
+        if hap1_cnt + hap2_cnt >= args.min_support and hap1_cnt * hap2_cnt == 0:
             print(isoform_id, hap1_cnt, hap2_cnt)
             print(hap1_reads)
             print(hap2_reads)
-

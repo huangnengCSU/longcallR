@@ -53,7 +53,7 @@ def plot_allele_freq(rna_allele_freq_dict):
     plt.savefig('allele_freq.png')
 
 dna_snp_truth = sys.argv[1] ## DNA SNP truth set
-rna_allele_freq = sys.argv[2]   ## htsbox mpileup output (htsbox pileup -f -v)
+rna_allele_freq = sys.argv[2]   ## htsbox mpileup output (htsbox pileup -f -b)
 min_allele_cnt = int(sys.argv[3])   ## ignore sites with allele count less than this value
 dna_hete_snps = load_dna_hete_snps(dna_snp_truth)
 rna_allele_freq_dict = load_rna_allele_freq(rna_allele_freq, dna_hete_snps, min_allele_cnt)
