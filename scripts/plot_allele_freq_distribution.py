@@ -32,8 +32,11 @@ def load_rna_allele_freq(rna_allele_freq, dna_hete_snps, min_allele_cnt):
             total_allele_cnt = sum([int(x) for x in alt_cnt])
             if total_allele_cnt < min_allele_cnt:
                 continue
-            if len(alt)==1 and alt[0] in ["A", "C", "G", "T"]:
-                rna_allele_freq_dict[(chrom, pos)] = 1.0
+            if len(alt) == 1:
+                if alt[0] in ["A", "C", "G", "T"] and alt[0] != ref:
+                    rna_allele_freq_dict[(chrom, pos)] = 1.0
+                elif alt[0] in ["A", "C", "G", "T"] and alt[0] == ref:
+                    rna_allele_freq_dict[(chrom, pos)] = 0.0
             elif len(alt)==2 and alt[0] in ["A", "C", "G", "T"] and alt[1] in ["A", "C", "G", "T"]:
                 if alt[0] == ref:
                     rna_allele_freq_dict[(chrom, pos)] = int(alt_cnt[1])/(int(alt_cnt[0])+int(alt_cnt[1]))
