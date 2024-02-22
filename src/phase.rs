@@ -2256,7 +2256,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                 }
                                 for (e, counts) in combined_consensus_exons.iter() {
                                     if counts.0 * counts.1 == 0 && counts.0 + counts.1 >= min_sup_haplotype_exon as i32 {
-                                        println!("haplotype specific exon: {}-{}, {:?}:{:?}", e.start, e.end, counts.0, counts.1);
+                                        println!("exon: {}:{}-{}, hap1:{:?}, hap2:{:?}", snpfrag.region.chr, e.start + 1, e.end + 1, counts.0, counts.1);
                                     }
                                 }
                             }
