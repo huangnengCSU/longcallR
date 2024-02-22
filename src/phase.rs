@@ -78,10 +78,12 @@ pub struct FragElem {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Exon {
+    pub chr: String,
     pub start: i64,
     // start position on the reference, 0-based, inclusive
     pub end: i64,
     // end position on the reference, 0-based, exclusive
+    pub state: u8, // 0: start exon, 1: internal exon, 2: end exon, 3: whole read is a single exon
 }
 
 #[derive(Debug, Clone, Default)]
@@ -901,7 +903,11 @@ impl SNPFrag {
                     }
                     b'N' => {
                         exon_end = pos_on_ref;
-                        fragment.exons.push(Exon { start: exon_start, end: exon_end });
+                        if fragment.exons.len() == 0 {
+                            fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 0 });  // start exon
+                        } else {
+                            fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 1 });  // internal exon
+                        }
                         exon_start = -1;
                         exon_end = -1;
                         for _ in 0..cg.len() {
@@ -934,7 +940,11 @@ impl SNPFrag {
                 exon_end = pos_on_ref;
             }
             if exon_end != exon_start {
-                fragment.exons.push(Exon { start: exon_start, end: exon_end });
+                if fragment.exons.len() > 0 {
+                    fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 2 });  // end exon
+                } else {
+                    fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 3 });  // single exon
+                }
             }
             exon_start = -1;
             exon_end = -1;
@@ -2019,7 +2029,7 @@ impl SNPFrag {
     }
 }
 
-fn exon_cluster(mut exons: Vec<Exon>, smallest_start: i64, largest_end: i64, min_sup: i32) -> HashMap<Exon, i32> {
+fn exon_cluster(mut exons: Vec<Exon>, smallest_start: i64, largest_end: i64, min_sup: i32) -> HashMap<Exon, Vec<Exon>> {
     let mut cover_vec = vec![0; (largest_end - smallest_start) as usize];
     let mut cover_exon_idx: Vec<Vec<usize>> = vec![Vec::new(); (largest_end - smallest_start) as usize];
     for idx in 0..exons.len() {
@@ -2068,30 +2078,38 @@ fn exon_cluster(mut exons: Vec<Exon>, smallest_start: i64, largest_end: i64, min
     }
 
     // for each level I cluster, divide them into level II clusters (as hierarchical clustering)
-    let mut clusters: HashMap<Exon, i32> = HashMap::new();
+    let mut clusters: HashMap<Exon, Vec<Exon>> = HashMap::new();
     for c in clustersI.iter() {
-        let mut exon_hashmap: HashMap<Exon, i32> = HashMap::new();
+        let mut exon_hashmap: HashMap<Exon, Vec<Exon>> = HashMap::new();
         for e in c.iter() {
-            if exon_hashmap.contains_key(e) {
-                let count = exon_hashmap.get_mut(e).unwrap();
-                *count += 1;
+            let mut texon = e.clone();
+            if e.state == 0 {
+                // start exon ignores the start position when matching exons, because the start position of start exon is not consistent
+                texon.start = -1;
+            } else if e.state == 2 {
+                // end exon ignores the end position when matching exons, because the end position of end exon is not consistent
+                texon.end = -1;
+            }
+            if exon_hashmap.contains_key(&texon) {
+                let exon_vec = exon_hashmap.get_mut(&texon).unwrap();
+                exon_vec.push(e.clone());
             } else {
-                exon_hashmap.insert(e.clone(), 1);
+                exon_hashmap.insert(texon.clone(), vec![e.clone()]);
             }
         }
 
         // ignore exons without enough support
         let mut filter_exons: Vec<Exon> = Vec::new();
-        for (e, count) in exon_hashmap.iter() {
-            if *count < min_sup {
+        for (e, v) in exon_hashmap.iter() {
+            if (v.len() as i32) < min_sup {
                 filter_exons.push(e.clone());
             }
         }
         for e in filter_exons.iter() {
             exon_hashmap.remove(e);
         }
-        for (e, count) in exon_hashmap.iter() {
-            clusters.insert(e.clone(), *count);
+        for (e, v) in exon_hashmap.iter() {
+            clusters.insert(e.clone(), v.clone());
         }
     }
     return clusters;
@@ -2238,25 +2256,96 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                 let hap1_consensus_exons = exon_cluster(hap1_exons.clone(), hap1_smallest_start, hap1_largest_end, 0);
                                 let hap2_consensus_exons = exon_cluster(hap2_exons.clone(), hap2_smallest_start, hap2_largest_end, 0);
                                 let mut combined_consensus_exons: HashMap<Exon, (i32, i32)> = HashMap::new();
-                                for (e, count) in hap1_consensus_exons.iter() {
+                                for (e, v) in hap1_consensus_exons.iter() {
                                     if combined_consensus_exons.contains_key(e) {
                                         let (c1, c2) = combined_consensus_exons.get_mut(e).unwrap();
-                                        *c1 += *count;
+                                        *c1 += v.len() as i32;
                                     } else {
-                                        combined_consensus_exons.insert(e.clone(), (*count, 0));
+                                        combined_consensus_exons.insert(e.clone(), (v.len() as i32, 0));
                                     }
                                 }
-                                for (e, count) in hap2_consensus_exons.iter() {
+                                for (e, v) in hap2_consensus_exons.iter() {
                                     if combined_consensus_exons.contains_key(e) {
                                         let (c1, c2) = combined_consensus_exons.get_mut(e).unwrap();
-                                        *c2 += *count;
+                                        *c2 += v.len() as i32;
                                     } else {
-                                        combined_consensus_exons.insert(e.clone(), (0, *count));
+                                        combined_consensus_exons.insert(e.clone(), (0, v.len() as i32));
                                     }
                                 }
                                 for (e, counts) in combined_consensus_exons.iter() {
                                     if counts.0 * counts.1 == 0 && counts.0 + counts.1 >= min_sup_haplotype_exon as i32 {
-                                        println!("exon: {}:{}-{}, hap1:{:?}, hap2:{:?}", snpfrag.region.chr, e.start + 1, e.end + 1, counts.0, counts.1);
+                                        if e.state == 1 {
+                                            println!("exon1: {}:{}-{}, hap1:{:?}, hap2:{:?}", e.chr, e.start + 1, e.end + 1, counts.0, counts.1);
+                                        }
+                                        if e.state == 0 {
+                                            let mut start_sum = 0;
+                                            let mut start_mean = 0;
+                                            let mut exon_cnt = 0;
+                                            if counts.0 > 0 {
+                                                for ex in hap1_consensus_exons.get(e).unwrap().iter() {
+                                                    start_sum += ex.start;
+                                                    exon_cnt += 1;
+                                                }
+                                                start_mean = start_sum / exon_cnt;
+                                            } else {
+                                                for ex in hap2_consensus_exons.get(e).unwrap().iter() {
+                                                    start_sum += ex.start;
+                                                    exon_cnt += 1;
+                                                }
+                                                start_mean = start_sum / exon_cnt;
+                                            }
+                                            println!("exon0: {}:{}-{}, hap1:{:?}, hap2:{:?}", e.chr, start_mean + 1, e.end + 1, counts.0, counts.1);
+                                        }
+                                        if e.state == 2 {
+                                            let mut end_sum = 0;
+                                            let mut end_mean = 0;
+                                            let mut exon_cnt = 0;
+                                            if counts.0 > 0 {
+                                                for ex in hap1_consensus_exons.get(e).unwrap().iter() {
+                                                    end_sum += ex.end;
+                                                    exon_cnt += 1;
+                                                }
+                                                end_mean = end_sum / exon_cnt;
+                                            } else {
+                                                for ex in hap2_consensus_exons.get(e).unwrap().iter() {
+                                                    end_sum += ex.end;
+                                                    exon_cnt += 1;
+                                                }
+                                                end_mean = end_sum / exon_cnt;
+                                            }
+                                            println!("exon2: {}:{}-{}, hap1:{:?}, hap2:{:?}", e.chr, e.start + 1, end_mean + 1, counts.0, counts.1);
+                                        }
+                                        if e.state == 3 {
+                                            let relaxed_start = [e.start - 20, e.start + 20];
+                                            let relaxed_end = [e.end - 20, e.end + 20];
+                                            let mut unique_flag = true;
+                                            if counts.0 > 0 {
+                                                for ex in hap2_consensus_exons.iter() {
+                                                    if ex.0.state != 3 {
+                                                        continue;
+                                                    }
+                                                    if ex.0.start >= relaxed_start[0] && ex.0.start <= relaxed_start[1] && ex.0.end >= relaxed_end[0] && ex.0.end <= relaxed_end[1] {
+                                                        // highly overlapped, not unique
+                                                        unique_flag = false;
+                                                        break;
+                                                    }
+                                                }
+                                            } else {
+                                                for ex in hap1_consensus_exons.iter() {
+                                                    if ex.0.state != 3 {
+                                                        continue;
+                                                    }
+                                                    if ex.0.start >= relaxed_start[0] && ex.0.start <= relaxed_start[1] && ex.0.end >= relaxed_end[0] && ex.0.end <= relaxed_end[1] {
+                                                        // highly overlapped, not unique
+                                                        unique_flag = false;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if unique_flag {
+                                                println!("exon3: {}:{}-{}, hap1:{:?}, hap2:{:?}", e.chr, e.start + 1, e.end + 1, counts.0, counts.1);
+                                            }
+                                        }
                                     }
                                 }
                             }
