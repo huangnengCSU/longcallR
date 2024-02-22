@@ -2137,7 +2137,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   no_bam_output: bool,
                                   haplotype_bam_output: bool,
                                   output_read_assignment: bool,
-                                  exon_consensus: bool) {
+                                  exon_consensus: bool,
+                                  min_sup_haplotype_exon: u32) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag1_queue = Mutex::new(VecDeque::new());
@@ -2234,8 +2235,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                     }
                                 }
                                 // consensus exons
-                                let hap1_consensus_exons = exon_cluster(hap1_exons.clone(), hap1_smallest_start, hap1_largest_end, 5);
-                                let hap2_consensus_exons = exon_cluster(hap2_exons.clone(), hap2_smallest_start, hap2_largest_end, 5);
+                                let hap1_consensus_exons = exon_cluster(hap1_exons.clone(), hap1_smallest_start, hap1_largest_end, 0);
+                                let hap2_consensus_exons = exon_cluster(hap2_exons.clone(), hap2_smallest_start, hap2_largest_end, 0);
                                 let mut combined_consensus_exons: HashMap<Exon, (i32, i32)> = HashMap::new();
                                 for (e, count) in hap1_consensus_exons.iter() {
                                     if combined_consensus_exons.contains_key(e) {
@@ -2254,8 +2255,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                     }
                                 }
                                 for (e, counts) in combined_consensus_exons.iter() {
-                                    if counts.0 * counts.1 == 0 && counts.0 + counts.1 >= 8 {
-                                        println!("haplotype specific exon: {:?}, {:?}:{:?}", e, counts.0, counts.1);
+                                    if counts.0 * counts.1 == 0 && counts.0 + counts.1 >= min_sup_haplotype_exon as i32 {
+                                        println!("haplotype specific exon: {}-{}, {:?}:{:?}", e.start, e.end, counts.0, counts.1);
                                     }
                                 }
                             }
