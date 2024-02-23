@@ -42,8 +42,8 @@ pub struct CandidateSNP {
     // A->G, T-C, rna_editing variant does not have haplotype information, no phasing
     pub filter: bool,
     // filter out this SNP or not in phasing process
-    pub allele_imbalance: bool,
-    // imbalanced allele expression
+    pub haplotype_expression: [u32; 2],
+    // [allele1, allele2], the number of reads supporting two alleles expreessing on two haplotype
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,7 +71,7 @@ pub struct FragElem {
     pub strand: u32,
     // read strand,  0: forward, 1: reverse
     pub p: i32,
-    // base allele on alphabet  {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered (not major variant allele and reference allele, deletions or N)
+    // base allele on alphabet  {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered (bases except allele1 and allele2, deletions or N)
     pub prob: f64,
     // error rate of observe current base
 }
@@ -1578,32 +1578,51 @@ impl SNPFrag {
                 }
             }
 
-            let mut observed_cnt = 0;    // the number of observation
-            let mut trails_cnt = 0;  // the number of trials
+            // let mut observed_cnt = 0;    // the number of observation
+            // let mut trails_cnt = 0;  // the number of trials
+            // if (hap1_allele_cnt[0] + hap2_allele_cnt[0]) > (hap1_allele_cnt[1] + hap2_allele_cnt[1]) {
+            //     if hap1_allele_cnt[0] > hap2_allele_cnt[0] {
+            //         observed_cnt = hap2_allele_cnt[1];
+            //         trails_cnt += hap2_allele_cnt[1] + hap1_allele_cnt[0];
+            //     } else {
+            //         observed_cnt = hap1_allele_cnt[1];
+            //         trails_cnt += hap1_allele_cnt[1] + hap2_allele_cnt[0];
+            //     }
+            // } else {
+            //     if hap1_allele_cnt[1] > hap2_allele_cnt[1] {
+            //         observed_cnt = hap2_allele_cnt[0];
+            //         trails_cnt += hap2_allele_cnt[0] + hap1_allele_cnt[1];
+            //     } else {
+            //         observed_cnt = hap1_allele_cnt[0];
+            //         trails_cnt += hap1_allele_cnt[0] + hap2_allele_cnt[1];
+            //     }
+            // }
+            // let mut allele_imbalance: bool = false;
+            // let binom = Binomial::new(trails_cnt as usize, 0.5);
+            // let less_p = binom.distribution(observed_cnt as f64);
+            // let phred_pvalue = -10.0_f64 * less_p.log10();
+            // if phred_pvalue > 50.0 { allele_imbalance = true; }
+            // self.candidate_snps[ti].allele_imbalance = allele_imbalance;
+
+            let mut expression_cnt = [0; 2];
             if (hap1_allele_cnt[0] + hap2_allele_cnt[0]) > (hap1_allele_cnt[1] + hap2_allele_cnt[1]) {
                 if hap1_allele_cnt[0] > hap2_allele_cnt[0] {
-                    observed_cnt = hap2_allele_cnt[1];
-                    trails_cnt += hap2_allele_cnt[1] + hap1_allele_cnt[0];
+                    expression_cnt[0] = hap1_allele_cnt[0];
+                    expression_cnt[1] = hap2_allele_cnt[1];
                 } else {
-                    observed_cnt = hap1_allele_cnt[1];
-                    trails_cnt += hap1_allele_cnt[1] + hap2_allele_cnt[0];
+                    expression_cnt[0] = hap2_allele_cnt[0];
+                    expression_cnt[1] = hap1_allele_cnt[1];
                 }
             } else {
                 if hap1_allele_cnt[1] > hap2_allele_cnt[1] {
-                    observed_cnt = hap2_allele_cnt[0];
-                    trails_cnt += hap2_allele_cnt[0] + hap1_allele_cnt[1];
+                    expression_cnt[0] = hap2_allele_cnt[0];
+                    expression_cnt[1] = hap1_allele_cnt[1];
                 } else {
-                    observed_cnt = hap1_allele_cnt[0];
-                    trails_cnt += hap1_allele_cnt[0] + hap2_allele_cnt[1];
+                    expression_cnt[0] = hap1_allele_cnt[0];
+                    expression_cnt[1] = hap2_allele_cnt[1];
                 }
             }
-
-            let mut allele_imbalance: bool = false;
-            let binom = Binomial::new(trails_cnt as usize, 0.5);
-            let less_p = binom.distribution(observed_cnt as f64);
-            let phred_pvalue = -10.0_f64 * less_p.log10();
-            if phred_pvalue > 50.0 { allele_imbalance = true; }
-            self.candidate_snps[ti].allele_imbalance = allele_imbalance;
+            self.candidate_snps[ti].haplotype_expression = expression_cnt;
             self.candidate_snps[ti].phase_score = phase_score;
         }
     }
@@ -1832,22 +1851,22 @@ impl SNPFrag {
                                 rd.alternative = vec![vec![snp.alleles[1] as u8]];
                                 rd.qual = snp.variant_quality as i32;
                                 if hp == -1 {
-                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                                 } else {
-                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score);
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                                 }
                             } else if snp.alleles[1] == snp.reference {
                                 rd.alternative = vec![vec![snp.alleles[0] as u8]];
                                 rd.qual = snp.variant_quality as i32;
                                 if hp == -1 {
-                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                                 } else {
-                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
+                                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                                 }
                             } else {
                                 rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                                 rd.qual = snp.variant_quality as i32;
-                                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score);
+                                rd.genotype = format!("{}:{}:{}:{:.2},{:.2}:{:.2}:{},{}", "1|2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                             }
                             if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_qual_for_candidate as f64 {
                                 // not confident phase or low variant quality
@@ -1855,12 +1874,8 @@ impl SNPFrag {
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
                             }
-                            if snp.allele_imbalance == true {
-                                rd.info = "RDS=.;AlleleImbalance".to_string().into_bytes();
-                            } else {
-                                rd.info = "RDS=.".to_string().into_bytes();
-                            }
-                            rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
+                            rd.info = "RDS=.".to_string().into_bytes();
+                            rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                         }
                     }
 
@@ -2380,12 +2395,12 @@ pub fn multithread_phase_haplotag(bam_file: String,
     vf.write("##FILTER=<ID=RnaEdit,Description=\"RNA editing\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
-    vf.write("##INFO=<ID=AlleleImbalance,Number=0,Type=Flag,Description=\"Imbalanced allele expression.\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=PQ,Number=1,Type=Float,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=AE,Number=A,Type=Integer,Description=\"Haplotype expression of two alleles\">\n".as_bytes()).unwrap();
     vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
 
     for rd in vcf_records_queue.lock().unwrap().iter() {
