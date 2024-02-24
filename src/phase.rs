@@ -119,6 +119,7 @@ pub struct SNPFrag {
     // haplotype is phased or not
     pub edges: HashMap<[usize; 2], Edge>,
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
+    pub min_linkers: i32,
 }
 
 fn cmp_f64(a: &f64, b: &f64) -> Ordering {
@@ -778,7 +779,7 @@ impl SNPFrag {
         }
 
         for (k, v) in fragment_cnt.iter() {
-            if *v >= 2 {
+            if *v as i32 >= self.min_linkers {
                 covered_fragments.insert(*k);
             }
         }
@@ -799,6 +800,7 @@ impl SNPFrag {
         if self.hete_snps.len() == 0 {
             return;
         }
+        assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
         while let Some(result) = bam_reader.read(&mut record) {
             if result.is_err() {
                 panic!("BAM parsing failed...");
@@ -956,7 +958,7 @@ impl SNPFrag {
                     link_hete_cnt += 1;
                 }
             }
-            if link_hete_cnt >= 2 {
+            if link_hete_cnt >= self.min_linkers {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
@@ -1253,7 +1255,7 @@ impl SNPFrag {
         }
 
         for (k, v) in fragments_cnt.iter() {
-            if *v >= 2 {
+            if *v as i32 >= self.min_linkers {
                 covered_fragments.insert(*k);
             }
         }
@@ -1344,7 +1346,7 @@ impl SNPFrag {
         return prob;
     }
 
-    pub fn phase(&mut self, max_enum_snps: usize, random_flip_fraction: f32) {
+    pub fn phase(&mut self, max_enum_snps: usize, random_flip_fraction: f32, max_iters: i32) {
         let mut largest_prob = f64::NEG_INFINITY;
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
@@ -1365,7 +1367,7 @@ impl SNPFrag {
 
         for (k, v) in fragments_cnt.iter() {
             // each fragment is covered by at least two SNPs
-            if *v >= 2 {
+            if *v as i32 >= self.min_linkers {
                 covered_fragments.insert(*k);
             }
         }
@@ -1409,7 +1411,7 @@ impl SNPFrag {
             }
         } else {
             // optimize haplotype and read assignment alternatively
-            let mut max_iter = 5;
+            let mut max_iter: i32 = max_iters;
             while max_iter >= 0 {
                 unsafe { self.init_haplotypes(); }
                 unsafe { self.init_assignment(); }
@@ -2138,6 +2140,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   isolated_regions: Vec<Region>,
                                   genotype_only: bool,
                                   platform: &Platform,
+                                  max_iters: i32,
                                   min_mapq: u8,
                                   min_baseq: u8,
                                   diff_baseq: u8,
@@ -2161,6 +2164,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   min_dense_cnt: u32,
                                   avg_dense_dist: f32,
                                   min_homozygous_freq: f32,
+                                  min_linkers: i32,
                                   min_phase_score: f32,
                                   max_enum_snps: usize,
                                   random_flip_fraction: f32,
@@ -2191,6 +2195,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
             profile.init_with_pileup(&bam_file.as_str(), &reg, ref_seq, platform, min_mapq, min_baseq, min_read_length, min_depth, max_depth, distance_to_read_end, polya_tail_len);
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
+            snpfrag.min_linkers = min_linkers;
             snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
             snpfrag.get_fragments(&bam_file, &reg);
             if genotype_only {
@@ -2206,7 +2211,7 @@ pub fn multithread_phase_haplotag(bam_file: String,
                 if snpfrag.hete_snps.len() > 0 {
                     unsafe { snpfrag.init_haplotypes(); }
                     unsafe { snpfrag.init_assignment(); }
-                    snpfrag.phase(max_enum_snps, random_flip_fraction);
+                    snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     {

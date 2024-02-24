@@ -62,6 +62,10 @@ struct Args {
     #[arg(long)]
     preset: Option<Preset>,
 
+    /// Maximum number of iteration for phasing
+    #[arg(long, default_value_t = 5)]
+    max_iters: i32,
+
     /// Maximum number of SNPs for enumerate haplotypes
     #[arg(long, default_value_t = 10)]
     max_enum_snps: usize,
@@ -150,6 +154,10 @@ struct Args {
     #[arg(long, default_value_t = 60.0)]
     avg_dense_dist: f32,
 
+    /// Minimum linked heterozygous snps for phasing
+    #[arg(long, default_value_t = 1)]
+    min_linkers: i32,
+
     /// Minimum phase score to filter SNPs
     #[arg(long, default_value_t = 8.0)]
     min_phase_score: f32,
@@ -223,6 +231,7 @@ fn main() {
     let threads = arg.threads;
     let preset = arg.preset;
     let platform = arg.platform;
+    let max_iters = arg.max_iters;
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
     let genotype_only = arg.genotype_only;
@@ -251,6 +260,7 @@ fn main() {
     let mut dense_win_size = arg.dense_win_size;
     let mut min_dense_cnt = arg.min_dense_cnt;
     let mut avg_dense_dist = arg.avg_dense_dist;
+    let mut min_linkers = arg.min_linkers;
     let mut min_phase_score = arg.min_phase_score;
     let mut min_depth = arg.min_depth;
     let mut max_depth = arg.max_depth;
@@ -279,6 +289,7 @@ fn main() {
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_linkers = 2;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_homozygous_freq = 0.75;
@@ -309,6 +320,7 @@ fn main() {
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_linkers = 2;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_homozygous_freq = 0.75;
@@ -339,6 +351,7 @@ fn main() {
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.02;
                 min_homozygous_freq = 0.75;
@@ -369,6 +382,7 @@ fn main() {
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.001;
                 min_homozygous_freq = 0.75;
@@ -415,6 +429,7 @@ fn main() {
                                regions,
                                genotype_only,
                                &platform,
+                               max_iters,
                                min_mapq,
                                min_baseq,
                                diff_baseq,
@@ -438,6 +453,7 @@ fn main() {
                                min_dense_cnt,
                                avg_dense_dist,
                                min_homozygous_freq,
+                               min_linkers,
                                min_phase_score,
                                max_enum_snps,
                                random_flip_fraction,
