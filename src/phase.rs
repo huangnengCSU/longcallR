@@ -1783,7 +1783,7 @@ impl SNPFrag {
                     rd.id = vec!['.' as u8];
                     rd.alternative = vec![vec![snp.alleles[0] as u8]];
                     rd.qual = snp.variant_quality as i32;
-                    rd.genotype = format!("{}:{}:{}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]);
+                    rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}", "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score);
                     if snp.rna_editing == true {
                         rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
                         if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
@@ -1800,7 +1800,7 @@ impl SNPFrag {
                             rd.filter = "PASS".to_string().into_bytes();
                         }
                     }
-                    rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                    rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                     records.push(rd);
                 } else {
                     let mut rd: VCFRecord = VCFRecord::default();
