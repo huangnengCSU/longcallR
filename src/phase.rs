@@ -294,138 +294,185 @@ impl SNPFrag {
                     continue;
                 }
 
-                // use fisher's test or chi-square test to test strand bias
-                let mut allele_freq_mat = [0; 4];
-                match allele1 {
-                    'a' => {
-                        allele_freq_mat[0] = bf.base_strands.a[0];
-                        allele_freq_mat[1] = bf.base_strands.a[1];
-                    }
-                    'A' => {
-                        allele_freq_mat[0] = bf.base_strands.a[0];
-                        allele_freq_mat[1] = bf.base_strands.a[1];
-                    }
-                    'c' => {
-                        allele_freq_mat[0] = bf.base_strands.c[0];
-                        allele_freq_mat[1] = bf.base_strands.c[1];
-                    }
-                    'C' => {
-                        allele_freq_mat[0] = bf.base_strands.c[0];
-                        allele_freq_mat[1] = bf.base_strands.c[1];
-                    }
-                    'g' => {
-                        allele_freq_mat[0] = bf.base_strands.g[0];
-                        allele_freq_mat[1] = bf.base_strands.g[1];
-                    }
-                    'G' => {
-                        allele_freq_mat[0] = bf.base_strands.g[0];
-                        allele_freq_mat[1] = bf.base_strands.g[1];
-                    }
-                    't' => {
-                        allele_freq_mat[0] = bf.base_strands.t[0];
-                        allele_freq_mat[1] = bf.base_strands.t[1];
-                    }
-                    'T' => {
-                        allele_freq_mat[0] = bf.base_strands.t[0];
-                        allele_freq_mat[1] = bf.base_strands.t[1];
-                    }
-                    _ => {
-                        println!("Error: unknown allele");
-                        position += 1;
-                        continue;
-                    }
+                // filtering with strand bias
+                let mut variant_allele: Vec<char> = Vec::new();
+                // if allele1 != bf.ref_base {
+                if allele1 != bf.ref_base && allele1_cnt >= 4 {
+                    variant_allele.push(allele1);
                 }
-                match allele2 {
-                    'a' => {
-                        allele_freq_mat[2] = bf.base_strands.a[0];
-                        allele_freq_mat[3] = bf.base_strands.a[1];
+                // if allele2 != bf.ref_base {
+                if allele2 != bf.ref_base && allele2_cnt >= 4 {
+                    variant_allele.push(allele2);
+                }
+                if variant_allele.len() > 0 {
+                    // variant allele
+                    let mut strand_bias = false;
+                    for allele_base in variant_allele.iter() {
+                        let mut fcnt = 0;
+                        let mut bcnt = 0;
+                        match allele_base {
+                            'a' => { [fcnt, bcnt] = bf.base_strands.a; }
+                            'A' => { [fcnt, bcnt] = bf.base_strands.a; }
+                            'c' => { [fcnt, bcnt] = bf.base_strands.c; }
+                            'C' => { [fcnt, bcnt] = bf.base_strands.c; }
+                            'g' => { [fcnt, bcnt] = bf.base_strands.g; }
+                            'G' => { [fcnt, bcnt] = bf.base_strands.g; }
+                            't' => { [fcnt, bcnt] = bf.base_strands.t; }
+                            'T' => { [fcnt, bcnt] = bf.base_strands.t; }
+                            _ => {
+                                println!("Error: unknown allele");
+                                position += 1;
+                                continue;
+                            }
+                        }
+                        let total_cnt = fcnt + bcnt;
+                        if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
+                            // strand bias
+                            strand_bias = true;
+                            continue;
+                        }
                     }
-                    'A' => {
-                        allele_freq_mat[2] = bf.base_strands.a[0];
-                        allele_freq_mat[3] = bf.base_strands.a[1];
-                    }
-                    'c' => {
-                        allele_freq_mat[2] = bf.base_strands.c[0];
-                        allele_freq_mat[3] = bf.base_strands.c[1];
-                    }
-                    'C' => {
-                        allele_freq_mat[2] = bf.base_strands.c[0];
-                        allele_freq_mat[3] = bf.base_strands.c[1];
-                    }
-                    'g' => {
-                        allele_freq_mat[2] = bf.base_strands.g[0];
-                        allele_freq_mat[3] = bf.base_strands.g[1];
-                    }
-                    'G' => {
-                        allele_freq_mat[2] = bf.base_strands.g[0];
-                        allele_freq_mat[3] = bf.base_strands.g[1];
-                    }
-                    't' => {
-                        allele_freq_mat[2] = bf.base_strands.t[0];
-                        allele_freq_mat[3] = bf.base_strands.t[1];
-                    }
-                    'T' => {
-                        allele_freq_mat[2] = bf.base_strands.t[0];
-                        allele_freq_mat[3] = bf.base_strands.t[1];
-                    }
-                    _ => {
-                        println!("Error: unknown allele");
+                    if strand_bias {
                         position += 1;
                         continue;
                     }
                 }
 
-                if (allele_freq_mat[0] + allele_freq_mat[2]) > 0 && (allele_freq_mat[1] + allele_freq_mat[3]) > 0 {
-                    let phred_pvalue = independent_test([allele_freq_mat[0] as u32, allele_freq_mat[1] as u32, allele_freq_mat[2] as u32, allele_freq_mat[3] as u32]);
-                    if phred_pvalue > 100.0 {
-                        position += 1;
-                        continue;
-                    }
-                } else {
-                    // filtering with strand bias
-                    let mut variant_allele: Vec<char> = Vec::new();
-                    // if allele1 != bf.ref_base {
-                    if allele1 != bf.ref_base && allele1_cnt >= 4 {
-                        variant_allele.push(allele1);
-                    }
-                    // if allele2 != bf.ref_base {
-                    if allele2 != bf.ref_base && allele2_cnt >= 4 {
-                        variant_allele.push(allele2);
-                    }
-                    if variant_allele.len() > 0 {
-                        // variant allele
-                        let mut strand_bias = false;
-                        for allele_base in variant_allele.iter() {
-                            let mut fcnt = 0;
-                            let mut bcnt = 0;
-                            match allele_base {
-                                'a' => { [fcnt, bcnt] = bf.base_strands.a; }
-                                'A' => { [fcnt, bcnt] = bf.base_strands.a; }
-                                'c' => { [fcnt, bcnt] = bf.base_strands.c; }
-                                'C' => { [fcnt, bcnt] = bf.base_strands.c; }
-                                'g' => { [fcnt, bcnt] = bf.base_strands.g; }
-                                'G' => { [fcnt, bcnt] = bf.base_strands.g; }
-                                't' => { [fcnt, bcnt] = bf.base_strands.t; }
-                                'T' => { [fcnt, bcnt] = bf.base_strands.t; }
-                                _ => {
-                                    println!("Error: unknown allele");
-                                    position += 1;
-                                    continue;
-                                }
-                            }
-                            let total_cnt = fcnt + bcnt;
-                            if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
-                                // strand bias
-                                strand_bias = true;
-                                continue;
-                            }
-                        }
-                        if strand_bias {
-                            position += 1;
-                            continue;
-                        }
-                    }
-                }
+                // // use fisher's test or chi-square test to test strand bias
+                // let mut allele_freq_mat = [0; 4];
+                // match allele1 {
+                //     'a' => {
+                //         allele_freq_mat[0] = bf.base_strands.a[0];
+                //         allele_freq_mat[1] = bf.base_strands.a[1];
+                //     }
+                //     'A' => {
+                //         allele_freq_mat[0] = bf.base_strands.a[0];
+                //         allele_freq_mat[1] = bf.base_strands.a[1];
+                //     }
+                //     'c' => {
+                //         allele_freq_mat[0] = bf.base_strands.c[0];
+                //         allele_freq_mat[1] = bf.base_strands.c[1];
+                //     }
+                //     'C' => {
+                //         allele_freq_mat[0] = bf.base_strands.c[0];
+                //         allele_freq_mat[1] = bf.base_strands.c[1];
+                //     }
+                //     'g' => {
+                //         allele_freq_mat[0] = bf.base_strands.g[0];
+                //         allele_freq_mat[1] = bf.base_strands.g[1];
+                //     }
+                //     'G' => {
+                //         allele_freq_mat[0] = bf.base_strands.g[0];
+                //         allele_freq_mat[1] = bf.base_strands.g[1];
+                //     }
+                //     't' => {
+                //         allele_freq_mat[0] = bf.base_strands.t[0];
+                //         allele_freq_mat[1] = bf.base_strands.t[1];
+                //     }
+                //     'T' => {
+                //         allele_freq_mat[0] = bf.base_strands.t[0];
+                //         allele_freq_mat[1] = bf.base_strands.t[1];
+                //     }
+                //     _ => {
+                //         println!("Error: unknown allele");
+                //         position += 1;
+                //         continue;
+                //     }
+                // }
+                // match allele2 {
+                //     'a' => {
+                //         allele_freq_mat[2] = bf.base_strands.a[0];
+                //         allele_freq_mat[3] = bf.base_strands.a[1];
+                //     }
+                //     'A' => {
+                //         allele_freq_mat[2] = bf.base_strands.a[0];
+                //         allele_freq_mat[3] = bf.base_strands.a[1];
+                //     }
+                //     'c' => {
+                //         allele_freq_mat[2] = bf.base_strands.c[0];
+                //         allele_freq_mat[3] = bf.base_strands.c[1];
+                //     }
+                //     'C' => {
+                //         allele_freq_mat[2] = bf.base_strands.c[0];
+                //         allele_freq_mat[3] = bf.base_strands.c[1];
+                //     }
+                //     'g' => {
+                //         allele_freq_mat[2] = bf.base_strands.g[0];
+                //         allele_freq_mat[3] = bf.base_strands.g[1];
+                //     }
+                //     'G' => {
+                //         allele_freq_mat[2] = bf.base_strands.g[0];
+                //         allele_freq_mat[3] = bf.base_strands.g[1];
+                //     }
+                //     't' => {
+                //         allele_freq_mat[2] = bf.base_strands.t[0];
+                //         allele_freq_mat[3] = bf.base_strands.t[1];
+                //     }
+                //     'T' => {
+                //         allele_freq_mat[2] = bf.base_strands.t[0];
+                //         allele_freq_mat[3] = bf.base_strands.t[1];
+                //     }
+                //     _ => {
+                //         println!("Error: unknown allele");
+                //         position += 1;
+                //         continue;
+                //     }
+                // }
+                //
+                // if (allele_freq_mat[0] + allele_freq_mat[2]) > 0 && (allele_freq_mat[1] + allele_freq_mat[3]) > 0 {
+                //     let phred_pvalue = independent_test([allele_freq_mat[0] as u32, allele_freq_mat[1] as u32, allele_freq_mat[2] as u32, allele_freq_mat[3] as u32]);
+                //     if phred_pvalue > 100.0 {
+                //         position += 1;
+                //         continue;
+                //     }
+                // } else {
+                //     // filtering with strand bias
+                //     let mut variant_allele: Vec<char> = Vec::new();
+                //     // if allele1 != bf.ref_base {
+                //     if allele1 != bf.ref_base && allele1_cnt >= 4 {
+                //         variant_allele.push(allele1);
+                //     }
+                //     // if allele2 != bf.ref_base {
+                //     if allele2 != bf.ref_base && allele2_cnt >= 4 {
+                //         variant_allele.push(allele2);
+                //     }
+                //     if variant_allele.len() > 0 {
+                //         // variant allele
+                //         let mut strand_bias = false;
+                //         for allele_base in variant_allele.iter() {
+                //             let mut fcnt = 0;
+                //             let mut bcnt = 0;
+                //             match allele_base {
+                //                 'a' => { [fcnt, bcnt] = bf.base_strands.a; }
+                //                 'A' => { [fcnt, bcnt] = bf.base_strands.a; }
+                //                 'c' => { [fcnt, bcnt] = bf.base_strands.c; }
+                //                 'C' => { [fcnt, bcnt] = bf.base_strands.c; }
+                //                 'g' => { [fcnt, bcnt] = bf.base_strands.g; }
+                //                 'G' => { [fcnt, bcnt] = bf.base_strands.g; }
+                //                 't' => { [fcnt, bcnt] = bf.base_strands.t; }
+                //                 'T' => { [fcnt, bcnt] = bf.base_strands.t; }
+                //                 _ => {
+                //                     println!("Error: unknown allele");
+                //                     position += 1;
+                //                     continue;
+                //                 }
+                //             }
+                //             let total_cnt = fcnt + bcnt;
+                //             if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
+                //                 if allele1 != bf.ref_base {
+                //                     println!("strand bias: {}:{}", profile.region.chr, position);
+                //                 }
+                //                 // strand bias
+                //                 strand_bias = true;
+                //                 continue;
+                //             }
+                //         }
+                //         if strand_bias {
+                //             position += 1;
+                //             continue;
+                //         }
+                //     }
+                // }
             }
 
             // filtering by local high error rate
@@ -1775,7 +1822,7 @@ impl SNPFrag {
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
             } else if snp.variant_type == 1 {
-                if snp.phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference {
+                if snp.phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference && snp.filter == false {
                     let mut rd: VCFRecord = VCFRecord::default();
                     rd.chromosome = snp.chromosome.clone();
                     rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based
