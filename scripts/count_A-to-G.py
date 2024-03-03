@@ -1,13 +1,23 @@
 import sys
+import gzip
 
 hap_vcf = sys.argv[1]  ## hap.py output vcf file (decompressed)
 
 fp_out = open("fp_sites.csv", 'w')
 fn_out = open("fn_sites.csv", 'w')
 non_A_to_G_tp, non_A_to_G_fp, non_A_to_G_fn = 0, 0, 0
-with open(hap_vcf, 'r') as f:
+gz_flag = False
+if hap_vcf.endswith('.gz'):
+    gz_flag = True
+    f = gzip.open(hap_vcf, 'rb')
+else:
+    f = open(hap_vcf, 'r')
+
+with f:
     tp_cnt, fp_cnt, fn_cnt = 0, 0, 0
     for line_str in f:
+        if gz_flag:
+            line_str = line_str.decode('utf-8')
         if line_str.startswith('#'):
             continue
         else:

@@ -71,7 +71,7 @@ pub struct FragElem {
     pub strand: u32,
     // read strand,  0: forward, 1: reverse
     pub p: i32,
-    // base allele on alphabet  {-1, 1, 0}, 1: base==alleles[0], -1: base==alleles[1], 0: not covered (bases except allele1 and allele2, deletions or N)
+    // base allele on alphabet  {-1, 1, 0}, 1: base==ref, -1: base==alt, 0: not covered (bases except ref allele and alt allele, deletions or N)
     pub prob: f64,
     // error rate of observe current base
 }
@@ -699,7 +699,7 @@ impl SNPFrag {
                 candidate_snp.depth = depth;
 
                 if allele1 != bf.ref_base && allele2 != bf.ref_base && allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
-                    candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP
+                    candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
                 } else {
                     candidate_snp.variant_type = 2; // homozygous SNP
                 }
@@ -907,9 +907,16 @@ impl SNPFrag {
                                 frag_elem.baseq = record.qual()[pos_on_query as usize];
                                 frag_elem.strand = strand;
                                 frag_elem.prob = 10.0_f64.powf(-(frag_elem.baseq as f64) / 10.0);
-                                if frag_elem.base == alleles[0] {
+                                // if frag_elem.base == alleles[0] {
+                                //     frag_elem.p = 1;    // reference allele
+                                // } else if frag_elem.base == alleles[1] {
+                                //     frag_elem.p = -1;   // alternate allele
+                                // } else {
+                                //     frag_elem.p = 0;    // not covered
+                                // }
+                                if frag_elem.base == self.candidate_snps[frag_elem.snp_idx].reference {
                                     frag_elem.p = 1;    // reference allele
-                                } else if frag_elem.base == alleles[1] {
+                                } else if (frag_elem.base == alleles[0] || frag_elem.base == alleles[1]) && frag_elem.base != self.candidate_snps[frag_elem.snp_idx].reference {
                                     frag_elem.p = -1;   // alternate allele
                                 } else {
                                     frag_elem.p = 0;    // not covered
@@ -1384,7 +1391,7 @@ impl SNPFrag {
                 phasing_increase = false;
             }
             num_iters += 1;
-            if num_iters > 10 {
+            if num_iters > 20 {
                 break;
             }
         }
@@ -1544,7 +1551,6 @@ impl SNPFrag {
                     }
                 }
                 max_iter -= 1;
-                // println!("largest_prob: {}", largest_prob);
             }
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
@@ -1901,7 +1907,7 @@ impl SNPFrag {
                                 rd.qual = snp.variant_quality as i32;
                                 if hp == -1 {
                                     rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
-                                } else {
+                                } else if hp == 1 {
                                     rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                                 }
                             } else if snp.alleles[1] == snp.reference {
@@ -1909,7 +1915,7 @@ impl SNPFrag {
                                 rd.qual = snp.variant_quality as i32;
                                 if hp == -1 {
                                     rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "0|1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
-                                } else {
+                                } else if hp == 1 {
                                     rd.genotype = format!("{}:{}:{}:{:.2}:{:.2}:{},{}", "1|0", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.phase_score, snp.haplotype_expression[0], snp.haplotype_expression[1]);
                                 }
                             } else {
