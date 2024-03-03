@@ -1489,42 +1489,42 @@ impl SNPFrag {
                 }
 
                 // block flip: flip all the snps after a random position to jump local optimization
-                // let mut unflipped_haplotype: Vec<i32> = Vec::new();
-                // for i in self.hete_snps.iter() {
-                //     unflipped_haplotype.push(self.candidate_snps[*i].haplotype);
-                // }
-                // for ti in 0..unflipped_haplotype.len() {
-                //     let mut tmp_hap: Vec<i32> = Vec::new();
-                //     for tj in 0..unflipped_haplotype.len() {
-                //         if tj < ti {
-                //             tmp_hap.push(unflipped_haplotype[tj]);
-                //         } else {
-                //             tmp_hap.push(unflipped_haplotype[tj] * (-1));
-                //         }
-                //     }
-                //     assert!(tmp_hap.len() == self.hete_snps.len());
-                //     for i in 0..self.hete_snps.len() {
-                //         self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
-                //     }
-                //     let prob = self.cross_optimize();
-                //     if prob > largest_prob {
-                //         largest_prob = prob;
-                //         best_haplotype.clear();
-                //         best_haplotag.clear();
-                //         for i in self.hete_snps.iter() {
-                //             best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
-                //         }
-                //         for k in covered_fragments.iter() {
-                //             best_haplotag.insert(*k, self.fragments[*k].haplotag);
-                //         }
-                //     }
-                // }
-                // for i in self.hete_snps.iter() {
-                //     self.candidate_snps[*i].haplotype = best_haplotype[i];
-                // }
-                // for k in covered_fragments.iter() {
-                //     self.fragments[*k].haplotag = best_haplotag[k];
-                // }
+                let mut unflipped_haplotype: Vec<i32> = Vec::new();
+                for i in self.hete_snps.iter() {
+                    unflipped_haplotype.push(self.candidate_snps[*i].haplotype);
+                }
+                for ti in 0..unflipped_haplotype.len() {
+                    let mut tmp_hap: Vec<i32> = Vec::new();
+                    for tj in 0..unflipped_haplotype.len() {
+                        if tj < ti {
+                            tmp_hap.push(unflipped_haplotype[tj]);
+                        } else {
+                            tmp_hap.push(unflipped_haplotype[tj] * (-1));
+                        }
+                    }
+                    assert!(tmp_hap.len() == self.hete_snps.len());
+                    for i in 0..self.hete_snps.len() {
+                        self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
+                    }
+                    let prob = self.cross_optimize();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        best_haplotype.clear();
+                        best_haplotag.clear();
+                        for i in self.hete_snps.iter() {
+                            best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
+                        }
+                        for k in covered_fragments.iter() {
+                            best_haplotag.insert(*k, self.fragments[*k].haplotag);
+                        }
+                    }
+                }
+                for i in self.hete_snps.iter() {
+                    self.candidate_snps[*i].haplotype = best_haplotype[i];
+                }
+                for k in covered_fragments.iter() {
+                    self.fragments[*k].haplotag = best_haplotag[k];
+                }
 
                 // flip a fraction of snps and reads
                 let num_flip_haplotype = (self.hete_snps.len() as f32 * random_flip_fraction) as usize;
