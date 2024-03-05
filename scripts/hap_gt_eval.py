@@ -36,7 +36,6 @@ def load_hap(hap_vcf):
                     if "FP" in query and "SNP" in query:
                         fp_cnt += 1
                         fp_snps.add("{}:{}".format(line[0], line[1]))
-    print(tp_cnt, fp_cnt, fn_cnt)
     return tp_snps, fp_snps, fn_snps
 
 

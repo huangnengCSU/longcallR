@@ -6,6 +6,7 @@ hap_vcf = sys.argv[1]  ## hap.py output vcf file (decompressed)
 fp_out = open("fp_sites.csv", 'w')
 fn_out = open("fn_sites.csv", 'w')
 non_A_to_I_tp, non_A_to_I_fp, non_A_to_I_fn = 0, 0, 0
+non_A_to_I_tp_snps, non_A_to_I_fp_snps, non_A_to_I_fn_snps = set(), set(), set()
 gz_flag = False
 if hap_vcf.endswith('.gz'):
     gz_flag = True
@@ -52,13 +53,16 @@ with f:
             else:
                 ## non RNA-editing sites
                 if "TP" in truth and "SNP" in truth and "TP" in query:
+                    non_A_to_I_tp_snps.add("{}:{}".format(line[0], line[1]))
                     non_A_to_I_tp += 1
                 else:
                     ## An error genotype will both increase a FP and a FN
                     if "FN" in truth and "SNP" in truth:
+                        non_A_to_I_fn_snps.add("{}:{}".format(line[0], line[1]))
                         non_A_to_I_fn += 1
                         fn_out.write(line_str)
                     if "FP" in query and "SNP" in query:
+                        non_A_to_I_fp_snps.add("{}:{}".format(line[0], line[1]))
                         non_A_to_I_fp += 1
                         fp_out.write(line_str)
 tp_var_dict = sorted(tp_var_dict.items(), key=lambda x: x[1], reverse=True)
@@ -81,3 +85,28 @@ F1 = 2 * P * R / (P + R)
 print(f"Recall = {R},\nPrecision = {P},\nF1 = {F1}")
 fp_out.close()
 fn_out.close()
+
+## evaluate with genotype
+gt_errors = (non_A_to_I_fn_snps & non_A_to_I_fp_snps)
+
+tp = len(non_A_to_I_tp_snps)
+fp = len(non_A_to_I_fp_snps)
+fn = len(non_A_to_I_fn_snps)
+print("regular eval:")
+print("TP: {}, FN: {}, FP: {}, Recall: {}, Precision: {}, F1: {}".format(tp, fn, fp,
+                                                                         tp / (tp + fn),
+                                                                         tp / (tp + fp),
+                                                                         2 * tp / (2 * tp + fp + fn)))
+
+tp_gt = tp + len(gt_errors)
+fp_gt = fp - len(gt_errors)
+fn_gt = fn - len(gt_errors)
+print("remove genotype eval:")
+print("TP: {}, FN: {}, FP: {}, Recall: {}, Precision: {}, F1: {}".format(tp_gt, fn_gt, fp_gt,
+                                                                         tp_gt / (tp_gt + fn_gt),
+                                                                         tp_gt / (tp_gt + fp_gt),
+                                                                         2 * tp_gt / (2 * tp_gt + fp_gt + fn_gt)))
+
+print("genotype accuracy: {}".format(1 - len(gt_errors) / (tp_gt)))
+
+
