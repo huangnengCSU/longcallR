@@ -13,6 +13,7 @@ use rand::seq::SliceRandom;
 use std::cmp::{Ordering};
 use crate::Platform;
 use probability::distribution::{Binomial, Distribution};
+use rand::Rng;
 
 
 #[derive(Debug, Clone, Default)]
@@ -800,8 +801,9 @@ impl SNPFrag {
 
     pub unsafe fn init_haplotypes(&mut self) {
         // initialize haplotype of heterozygous snp
+        let mut rng = rand::thread_rng();
         for i in self.hete_snps.iter() {
-            if drand48() < 0.5 {
+            if rng.gen() < 0.5 {
                 self.candidate_snps[*i].haplotype = -1;
             } else {
                 self.candidate_snps[*i].haplotype = 1;
@@ -810,32 +812,12 @@ impl SNPFrag {
     }
 
     pub unsafe fn init_assignment(&mut self) {
-        let mut fragment_cnt: HashMap<usize, usize> = HashMap::new();
-        let mut covered_fragments: HashSet<usize> = HashSet::new();
-
-        for i in self.hete_snps.iter() {
-            let snp = &self.candidate_snps[*i];
-            for k in snp.snp_cover_fragments.iter() {
-                if fragment_cnt.contains_key(k) {
-                    let cnt = fragment_cnt.get_mut(k).unwrap();
-                    *cnt += 1;
-                } else {
-                    fragment_cnt.insert(*k, 1);
-                }
-            }
-        }
-
-        for (k, v) in fragment_cnt.iter() {
-            if *v as i32 >= self.min_linkers {
-                covered_fragments.insert(*k);
-            }
-        }
-
-        for k in covered_fragments.iter() {
-            if drand48() < 0.5 {
-                self.fragments[*k].haplotag = -1;
+        let mut rng = rand::thread_rng();
+        for k in 0..self.fragments.len() {
+            if rng.gen() < 0.5 {
+                self.fragments[k].haplotype = -1;
             } else {
-                self.fragments[*k].haplotag = 1;
+                self.fragments[k].haplotype = 1;
             }
         }
     }
@@ -1204,51 +1186,51 @@ impl SNPFrag {
         return 10e-6_f64.max((inconsistent as f64) / ((consisitent + inconsistent) as f64));
     }
 
-    pub fn cal_overall_probability(snpfrag: &SNPFrag, processed_snps: &HashSet<usize>, covered_fragments: &HashSet<usize>) -> f64 {
+    pub fn cal_overall_probability(snpfrag: &SNPFrag) -> f64 {
         let mut logp = 0.0;
-        for k in covered_fragments.iter() {
-            for fe in snpfrag.fragments[*k].list.iter() {
-                if snpfrag.candidate_snps[fe.snp_idx].filter == false && processed_snps.contains(&fe.snp_idx) {
-                    if fe.p != 0 {
-                        if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
-                            logp += (1.0 - fe.prob).log10();
-                        } else {
-                            logp += fe.prob.log10();
-                        }
-                    }
+        for k in 0..snpfrag.fragments.len() {
+            for fe in snpfrag.fragments[k].list.iter() {
+                assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
+                if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
+                    logp += (1.0 - fe.prob).log10();
+                } else {
+                    logp += fe.prob.log10();
                 }
             }
         }
         return logp;
     }
 
-    pub fn check_new_haplotag(snpfrag: &SNPFrag, processed_snps: &HashSet<usize>, updated_haplotag: &HashMap<usize, i32>) -> i32 {
+    pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i32>) -> i32 {
+        // updated_haplotag: the index of the fragments will be updated
         let mut logp = 0.0;
         let mut pre_logp = 0.0;
         for (k, h) in updated_haplotag.iter()
         {
             for fe in snpfrag.fragments[*k].list.iter() {
-                if snpfrag.candidate_snps[fe.snp_idx].filter == false && processed_snps.contains(&fe.snp_idx) {
-                    if fe.p != 0 {
-                        if h * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
-                            logp += (1.0 - fe.prob).log10();
-                        } else {
-                            logp += fe.prob.log10();
-                        }
+                assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
+                if h * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
+                    logp += (1.0 - fe.prob).log10();
+                } else {
+                    logp += fe.prob.log10();
+                }
 
-                        if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
-                            pre_logp += (1.0 - fe.prob).log10();
-                        } else {
-                            pre_logp += fe.prob.log10();
-                        }
-                    }
+                if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
+                    pre_logp += (1.0 - fe.prob).log10();
+                } else {
+                    pre_logp += fe.prob.log10();
                 }
             }
         }
         let mut rv = 0;
-        if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else {
+        if logp - pre_logp > 10e-9_f64 {
+            rv = 1;
+        } else if logp - pre_logp <= 10e-9_f64 && logp - pre_logp >= -10e-9_f64 {
+            rv = 0;
+        } else {
             rv = -1;
         }
+        assert!(rv >= 0, "Error: update haplotag should not decrease the probability. {} -> {}", pre_logp, logp);
         return rv;
     }
 
@@ -1261,25 +1243,30 @@ impl SNPFrag {
             for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
                 for fe in snpfrag.fragments[*k].list.iter() {
                     if fe.snp_idx != *i { continue; }
-                    if fe.p != 0 {
-                        if snpfrag.fragments[*k].haplotag * h == fe.p {
-                            logp += (1.0 - fe.prob).log10();
-                        } else {
-                            logp += fe.prob.log10();
-                        }
+                    assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
+                    if snpfrag.fragments[*k].haplotag * h == fe.p {
+                        logp += (1.0 - fe.prob).log10();
+                    } else {
+                        logp += fe.prob.log10();
+                    }
 
-                        if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
-                            pre_logp += (1.0 - fe.prob).log10();
-                        } else {
-                            pre_logp += fe.prob.log10();
-                        }
+                    if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
+                        pre_logp += (1.0 - fe.prob).log10();
+                    } else {
+                        pre_logp += fe.prob.log10();
                     }
                 }
             }
         }
-        // println!("check_new_haplotype: logp = {}, pre_logp = {}", logp, pre_logp);
         let mut rv = 0;
-        if logp > pre_logp { rv = 1; } else if logp == pre_logp { rv = 0; } else { rv = -1; }
+        if logp - pre_logp > 10e-9_f64 {
+            rv = 1;
+        } else if logp - pre_logp <= 10e-9_f64 && logp - pre_logp >= -10e-9_f64 {
+            rv = 0;
+        } else {
+            rv = -1;
+        }
+        assert!(rv >= 0, "Error: update haplotype should not decrease the probability. {} -> {}", pre_logp, logp);
         return rv;
     }
 
@@ -1293,43 +1280,22 @@ impl SNPFrag {
         let mut phasing_increase: bool = true;
         let mut haplotag_increase: bool = true;
         let mut num_iters = 0;
-        let mut fragments_cnt: HashMap<usize, usize> = HashMap::new();
-        let mut covered_fragments: HashSet<usize> = HashSet::new();
-        let mut processed_snps: HashSet<usize> = HashSet::new();
-        for i in self.hete_snps.iter() {
-            processed_snps.insert(*i);
-            for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
-                if !fragments_cnt.contains_key(k) {
-                    fragments_cnt.insert(*k, 1);
-                } else {
-                    let cnt = fragments_cnt.get_mut(k).unwrap();
-                    *cnt += 1;
-                }
-            }
-        }
-
-        for (k, v) in fragments_cnt.iter() {
-            if *v as i32 >= self.min_linkers {
-                covered_fragments.insert(*k);
-            }
-        }
 
         while phasing_increase | haplotag_increase {
             // optimize sigma
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
-            for k in covered_fragments.iter() {
+            let mut processed_snps = HashSet::new();    // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
+            for k in 0..self.fragments.len() {
                 let sigma_k = self.fragments[*k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for fe in self.fragments[*k].list.iter() {
-                    if self.candidate_snps[fe.snp_idx].filter == false && processed_snps.contains(&fe.snp_idx) {
-                        if fe.p != 0 {
-                            ps.push(fe.p);
-                            probs.push(fe.prob);
-                            delta.push(self.candidate_snps[fe.snp_idx].haplotype);
-                        }
-                    }
+                    assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                    ps.push(fe.p);
+                    probs.push(fe.prob);
+                    delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                    processed_snps.insert(fe.snp_idx);
                 }
 
                 if SNPFrag::cal_log_sigma_delta(sigma_k, &delta, &ps, &probs) < SNPFrag::cal_log_sigma_delta(sigma_k * (-1), &delta, &ps, &probs) {
@@ -1340,8 +1306,8 @@ impl SNPFrag {
             }
 
             // assert!(SNPFrag::cal_overall_probability(&self, &processed_snps, &self.haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
-            let check_val = SNPFrag::check_new_haplotag(&self, &processed_snps, &tmp_haplotag);
-            // assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
+            let check_val = SNPFrag::check_new_haplotag(&self, &tmp_haplotag);
+            assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
 
             if check_val > 0 {
                 // new haplotag increases the probability P(sigma, delta)
@@ -1362,12 +1328,11 @@ impl SNPFrag {
                 for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
                     // k is fragment index
                     for fe in self.fragments[*k].list.iter() {
-                        if self.candidate_snps[fe.snp_idx].filter == false && fe.snp_idx == *i {
-                            if fe.p != 0 {
-                                ps.push(fe.p);
-                                probs.push(fe.prob);
-                                sigma.push(self.fragments[*k].haplotag);
-                            }
+                        if fe.snp_idx == *i {
+                            assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            sigma.push(self.fragments[*k].haplotag);
                         }
                     }
                 }
@@ -1396,7 +1361,7 @@ impl SNPFrag {
             }
         }
 
-        let prob = SNPFrag::cal_overall_probability(&self, &processed_snps, &covered_fragments);
+        let prob = SNPFrag::cal_overall_probability(&self);
         return prob;
     }
 
@@ -1404,28 +1369,6 @@ impl SNPFrag {
         let mut largest_prob = f64::NEG_INFINITY;
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
-        let mut covered_fragments: HashSet<usize> = HashSet::new();
-        let mut fragments_cnt: HashMap<usize, usize> = HashMap::new();
-        for i in self.hete_snps.iter() {
-            // if self.candidate_snps[*i].filter == true { continue; }
-            for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
-                if !fragments_cnt.contains_key(k) {
-                    fragments_cnt.insert(*k, 1);
-                } else {
-                    let cnt = fragments_cnt.get_mut(k).unwrap();
-                    *cnt += 1;
-                }
-            }
-        }
-
-
-        for (k, v) in fragments_cnt.iter() {
-            // each fragment is covered by at least two SNPs
-            if *v as i32 >= self.min_linkers {
-                covered_fragments.insert(*k);
-            }
-        }
-
 
         if self.hete_snps.len() <= max_enum_snps {
             // enumerate the haplotype, then optimize the assignment
@@ -1436,14 +1379,15 @@ impl SNPFrag {
                 for tj in 0..haplotype_enum.len() {
                     let mut tmp_hap = haplotype_enum[tj].clone();
                     tmp_hap[ti] = tmp_hap[ti] * (-1);
-                    assert!(tmp_hap.len() == self.hete_snps.len());
                     haplotype_enum.push(tmp_hap);
                 }
             }
+            assert!(haplotype_enum.len() == 2_usize.pow(self.hete_snps.len() as u32), "Error: Not all combinations included");
             for hap in haplotype_enum.iter() {
                 for i in 0..self.hete_snps.len() {
                     self.candidate_snps[self.hete_snps[i]].haplotype = hap[i];
                 }
+                unsafe { self.init_assignment(); }
                 let prob = self.cross_optimize();
                 if prob > largest_prob {
                     largest_prob = prob;
@@ -1452,16 +1396,16 @@ impl SNPFrag {
                     for i in self.hete_snps.iter() {
                         best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
                     }
-                    for k in covered_fragments.iter() {
-                        best_haplotag.insert(*k, self.fragments[*k].haplotag);
+                    for k in 0..self.fragments.len() {
+                        best_haplotag.insert(k, self.fragments[k].haplotag);
                     }
                 }
             }
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
-            for k in covered_fragments.iter() {
-                self.fragments[*k].haplotag = best_haplotag[k];
+            for k in 0..self.fragments.len() {
+                self.fragments[k].haplotag = best_haplotag[k];
             }
         } else {
             // optimize haplotype and read assignment alternatively
@@ -1477,15 +1421,15 @@ impl SNPFrag {
                     for i in self.hete_snps.iter() {
                         best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
                     }
-                    for k in covered_fragments.iter() {
-                        best_haplotag.insert(*k, self.fragments[*k].haplotag);
+                    for k in 0..self.fragments.len() {
+                        best_haplotag.insert(k, self.fragments[k].haplotag);
                     }
                 }
                 for i in self.hete_snps.iter() {
                     self.candidate_snps[*i].haplotype = best_haplotype[i];
                 }
-                for k in covered_fragments.iter() {
-                    self.fragments[*k].haplotag = best_haplotag[k];
+                for k in 0..self.fragments.len() {
+                    self.fragments[k].haplotag = best_haplotag[k];
                 }
 
                 // block flip: flip all the snps after a random position to jump local optimization
@@ -1514,29 +1458,29 @@ impl SNPFrag {
                         for i in self.hete_snps.iter() {
                             best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
                         }
-                        for k in covered_fragments.iter() {
-                            best_haplotag.insert(*k, self.fragments[*k].haplotag);
+                        for k in 0..self.fragments.len() {
+                            best_haplotag.insert(k, self.fragments[k].haplotag);
                         }
                     }
                 }
                 for i in self.hete_snps.iter() {
                     self.candidate_snps[*i].haplotype = best_haplotype[i];
                 }
-                for k in covered_fragments.iter() {
-                    self.fragments[*k].haplotag = best_haplotag[k];
+                for k in 0..self.fragments.len() {
+                    self.fragments[k].haplotag = best_haplotag[k];
                 }
 
                 // flip a fraction of snps and reads
                 let num_flip_haplotype = (self.hete_snps.len() as f32 * random_flip_fraction) as usize;
-                let num_flip_haplotag = (covered_fragments.len() as f32 * random_flip_fraction) as usize;
+                let num_flip_haplotag = (self.fragments.len() as f32 * random_flip_fraction) as usize;
                 let mut rng = rand::thread_rng();
                 let selected_flip_haplotype: Vec<_> = self.hete_snps.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
                 for ti in selected_flip_haplotype {
                     self.candidate_snps[*ti].haplotype = self.candidate_snps[*ti].haplotype * (-1);
                 }
-                let selected_flip_haplotag: Vec<_> = covered_fragments.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
+                let selected_flip_haplotag: Vec<_> = (0..self.fragments.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
                 for tk in selected_flip_haplotag {
-                    self.fragments[*tk].haplotag = self.fragments[*tk].haplotag * (-1);
+                    self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
                 }
                 let prob = self.cross_optimize();
                 if prob > largest_prob {
@@ -1546,8 +1490,8 @@ impl SNPFrag {
                     for i in self.hete_snps.iter() {
                         best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
                     }
-                    for k in covered_fragments.iter() {
-                        best_haplotag.insert(*k, self.fragments[*k].haplotag);
+                    for k in 0..self.fragments.len() {
+                        best_haplotag.insert(k, self.fragments[k].haplotag);
                     }
                 }
                 max_iter -= 1;
@@ -1555,8 +1499,8 @@ impl SNPFrag {
             for i in self.hete_snps.iter() {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
-            for k in covered_fragments.iter() {
-                self.fragments[*k].haplotag = best_haplotag[k];
+            for k in 0..self.fragments.len() {
+                self.fragments[k].haplotag = best_haplotag[k];
             }
         }
     }
