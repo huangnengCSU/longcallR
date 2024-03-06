@@ -1667,7 +1667,7 @@ impl SNPFrag {
             } else {
                 let q = SNPFrag::cal_log_sigma_delta(sigma_k, &delta, &ps, &probs);
                 let qn = SNPFrag::cal_log_sigma_delta(sigma_k * (-1), &delta, &ps, &probs);
-                println!("q: {}, qn: {}", q, qn);
+                // println!("q: {}, qn: {}", q, qn);
                 assert!(q - qn > -10e-9_f64, "read assignment is not local optimal. {}->{}", q, qn);  // q >= qn
                 if q - qn > read_assignment_cutoff {
                     if sigma_k == 1 {
