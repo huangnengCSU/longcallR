@@ -1,4 +1,4 @@
-use rust_htslib::{bam, bam::Format, bam::{Read, ext::BamRecordExtensions}};
+use rust_htslib::{bam, bam::{Read, ext::BamRecordExtensions}};
 use std::sync::{mpsc, Arc, Mutex, Condvar};
 use rayon::prelude::*;
 use std::{fs, fs::File};
@@ -7,7 +7,6 @@ use std::io::{BufRead, BufReader};
 use std::time::Instant;
 use bio::bio_types::strand::ReqStrand::Forward;
 use bio::io::fasta;
-use chrono::Local;
 use seq_io::fasta::{Reader, Record};
 use crate::Platform;
 use fishers_exact::fishers_exact;
@@ -385,7 +384,7 @@ impl Profile {
                             // the end of ont reads are trimed since the accuracy of the ends is low
                             match platform {
                                 Platform::ont => {
-                                    if ((pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64) {
+                                    if (pos_in_read as i64 - leading_softclips).abs() < distance_to_read_end as i64 || (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() < distance_to_read_end as i64 {
                                         trimed_flag = true;
                                     }
                                 }
@@ -429,7 +428,7 @@ impl Profile {
                                 if (pos_in_read as i64 - leading_softclips).abs() < (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips)).abs() {
                                     dist = pos_in_read as i64 - leading_softclips;    // positive value
                                 } else {
-                                    dist = (pos_in_read as i64 - (seq.len() as i64 - trailing_softclips));    // negative value
+                                    dist = pos_in_read as i64 - (seq.len() as i64 - trailing_softclips);    // negative value
                                 }
 
                                 match base {

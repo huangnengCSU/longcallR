@@ -5,7 +5,6 @@ use std::hash::Hash;
 use std::io::{Write};
 use crate::util::{Region, independent_test, parse_fai, Profile, load_reference, VCFRecord};
 use rust_htslib::{bam, bam::Read, bam::record::Record, bam::Format, bam::record::Aux};
-use rust_htslib::htslib::{drand48};
 use std::sync::{Mutex};
 use bio::bio_types::strand::ReqStrand::Forward;
 use rayon::prelude::*;
@@ -803,7 +802,8 @@ impl SNPFrag {
         // initialize haplotype of heterozygous snp
         let mut rng = rand::thread_rng();
         for i in self.hete_snps.iter() {
-            if rng.gen() < 0.5 {
+            let rg: f64 = rng.gen();
+            if rg < 0.5 {
                 self.candidate_snps[*i].haplotype = -1;
             } else {
                 self.candidate_snps[*i].haplotype = 1;
@@ -814,10 +814,11 @@ impl SNPFrag {
     pub unsafe fn init_assignment(&mut self) {
         let mut rng = rand::thread_rng();
         for k in 0..self.fragments.len() {
-            if rng.gen() < 0.5 {
-                self.fragments[k].haplotype = -1;
+            let rg: f64 = rng.gen();
+            if rg < 0.5 {
+                self.fragments[k].haplotag = -1;
             } else {
-                self.fragments[k].haplotype = 1;
+                self.fragments[k].haplotag = 1;
             }
         }
     }
@@ -1191,7 +1192,7 @@ impl SNPFrag {
         for k in 0..snpfrag.fragments.len() {
             for fe in snpfrag.fragments[k].list.iter() {
                 assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
-                if snpfrag.fragments[*k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
+                if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
                     logp += (1.0 - fe.prob).log10();
                 } else {
                     logp += fe.prob.log10();
@@ -1286,11 +1287,11 @@ impl SNPFrag {
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
             let mut processed_snps = HashSet::new();    // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
             for k in 0..self.fragments.len() {
-                let sigma_k = self.fragments[*k].haplotag;
+                let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
-                for fe in self.fragments[*k].list.iter() {
+                for fe in self.fragments[k].list.iter() {
                     assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                     ps.push(fe.p);
                     probs.push(fe.prob);
@@ -1299,9 +1300,9 @@ impl SNPFrag {
                 }
 
                 if SNPFrag::cal_log_sigma_delta(sigma_k, &delta, &ps, &probs) < SNPFrag::cal_log_sigma_delta(sigma_k * (-1), &delta, &ps, &probs) {
-                    tmp_haplotag.insert(*k, sigma_k * (-1));
+                    tmp_haplotag.insert(k, sigma_k * (-1));
                 } else {
-                    tmp_haplotag.insert(*k, sigma_k);
+                    tmp_haplotag.insert(k, sigma_k);
                 }
             }
 
@@ -1405,33 +1406,32 @@ impl SNPFrag {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
             for k in 0..self.fragments.len() {
-                self.fragments[k].haplotag = best_haplotag[k];
+                self.fragments[k].haplotag = best_haplotag[&k];
             }
         } else {
             // optimize haplotype and read assignment alternatively
             let mut max_iter: i32 = max_iters;
-            while max_iter >= 0 {
-                unsafe { self.init_haplotypes(); }
-                unsafe { self.init_assignment(); }
-                let prob = self.cross_optimize();
-                if prob > largest_prob {
-                    largest_prob = prob;
-                    best_haplotype.clear();
-                    best_haplotag.clear();
-                    for i in self.hete_snps.iter() {
-                        best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
-                    }
-                    for k in 0..self.fragments.len() {
-                        best_haplotag.insert(k, self.fragments[k].haplotag);
-                    }
-                }
+            unsafe { self.init_haplotypes(); }
+            unsafe { self.init_assignment(); }
+            let prob = self.cross_optimize();
+            if prob > largest_prob {
+                largest_prob = prob;
+                best_haplotype.clear();
+                best_haplotag.clear();
                 for i in self.hete_snps.iter() {
-                    self.candidate_snps[*i].haplotype = best_haplotype[i];
+                    best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
                 }
                 for k in 0..self.fragments.len() {
-                    self.fragments[k].haplotag = best_haplotag[k];
+                    best_haplotag.insert(k, self.fragments[k].haplotag);
                 }
-
+            }
+            for i in self.hete_snps.iter() {
+                self.candidate_snps[*i].haplotype = best_haplotype[i];
+            }
+            for k in 0..self.fragments.len() {
+                self.fragments[k].haplotag = best_haplotag[&k];
+            }
+            while max_iter >= 0 {
                 // block flip: flip all the snps after a random position to jump local optimization
                 let mut unflipped_haplotype: Vec<i32> = Vec::new();
                 for i in self.hete_snps.iter() {
@@ -1446,9 +1446,13 @@ impl SNPFrag {
                             tmp_hap.push(unflipped_haplotype[tj] * (-1));
                         }
                     }
-                    assert!(tmp_hap.len() == self.hete_snps.len());
-                    for i in 0..self.hete_snps.len() {
-                        self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
+
+                    // block flip
+                    {
+                        assert_eq!(tmp_hap.len(), self.hete_snps.len());
+                        for i in 0..self.hete_snps.len() {
+                            self.candidate_snps[self.hete_snps[i]].haplotype = tmp_hap[i];
+                        }
                     }
                     let prob = self.cross_optimize();
                     if prob > largest_prob {
@@ -1462,37 +1466,53 @@ impl SNPFrag {
                             best_haplotag.insert(k, self.fragments[k].haplotag);
                         }
                     }
+                    for i in self.hete_snps.iter() {
+                        self.candidate_snps[*i].haplotype = best_haplotype[i];
+                    }
+                    for k in 0..self.fragments.len() {
+                        self.fragments[k].haplotag = best_haplotag[&k];
+                    }
+
+                    // flip a fraction of snps and reads
+                    {
+                        let mut rng = rand::thread_rng();
+                        for ti in 0..self.hete_snps.len() {
+                            let rg: f64 = rng.gen();
+                            if rg < random_flip_fraction as f64 {
+                                self.candidate_snps[self.hete_snps[ti]].haplotype = self.candidate_snps[self.hete_snps[ti]].haplotype * (-1);
+                            }
+                        }
+                        for tk in 0..self.fragments.len() {
+                            let rg: f64 = rng.gen();
+                            if rg < random_flip_fraction as f64 {
+                                self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
+                            }
+                        }
+                    }
+                    let prob = self.cross_optimize();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        best_haplotype.clear();
+                        best_haplotag.clear();
+                        for i in self.hete_snps.iter() {
+                            best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
+                        }
+                        for k in 0..self.fragments.len() {
+                            best_haplotag.insert(k, self.fragments[k].haplotag);
+                        }
+                    }
+                    for i in self.hete_snps.iter() {
+                        self.candidate_snps[*i].haplotype = best_haplotype[i];
+                    }
+                    for k in 0..self.fragments.len() {
+                        self.fragments[k].haplotag = best_haplotag[&k];
+                    }
                 }
                 for i in self.hete_snps.iter() {
                     self.candidate_snps[*i].haplotype = best_haplotype[i];
                 }
                 for k in 0..self.fragments.len() {
-                    self.fragments[k].haplotag = best_haplotag[k];
-                }
-
-                // flip a fraction of snps and reads
-                let num_flip_haplotype = (self.hete_snps.len() as f32 * random_flip_fraction) as usize;
-                let num_flip_haplotag = (self.fragments.len() as f32 * random_flip_fraction) as usize;
-                let mut rng = rand::thread_rng();
-                let selected_flip_haplotype: Vec<_> = self.hete_snps.iter().collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotype).cloned().collect();
-                for ti in selected_flip_haplotype {
-                    self.candidate_snps[*ti].haplotype = self.candidate_snps[*ti].haplotype * (-1);
-                }
-                let selected_flip_haplotag: Vec<_> = (0..self.fragments.len()).collect::<Vec<_>>().choose_multiple(&mut rng, num_flip_haplotag).cloned().collect();
-                for tk in selected_flip_haplotag {
-                    self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
-                }
-                let prob = self.cross_optimize();
-                if prob > largest_prob {
-                    largest_prob = prob;
-                    best_haplotype.clear();
-                    best_haplotag.clear();
-                    for i in self.hete_snps.iter() {
-                        best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
-                    }
-                    for k in 0..self.fragments.len() {
-                        best_haplotag.insert(k, self.fragments[k].haplotag);
-                    }
+                    self.fragments[k].haplotag = best_haplotag[&k];
                 }
                 max_iter -= 1;
             }
@@ -1500,7 +1520,7 @@ impl SNPFrag {
                 self.candidate_snps[*i].haplotype = best_haplotype[i];
             }
             for k in 0..self.fragments.len() {
-                self.fragments[k].haplotag = best_haplotag[k];
+                self.fragments[k].haplotag = best_haplotag[&k];
             }
         }
     }
@@ -1532,11 +1552,10 @@ impl SNPFrag {
                                 num_hap2 += 1;
                             }
                         }
-                        if fe.p != 0 {
-                            ps.push(fe.p);
-                            probs.push(fe.prob);
-                            sigma.push(self.fragments[*k].haplotag);
-                        }
+                        assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                        ps.push(fe.p);
+                        probs.push(fe.prob);
+                        sigma.push(self.fragments[*k].haplotag);
                     }
                 }
             }
@@ -1628,23 +1647,16 @@ impl SNPFrag {
 
     pub fn assign_reads(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
-        let mut processed_snps: HashSet<usize> = HashSet::new();
-        for i in self.hete_snps.iter() {
-            processed_snps.insert(*i);
-        }
         for k in 0..self.fragments.len() {
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for fe in self.fragments[k].list.iter() {
-                if self.candidate_snps[fe.snp_idx].filter == false && processed_snps.contains(&fe.snp_idx) {
-                    if fe.p != 0 {
-                        ps.push(fe.p);
-                        probs.push(fe.prob);
-                        delta.push(self.candidate_snps[fe.snp_idx].haplotype);
-                    }
-                }
+                assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                ps.push(fe.p);
+                probs.push(fe.prob);
+                delta.push(self.candidate_snps[fe.snp_idx].haplotype);
             }
 
             if sigma_k == 0 {
@@ -1655,6 +1667,8 @@ impl SNPFrag {
             } else {
                 let q = SNPFrag::cal_log_sigma_delta(sigma_k, &delta, &ps, &probs);
                 let qn = SNPFrag::cal_log_sigma_delta(sigma_k * (-1), &delta, &ps, &probs);
+                println!("q: {}, qn: {}", q, qn);
+                assert!(q - qn > -10e-9_f64, "read assignment is not local optimal. {}->{}", q, qn);  // q >= qn
                 if q - qn > read_assignment_cutoff {
                     if sigma_k == 1 {
                         self.fragments[k].assignment = 1;
@@ -1685,7 +1699,7 @@ impl SNPFrag {
             let snp = &self.candidate_snps[i];
             let hp = snp.haplotype;
             if snp.filter == true && snp.rna_editing == false {
-                // dense SNP
+                // Dense SNP. filter==true && rna_editing==false: dense SNP. filter==true && rna_editing==true: rna editing site
                 let mut rd: VCFRecord = VCFRecord::default();
                 rd.chromosome = snp.chromosome.clone();
                 rd.position = snp.pos as u64 + 1;   // position in vcf format is 1-based

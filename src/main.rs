@@ -9,7 +9,7 @@ use crate::phase::{multithread_phase_haplotag};
 
 
 #[derive(clap::ValueEnum, Debug, Clone)]
-enum Preset {
+pub enum Preset {
     hifi,
     // PacBio HiFi, both strand
     isoseq,
@@ -20,7 +20,7 @@ enum Preset {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone)]
-enum Platform {
+pub enum Platform {
     hifi,
     // PacBio long-read RNA sequencing
     ont,    // Oxford Nanopore long-read RNA sequencing
