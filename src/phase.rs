@@ -735,9 +735,11 @@ impl SNPFrag {
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
                 if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
+                    // allele1 is alternative allele, allele2 is reference allele and freq of alternative allele is smaller than min allele freq
                     position += 1;
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
+                    // allele1 is reference allele, allele2 is alternative allele and freq of alternative allele is smaller than min allele freq
                     position += 1;
                     continue;
                 }
@@ -1411,28 +1413,30 @@ impl SNPFrag {
         } else {
             // optimize haplotype and read assignment alternatively
             let mut max_iter: i32 = max_iters;
-            unsafe { self.init_haplotypes(); }
-            unsafe { self.init_assignment(); }
-            let prob = self.cross_optimize();
-            if prob > largest_prob {
-                largest_prob = prob;
-                best_haplotype.clear();
-                best_haplotag.clear();
+            while max_iter >= 0 {
+                // random initialization of haplotype and haplotag at each iteration
+                unsafe { self.init_haplotypes(); }
+                unsafe { self.init_assignment(); }
+                let prob = self.cross_optimize();
+                if prob > largest_prob {
+                    largest_prob = prob;
+                    best_haplotype.clear();
+                    best_haplotag.clear();
+                    for i in self.hete_snps.iter() {
+                        best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
+                    }
+                    for k in 0..self.fragments.len() {
+                        best_haplotag.insert(k, self.fragments[k].haplotag);
+                    }
+                }
                 for i in self.hete_snps.iter() {
-                    best_haplotype.insert(*i, self.candidate_snps[*i].haplotype);
+                    self.candidate_snps[*i].haplotype = best_haplotype[i];
                 }
                 for k in 0..self.fragments.len() {
-                    best_haplotag.insert(k, self.fragments[k].haplotag);
+                    self.fragments[k].haplotag = best_haplotag[&k];
                 }
-            }
-            for i in self.hete_snps.iter() {
-                self.candidate_snps[*i].haplotype = best_haplotype[i];
-            }
-            for k in 0..self.fragments.len() {
-                self.fragments[k].haplotag = best_haplotag[&k];
-            }
-            while max_iter >= 0 {
-                // block flip: flip all the snps after a random position to jump local optimization
+
+                // when initial setting has reached to local optimal, flip all the snps after a specific position to jump out local optimization
                 let mut unflipped_haplotype: Vec<i32> = Vec::new();
                 for i in self.hete_snps.iter() {
                     unflipped_haplotype.push(self.candidate_snps[*i].haplotype);
@@ -1446,7 +1450,6 @@ impl SNPFrag {
                             tmp_hap.push(unflipped_haplotype[tj] * (-1));
                         }
                     }
-
                     // block flip
                     {
                         assert_eq!(tmp_hap.len(), self.hete_snps.len());
@@ -1473,7 +1476,7 @@ impl SNPFrag {
                         self.fragments[k].haplotag = best_haplotag[&k];
                     }
 
-                    // flip a fraction of snps and reads
+                    // when current block flip has reached to local optimal, flip a fraction of snps and reads to jump out local optimization
                     {
                         let mut rng = rand::thread_rng();
                         for ti in 0..self.hete_snps.len() {
@@ -2230,6 +2233,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
+                    // TODO: for low frequency sites, use surrounding phased SNPs to rescue the potential allele expressed SNPs
+
                     let mut haplotype_exons: Vec<(Exon, i32, i32)> = Vec::new();
                     {
                         if haplotype_bam_output || haplotype_specific_exon {
