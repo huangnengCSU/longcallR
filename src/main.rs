@@ -63,7 +63,7 @@ struct Args {
     preset: Option<Preset>,
 
     /// Maximum number of iteration for phasing
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 3)]
     max_iters: i32,
 
     /// Maximum number of SNPs for enumerate haplotypes
