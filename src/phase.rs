@@ -2263,6 +2263,9 @@ impl SNPFrag {
                     }
                     records.push(rd);
                 }
+            } else if snp.variant_type == 0 {
+                // homo ref, ase snp
+                continue;
             } else {
                 println!("Unknown variant type: {:?}:{:?}", snp.chromosome, snp.pos);
                 continue;
@@ -2354,6 +2357,9 @@ impl SNPFrag {
                 rd.info = "RDS=.".to_string().into_bytes();
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
+            } else if snp.variant_type == 0 {
+                // homo ref. ase snp
+                continue;
             } else {
                 println!("Unknown variant type: {:?}:{:?}", snp.chromosome, snp.pos);
                 continue;
