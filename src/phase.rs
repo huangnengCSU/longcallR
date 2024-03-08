@@ -1996,6 +1996,41 @@ impl SNPFrag {
         return read_assignments;
     }
 
+    pub fn rescue_ase_snps(&mut self) {
+        for i in self.ase_hete_snps.iter() {
+            if self.candidate_snps[*i].ase == true {
+                let mut sigma: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                    // k is fragment index
+                    if self.fragments[*k].assignment == 0 { continue; }
+                    for fe in self.fragments[*k].list.iter() {
+                        if fe.snp_idx == *i {
+                            assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            sigma.push(self.fragments[*k].haplotag);
+                        }
+                    }
+                }
+                if sigma.len() > 10 {
+                    let phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_log_delta_sigma(1, &sigma, &ps, &probs)).log10();
+                    let phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_log_delta_sigma(-1, &sigma, &ps, &probs)).log10();
+                    if f64::max(phase_score1, phase_score2) > 10.0 {
+                        if phase_score1 > phase_score2 {
+                            self.candidate_snps[*i].haplotype = 1;
+                        } else {
+                            self.candidate_snps[*i].haplotype = -1;
+                        }
+                        println!("Rescue ASE SNP: {:?} {} {} {}", String::from_utf8(self.candidate_snps[*i].chromosome.clone()), self.candidate_snps[*i].pos, phase_score1, phase_score2);
+                        // self.candidate_snps[*i].ase = false;
+                    }
+                }
+            }
+        }
+    }
+
     pub fn phased_output_vcf(&mut self, min_phase_score: f32, min_homozygous_freq: f32, output_phasing: bool, min_qual_for_candidate: u32, min_qual_for_singlesnp_rnaedit: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
@@ -2545,6 +2580,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     // TODO: for low frequency sites, use surrounding phased SNPs to rescue the potential allele expressed SNPs
+                    snpfrag.rescue_ase_snps();
+
 
                     let mut haplotype_exons: Vec<(Exon, i32, i32)> = Vec::new();
                     {
