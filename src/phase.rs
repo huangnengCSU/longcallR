@@ -2002,17 +2002,27 @@ impl SNPFrag {
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
+                let mut num_hap1 = 0;
+                let mut num_hap2 = 0;
                 for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
                     // k is fragment index
                     if self.fragments[*k].assignment == 0 { continue; }
                     for fe in self.fragments[*k].list.iter() {
                         if fe.snp_idx == *i {
+                            if self.fragments[*k].assignment == 1 {
+                                num_hap1 += 1;
+                            } else if self.fragments[*k].assignment == 2 {
+                                num_hap2 += 1;
+                            }
                             assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                             ps.push(fe.p);
                             probs.push(fe.prob);
                             sigma.push(self.fragments[*k].haplotag);
                         }
                     }
+                }
+                if num_hap1 < 3 || num_hap2 < 3 {
+                    continue;
                 }
                 if sigma.len() > 10 {
                     let phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_log_delta_sigma(1, &sigma, &ps, &probs)).log10();
@@ -2023,7 +2033,7 @@ impl SNPFrag {
                         } else {
                             self.candidate_snps[*i].haplotype = -1;
                         }
-                        println!("Rescue ASE SNP: {:?} {} {} {}", String::from_utf8(self.candidate_snps[*i].chromosome.clone()), self.candidate_snps[*i].pos, phase_score1, phase_score2);
+                        println!("Rescue ASE SNP: {:?} {} {} {}", String::from_utf8(self.candidate_snps[*i].chromosome.clone()).unwrap(), self.candidate_snps[*i].pos, phase_score1, phase_score2);
                         // self.candidate_snps[*i].ase = false;
                     }
                 }
