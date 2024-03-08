@@ -27,7 +27,7 @@ pub struct CandidateSNP {
     pub reference: char,
     pub depth: u32,
     pub variant_type: i32,
-    // 1: heterozygous SNP, 2: homozygous SNP, 3: triallelic SNP
+    // 0: homo ref, 1: heterozygous SNP, 2: homozygous SNP, 3: triallelic SNP
     pub variant_quality: f64,
     // the confidence that the variant exists at this site given the data, phred-scaled
     pub genotype_probability: [f64; 3],
@@ -42,6 +42,8 @@ pub struct CandidateSNP {
     // A->G, T-C, rna_editing variant does not have haplotype information, no phasing
     pub filter: bool,
     // filter out this SNP or not in phasing process
+    pub ase: bool,
+    // allele specific expressed
     pub haplotype_expression: [u32; 2],
     // [allele1, allele2], the number of reads supporting two alleles expreessing on two haplotype
 }
@@ -74,6 +76,8 @@ pub struct FragElem {
     // base allele on alphabet  {-1, 1, 0}, 1: base==ref, -1: base==alt, 0: not covered (bases except ref allele and alt allele, deletions or N)
     pub prob: f64,
     // error rate of observe current base
+    pub ase_snp: bool,
+    // this is a potential allele specific expressed SNP
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
@@ -110,9 +114,15 @@ pub struct SNPFrag {
     pub candidate_snps: Vec<CandidateSNP>,
     // candidate SNPs
     pub hete_snps: Vec<usize>,
-    // index of candidate heterozygous SNPs
+    // index of candidate heterozygous SNPs, used for phasing of non-ase snps, non-filter snps, non-rna-edit snps
     pub homo_snps: Vec<usize>,
     // index of candidate homozygous SNPs
+    pub ase_snps: Vec<usize>,
+    // index of potential allele specific expressed SNPs
+    pub hete_homo_snps: Vec<usize>,
+    // index of candidate heterozygous SNPs and homozygous SNPs, used for dense snps filter
+    pub ase_hete_snps: Vec<usize>,
+    // index of potential allele specific expressed SNPs and heterozygous SNPs, used for construct fragment of hete snps and ase snps
     pub fragments: Vec<Fragment>,
     // multiple fragments
     pub phased: bool,
@@ -120,6 +130,7 @@ pub struct SNPFrag {
     pub edges: HashMap<[usize; 2], Edge>,
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
     pub min_linkers: i32,
+    // the number of links for snps can be phased
 }
 
 fn cmp_f64(a: &f64, b: &f64) -> Ordering {
@@ -151,7 +162,8 @@ impl SNPFrag {
                               diff_baseq: u8,
                               dense_win_size: u32,
                               min_dense_cnt: u32,
-                              avg_dense_dist: f32) {
+                              avg_dense_dist: f32,
+                              ase_freq_cutoff: f32) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
         let mut position = profile.region.start - 1;    // 0-based
@@ -680,11 +692,12 @@ impl SNPFrag {
             phred_genotype_prob.sort_by(cmp_f64);
             let genotype_quality = phred_genotype_prob[1] - phred_genotype_prob[0];
 
+            // TODO: since we will add some homo ref snps to ase snps, we can not filter snps with low variant quality at here.
             // filter low variant quality
-            if variant_quality < min_qual_for_candidate as f64 {
-                position += 1;
-                continue;
-            }
+            // if variant_quality < min_qual_for_candidate as f64 {
+            //     position += 1;
+            //     continue;
+            // }
 
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
                 // candidate homozygous SNP
@@ -730,19 +743,11 @@ impl SNPFrag {
                 // println!("homo genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
+                self.hete_homo_snps.push(self.candidate_snps.len() - 1);
             } else if genotype_prob[1] > genotype_prob[0] && genotype_prob[1] > genotype_prob[2] {
                 // candidate heterozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
-                if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
-                    // allele1 is alternative allele, allele2 is reference allele and freq of alternative allele is smaller than min allele freq
-                    position += 1;
-                    continue;
-                } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
-                    // allele1 is reference allele, allele2 is alternative allele and freq of alternative allele is smaller than min allele freq
-                    position += 1;
-                    continue;
-                }
                 let mut candidate_snp = CandidateSNP::default();
                 candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
                 candidate_snp.pos = position as i64;
@@ -766,20 +771,92 @@ impl SNPFrag {
                         candidate_snp.filter = true;
                     }
                 }
+                if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
+                    // alternative allele frequency is smaller than min allele freq
+                    if allele1_freq >= ase_freq_cutoff {
+                        candidate_snp.ase = true;
+                        candidate_snp.rna_editing = false;  // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
+                        candidate_snp.filter = false;   // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
+                        self.candidate_snps.push(candidate_snp);
+                        self.ase_snps.push(self.candidate_snps.len() - 1);
+                        self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    }
+                    position += 1;
+                    continue;
+                } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
+                    // alternative allele frequency is smaller than min allele freq
+                    if allele2_freq >= ase_freq_cutoff {
+                        candidate_snp.ase = true;
+                        candidate_snp.rna_editing = false;  // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
+                        candidate_snp.filter = false;   // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
+                        self.candidate_snps.push(candidate_snp);
+                        self.ase_snps.push(self.candidate_snps.len() - 1);
+                        self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    }
+                    position += 1;
+                    continue;
+                }
                 // println!("hete genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.hete_snps.push(self.candidate_snps.len() - 1);
+                self.hete_homo_snps.push(self.candidate_snps.len() - 1);
+                self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+            } else if genotype_prob[2] > genotype_prob[0] && genotype_prob[2] > genotype_prob[1] {
+                let allele1_freq = (allele1_cnt as f32) / (depth as f32);
+                let allele2_freq = (allele2_cnt as f32) / (depth as f32);
+                let mut candidate_snp = CandidateSNP::default();
+                candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
+                candidate_snp.pos = position as i64;
+                candidate_snp.alleles = [allele1, allele2];
+                candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
+                candidate_snp.reference = bf.ref_base;
+                candidate_snp.depth = depth;
+                candidate_snp.variant_type = 0; // heterozygous SNP
+                candidate_snp.variant_quality = variant_quality;
+                candidate_snp.genotype_probability = genotype_prob.clone();
+                candidate_snp.genotype_quality = genotype_quality;
+                if allele1 != bf.ref_base && allele1_freq >= ase_freq_cutoff {
+                    candidate_snp.ase = true;
+                    candidate_snp.rna_editing = false;
+                    candidate_snp.filter = false;
+                    self.candidate_snps.push(candidate_snp);
+                    self.ase_snps.push(self.candidate_snps.len() - 1);
+                    self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                } else if allele2 != bf.ref_base && allele2_freq >= ase_freq_cutoff {
+                    candidate_snp.ase = true;
+                    candidate_snp.rna_editing = false;
+                    candidate_snp.filter = false;
+                    self.candidate_snps.push(candidate_snp);
+                    self.ase_snps.push(self.candidate_snps.len() - 1);
+                    self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                }
             }
             position += 1;
         }
 
         // filter dense SNPs
-        for i in 0..self.candidate_snps.len() {
-            for j in i..self.candidate_snps.len() {
-                if self.candidate_snps[j].pos - self.candidate_snps[i].pos > dense_win_size as i64 {
-                    if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
-                        for tk in i..j {
-                            // println!("dense SNPs: {}", self.candidate_snps[tk].pos);
+        // for i in 0..self.candidate_snps.len() {
+        //     for j in i..self.candidate_snps.len() {
+        //         if self.candidate_snps[j].pos - self.candidate_snps[i].pos > dense_win_size as i64 {
+        //             if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[j - 1].pos - self.candidate_snps[i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
+        //                 for tk in i..j {
+        //                     // println!("dense SNPs: {}", self.candidate_snps[tk].pos);
+        //                     // even rna editing may be filtered by dense SNPs
+        //                     self.candidate_snps[tk].rna_editing = false;
+        //                     self.candidate_snps[tk].filter = true;
+        //                 }
+        //             }
+        //             break;
+        //         }
+        //     }
+        // }
+        for i in 0..self.hete_homo_snps.len() {
+            for j in i..self.hete_homo_snps.len() {
+                let snp_i = self.hete_homo_snps[i];
+                let snp_j = self.hete_homo_snps[j];
+                if self.candidate_snps[snp_j].pos - self.candidate_snps[snp_i].pos > dense_win_size as i64 {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[snp_j - 1].pos - self.candidate_snps[snp_i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
+                        for tk in snp_i..snp_j {
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[tk].rna_editing = false;
                             self.candidate_snps[tk].filter = true;
@@ -790,7 +867,16 @@ impl SNPFrag {
             }
         }
 
-        // update hete_snps, remove filtered SNPs
+        // update homo_snps, remove filtered homo SNPs
+        let mut tmp_homo: Vec<usize> = Vec::new();
+        for i in self.homo_snps.iter() {
+            if !self.candidate_snps[*i].filter {
+                tmp_homo.push(*i);
+            }
+        }
+        self.homo_snps = tmp_homo;
+
+        // update hete_snps, remove filtered hete SNPs
         let mut tmp_hetes: Vec<usize> = Vec::new();
         for i in self.hete_snps.iter() {
             if !self.candidate_snps[*i].filter {
@@ -798,6 +884,24 @@ impl SNPFrag {
             }
         }
         self.hete_snps = tmp_hetes;
+
+        // update hete_homo_snps, remove filtered hete SNPs and homo SNPs
+        let mut tmp_hete_homo: Vec<usize> = Vec::new();
+        for i in self.hete_homo_snps.iter() {
+            if !self.candidate_snps[*i].filter {
+                tmp_hete_homo.push(*i);
+            }
+        }
+        self.hete_homo_snps = tmp_hete_homo;
+
+        // update ase_hete_snps, remove filtered hete SNPs
+        let mut tmp_ase_hete: Vec<usize> = Vec::new();
+        for i in self.ase_hete_snps.iter() {
+            if !self.candidate_snps[*i].filter {
+                tmp_ase_hete.push(*i);
+            }
+        }
+        self.ase_hete_snps = tmp_ase_hete;
     }
 
     pub unsafe fn init_haplotypes(&mut self) {
@@ -821,6 +925,198 @@ impl SNPFrag {
                 self.fragments[k].haplotag = -1;
             } else {
                 self.fragments[k].haplotag = 1;
+            }
+        }
+    }
+
+    pub fn get_fragments_with_ase(&mut self, bam_path: &str, region: &Region) {
+        let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+        bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
+        let mut record = Record::new();
+        if self.ase_hete_snps.len() == 0 {
+            return;
+        }
+        assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
+        while let Some(result) = bam_reader.read(&mut record) {
+            if result.is_err() {
+                panic!("BAM parsing failed...");
+            }
+            // TODO: filtering unmapped, secondary, supplementary reads?
+            if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                continue;
+            }
+            let pos = record.pos(); // 0-based
+            if pos > self.candidate_snps[*self.ase_hete_snps.last().unwrap()].pos { continue; }
+            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+            let cigar = record.cigar();
+            let seq = record.seq().as_bytes();
+            let strand = if record.strand() == Forward { 0 } else { 1 };
+            let mut pos_on_ref = pos;   // 0-based
+            let mut pos_on_query = cigar.leading_softclips();   // 0-based
+            let mut idx = 0; // index in self.ase_hete_snps
+            let mut snp_pos = -1;   // pre-computed position of candidate SNPs
+            let mut alleles;   // pre-computed alleles of candidate SNPs
+            if pos <= self.candidate_snps[*self.ase_hete_snps.first().unwrap()].pos {
+                snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
+                alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+            } else {
+                // find the first SNP in the read
+                while idx < self.ase_hete_snps.len() {
+                    if self.candidate_snps[self.ase_hete_snps[idx]].pos >= pos {
+                        break;
+                    }
+                    idx += 1;
+                }
+                assert!(idx < self.ase_hete_snps.len(), "Error: idx < self.candidate_snps.len()");
+                snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
+                alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+            }
+
+            let mut fragment = Fragment::default();
+            fragment.read_id = qname.clone();
+            fragment.fragment_idx = self.fragments.len();
+
+            let mut exon_start = -1;
+            let mut exon_end = -1;
+            exon_start = pos_on_ref;
+            exon_end = exon_start;
+
+            for cg in cigar.iter() {
+                match cg.char() as u8 {
+                    b'S' | b'H' => {
+                        continue;
+                    }
+                    b'M' | b'X' | b'=' => {
+                        for _ in 0..cg.len() {
+                            if pos_on_ref == snp_pos {
+                                let mut frag_elem = FragElem::default();
+                                frag_elem.snp_idx = self.ase_hete_snps[idx];
+                                frag_elem.pos = pos_on_ref;
+                                frag_elem.base = seq[pos_on_query as usize] as char;
+                                frag_elem.baseq = record.qual()[pos_on_query as usize];
+                                frag_elem.strand = strand;
+                                frag_elem.prob = 10.0_f64.powf(-(frag_elem.baseq as f64) / 10.0);
+                                // if frag_elem.base == alleles[0] {
+                                //     frag_elem.p = 1;    // reference allele
+                                // } else if frag_elem.base == alleles[1] {
+                                //     frag_elem.p = -1;   // alternate allele
+                                // } else {
+                                //     frag_elem.p = 0;    // not covered
+                                // }
+                                if frag_elem.base == self.candidate_snps[frag_elem.snp_idx].reference {
+                                    frag_elem.p = 1;    // reference allele
+                                } else if (frag_elem.base == alleles[0] || frag_elem.base == alleles[1]) && frag_elem.base != self.candidate_snps[frag_elem.snp_idx].reference {
+                                    frag_elem.p = -1;   // alternate allele
+                                } else {
+                                    frag_elem.p = 0;    // not covered
+                                }
+                                if self.candidate_snps[frag_elem.snp_idx].ase == true {
+                                    frag_elem.ase_snp = true;
+                                }
+                                // filtered SNP will not be used for haplotype phasing, ase snp will still be used for construct fragment.
+                                if self.candidate_snps[frag_elem.snp_idx].filter == false && frag_elem.p != 0 {
+                                    fragment.list.push(frag_elem);
+                                }
+                                idx += 1;
+                                if idx < self.ase_hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+                                }
+                            }
+                            pos_on_query += 1;
+                            pos_on_ref += 1;
+                        }
+                    }
+                    b'I' => {
+                        pos_on_query += cg.len() as i64;
+                    }
+                    b'D' => {
+                        for _ in 0..cg.len() {
+                            if pos_on_ref == snp_pos {
+                                let mut frag_elem = FragElem::default();
+                                frag_elem.snp_idx = self.ase_hete_snps[idx];
+                                frag_elem.pos = pos_on_ref;
+                                frag_elem.base = '-';
+                                frag_elem.baseq = 0;
+                                frag_elem.strand = strand;
+                                frag_elem.p = 0;
+                                if self.candidate_snps[frag_elem.snp_idx].ase == true {
+                                    frag_elem.ase_snp = true;
+                                }
+                                idx += 1;
+                                if idx < self.ase_hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+                                }
+                            }
+                            pos_on_ref += 1;
+                        }
+                    }
+                    b'N' => {
+                        exon_end = pos_on_ref;
+                        if fragment.exons.len() == 0 {
+                            fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 0 });  // start exon
+                        } else {
+                            fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 1 });  // internal exon
+                        }
+                        exon_start = -1;
+                        exon_end = -1;
+                        for _ in 0..cg.len() {
+                            if pos_on_ref == snp_pos {
+                                let mut frag_elem = FragElem::default();
+                                frag_elem.snp_idx = self.ase_hete_snps[idx];
+                                frag_elem.pos = pos_on_ref;
+                                frag_elem.base = b'-' as char;
+                                frag_elem.baseq = 0;
+                                frag_elem.strand = strand;
+                                frag_elem.p = 0;
+                                if self.candidate_snps[frag_elem.snp_idx].ase == true {
+                                    frag_elem.ase_snp = true;
+                                }
+                                idx += 1;
+                                if idx < self.ase_hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+                                }
+                            }
+                            pos_on_ref += 1;
+                        }
+                        exon_start = pos_on_ref;
+                        exon_end = exon_start;
+                    }
+                    _ => {
+                        panic!("Error: unknown cigar operation: {}", cg.char());
+                    }
+                }
+            }
+            // the whole read is a single exon, no intron.
+            if exon_start != -1 && exon_end != -1 && pos_on_ref > exon_end {
+                exon_end = pos_on_ref;
+            }
+            if exon_end != exon_start {
+                if fragment.exons.len() > 0 {
+                    fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 2 });  // end exon
+                } else {
+                    fragment.exons.push(Exon { chr: region.chr.clone(), start: exon_start, end: exon_end, state: 3 });  // single exon
+                }
+            }
+            exon_start = -1;
+            exon_end = -1;
+
+            // filter fragment with no heterozygous links (deletion, intron, not reference allele and alternate allele do not count as heterozygous links)
+            let mut link_hete_cnt = 0;
+            for fe in fragment.list.iter() {
+                if fe.p != 0 && fe.ase_snp == false {
+                    // ase snp will not be used for haplotype phasing
+                    link_hete_cnt += 1;
+                }
+            }
+            if link_hete_cnt >= self.min_linkers {
+                for fe in fragment.list.iter() {
+                    // record each snp cover by which fragments
+                    self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
+                }
+                self.fragments.push(fragment);
             }
         }
     }
@@ -1193,6 +1489,7 @@ impl SNPFrag {
         let mut logp = 0.0;
         for k in 0..snpfrag.fragments.len() {
             for fe in snpfrag.fragments[k].list.iter() {
+                if fe.ase_snp == true { continue; }
                 assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
                 if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
                     logp += (1.0 - fe.prob).log10();
@@ -1211,6 +1508,7 @@ impl SNPFrag {
         for (k, h) in updated_haplotag.iter()
         {
             for fe in snpfrag.fragments[*k].list.iter() {
+                if fe.ase_snp == true { continue; }
                 assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
                 if h * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
                     logp += (1.0 - fe.prob).log10();
@@ -1246,6 +1544,7 @@ impl SNPFrag {
             for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
                 for fe in snpfrag.fragments[*k].list.iter() {
                     if fe.snp_idx != *i { continue; }
+                    if fe.ase_snp == true { continue; }
                     assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
                     if snpfrag.fragments[*k].haplotag * h == fe.p {
                         logp += (1.0 - fe.prob).log10();
@@ -1294,6 +1593,7 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for fe in self.fragments[k].list.iter() {
+                    if fe.ase_snp == true { continue; }
                     assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                     ps.push(fe.p);
                     probs.push(fe.prob);
@@ -1332,6 +1632,7 @@ impl SNPFrag {
                     // k is fragment index
                     for fe in self.fragments[*k].list.iter() {
                         if fe.snp_idx == *i {
+                            assert_ne!(fe.ase_snp, true, "Error: phase for unexpected ase SNP.");
                             assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                             ps.push(fe.p);
                             probs.push(fe.prob);
@@ -1532,7 +1833,7 @@ impl SNPFrag {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[ti];
-            if snp.filter == true || snp.variant_type != 1 {
+            if snp.filter == true || snp.variant_type != 1 || snp.ase == true {
                 continue;
             }
             let delta_i = snp.haplotype;
@@ -1555,6 +1856,7 @@ impl SNPFrag {
                                 num_hap2 += 1;
                             }
                         }
+                        assert_ne!(fe.ase_snp, true, "Error: phase for unexpected ase SNP.");
                         assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                         ps.push(fe.p);
                         probs.push(fe.prob);
@@ -1656,6 +1958,7 @@ impl SNPFrag {
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for fe in self.fragments[k].list.iter() {
+                if fe.ase_snp == true { continue; }
                 assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                 ps.push(fe.p);
                 probs.push(fe.prob);
@@ -2189,7 +2492,8 @@ pub fn multithread_phase_haplotag(bam_file: String,
                                   haplotype_bam_output: bool,
                                   output_read_assignment: bool,
                                   haplotype_specific_exon: bool,
-                                  min_sup_haplotype_exon: u32) {
+                                  min_sup_haplotype_exon: u32,
+                                  ase_freq_cutoff: f32) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag1_queue = Mutex::new(VecDeque::new());
@@ -2215,8 +2519,9 @@ pub fn multithread_phase_haplotag(bam_file: String,
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.min_linkers = min_linkers;
-            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist);
-            snpfrag.get_fragments(&bam_file, &reg);
+            snpfrag.get_candidate_snps(&profile, min_allele_freq, min_allele_freq_include_intron, min_qual_for_candidate, min_depth, max_depth, min_baseq, min_homozygous_freq, no_strand_bias, strand_bias_threshold, cover_strand_bias_threshold, distance_to_splicing_site, window_size, distance_to_read_end, diff_distance_to_read_end, diff_baseq, dense_win_size, min_dense_cnt, avg_dense_dist, ase_freq_cutoff);
+            // snpfrag.get_fragments(&bam_file, &reg);
+            snpfrag.get_fragments_with_ase(&bam_file, &reg);
             if genotype_only {
                 // without phasing
                 let vcf_records = snpfrag.output_vcf(min_qual_for_singlesnp_rnaedit);
