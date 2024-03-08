@@ -182,6 +182,10 @@ struct Args {
     #[arg(long, default_value_t = 2.0)]
     imbalance_allele_expression_cutoff: f32,
 
+    /// Allele-specific expression allele frequency cutoff
+    #[arg(long, default_value_t = 0.05)]
+    ase_freq_cutoff: f32,
+
     /// Without phasing, only using genotype probability
     #[clap(long, action = ArgAction::SetTrue)]
     genotype_only: bool,
@@ -269,6 +273,7 @@ fn main() {
     let mut read_assignment_cutoff = arg.read_assignment_cutoff;
     let mut imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
     let mut min_homozygous_freq = arg.min_homozygous_freq;
+    let mut ase_freq_cutoff = arg.ase_freq_cutoff;
 
     if preset.is_some() {
         match preset.unwrap() {
@@ -464,5 +469,6 @@ fn main() {
                                haplotype_bam_output,
                                output_read_assignment,
                                haplotype_specific_exon,
-                               min_sup_haplotype_exon);
+                               min_sup_haplotype_exon,
+                               ase_freq_cutoff);
 }
