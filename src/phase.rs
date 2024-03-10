@@ -1358,6 +1358,39 @@ impl SNPFrag {
         return q1 / (q2 + q3);
     }
 
+    pub fn cal_sigma_delta_log(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+        // same as call_sigma_delta, but return log10 value to avoid underflow
+        let mut log_q1: f64 = 0.0;
+        let mut log_q2: f64 = 0.0;
+        let mut log_q3: f64 = 0.0;
+
+        for i in 0..delta.len() {
+            if sigma_k * delta[i] == ps[i] {
+                log_q1 += (1.0 - probs[i]).log10();
+            } else {
+                log_q1 += probs[i].log10();
+            }
+        }
+
+        for i in 0..delta.len() {
+            if delta[i] == ps[i] {
+                log_q2 += (1.0 - probs[i]).log10();
+                log_q3 += probs[i].log10();
+            } else {
+                log_q2 += probs[i].log10();
+                log_q3 += (1.0 - probs[i]).log10();
+            }
+        }
+
+        // The exact formula: logP = log(\frac{A}{A+B})=logA-log(A+B)=logA-log(10^{logA}+10^{logB})
+        // let log_p = log_q1 - f64::log10(10.0_f64.powf(log_q2) + 10.0_f64.powf(log_q3));
+        // to avoid underflow, use approximate 1.0-log(A)/(log(A)+log(B)) as A/(A+B).
+        // 0.99/(0.99+0.01) = 0.99, log(0.99)/(log(0.99)+log(0.01)) = 0.00217765
+        // 0.01/(0.99+0.01) = 0.01, log(0.01)/(log(0.99)+log(0.01)) = 0.99782235
+        let log_p = 1.0 - log_q1 / (log_q2 + log_q3);
+        return log_p;
+    }
+
     pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
         // calculate P(delta_i | sigma)
         // delta_i: the haplotype of SNP i, 1 or -1.
@@ -1394,6 +1427,41 @@ impl SNPFrag {
         return q1 / (q2 + q3);
     }
 
+
+    pub fn cal_delta_sigma_log(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+        // same as call_delta_sigma, but return log10 value to avoid underflow
+        let mut log_q1: f64 = 0.0;
+        let mut log_q2: f64 = 0.0;
+        let mut log_q3: f64 = 0.0;
+
+        for k in 0..sigma.len() {
+            if delta_i * sigma[k] == ps[k] {
+                log_q1 += (1.0 - probs[k]).log10();
+            } else {
+                log_q1 += probs[k].log10();
+            }
+        }
+
+        for k in 0..sigma.len() {
+            if sigma[k] == ps[k] {
+                log_q2 += (1.0 - probs[k]).log10();
+                log_q3 += probs[k].log10();
+            } else {
+                log_q2 += probs[k].log10();
+                log_q3 += (1.0 - probs[k]).log10();
+            }
+        }
+
+        // logP = log(\frac{A}{A+B})=logA-log(A+B)=logA-log(10^{logA}+10^{logB})
+        // let log_p = log_q1 - f64::log10(10.0_f64.powf(log_q2) + 10.0_f64.powf(log_q3));
+        // to avoid underflow, use approximate 1.0-log(A)/(log(A)+log(B)) as A/(A+B).
+        // 0.99/(0.99+0.01) = 0.99, log(0.99)/(log(0.99)+log(0.01)) = 0.00217765
+        // 0.01/(0.99+0.01) = 0.01, log(0.01)/(log(0.99)+log(0.01)) = 0.99782235
+        let log_p = 1.0 - log_q1 / (log_q2 + log_q3);
+        return log_p;
+    }
+
+
     pub fn cal_inconsistent_percentage(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
         let mut consisitent = 0;
         let mut inconsistent = 0;
@@ -1408,6 +1476,7 @@ impl SNPFrag {
     }
 
     pub fn cal_overall_probability(snpfrag: &SNPFrag) -> f64 {
+        // calculate the log10 probability of the current configuration of sigma and delta
         let mut logp = 0.0;
         for k in 0..snpfrag.fragments.len() {
             for fe in snpfrag.fragments[k].list.iter() {
@@ -1420,8 +1489,7 @@ impl SNPFrag {
                 }
             }
         }
-        let p = 10.0_f64.powf(logp);
-        return p;
+        return logp;
     }
 
     pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i32>) -> i32 {
@@ -1440,8 +1508,8 @@ impl SNPFrag {
                 probs.push(fe.prob);
                 delta.push(snpfrag.candidate_snps[fe.snp_idx].haplotype);
             }
-            logp += SNPFrag::cal_sigma_delta(*h, &delta, &ps, &probs);
-            pre_logp += SNPFrag::cal_sigma_delta(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
+            logp += SNPFrag::cal_sigma_delta_log(*h, &delta, &ps, &probs);
+            pre_logp += SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
         }
 
         let p = logp;
@@ -1478,8 +1546,8 @@ impl SNPFrag {
                     sigma.push(snpfrag.fragments[*k].haplotag);
                 }
             }
-            logp += SNPFrag::cal_delta_sigma(*h, &sigma, &ps, &probs);
-            pre_logp += SNPFrag::cal_delta_sigma(snpfrag.candidate_snps[*i].haplotype, &sigma, &ps, &probs);
+            logp += SNPFrag::cal_delta_sigma_log(*h, &sigma, &ps, &probs);
+            pre_logp += SNPFrag::cal_delta_sigma_log(snpfrag.candidate_snps[*i].haplotype, &sigma, &ps, &probs);
         }
         let p = logp;
         let pre_p = pre_logp;
@@ -1525,8 +1593,8 @@ impl SNPFrag {
                     processed_snps.insert(fe.snp_idx);
                 }
 
-                let q = SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs);
-                let qn = SNPFrag::cal_sigma_delta(sigma_k * (-1), &delta, &ps, &probs);
+                let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
+                let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
                 // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
 
                 if q < qn {
@@ -1570,8 +1638,8 @@ impl SNPFrag {
                     }
                 }
 
-                let q = SNPFrag::cal_delta_sigma(delta_i, &sigma, &ps, &probs);
-                let qn = SNPFrag::cal_delta_sigma(delta_i * (-1), &sigma, &ps, &probs);
+                let q = SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs);
+                let qn = SNPFrag::cal_delta_sigma_log(delta_i * (-1), &sigma, &ps, &probs);
                 // println!("optimize delta {} q:{:?}, qn:{:?}, delta: {}", i, q, qn, delta_i);
                 if q < qn {
                     tmp_haplotype.insert(*i, delta_i * (-1));
@@ -1766,7 +1834,7 @@ impl SNPFrag {
                 phase_score = 0.0;
             } else {
                 if sigma.len() > 0 {
-                    phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma(delta_i, &sigma, &ps, &probs)).log10();   // calaulate assignment score
+                    phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs)).log10();   // calaulate assignment score
                 } else {
                     phase_score = 0.0;  // all reads belong to unknown group, maybe caused by single SNP
                 }
@@ -1865,8 +1933,8 @@ impl SNPFrag {
                 self.fragments[k].assignment_score = 0.0;
                 read_assignments.insert(self.fragments[k].read_id.clone(), 0);
             } else {
-                let q = SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs);
-                let qn = SNPFrag::cal_sigma_delta(sigma_k * (-1), &delta, &ps, &probs);
+                let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
+                let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
                 if (q - qn).abs() > read_assignment_cutoff {
                     if sigma_k == 1 {
                         self.fragments[k].assignment = 1;
@@ -1903,8 +1971,8 @@ impl SNPFrag {
                     probs.push(fe.prob);
                     delta.push(self.candidate_snps[fe.snp_idx].haplotype);
                 }
-                let q = SNPFrag::cal_sigma_delta(sigma_k, &delta, &ps, &probs);
-                let qn = SNPFrag::cal_sigma_delta(sigma_k * (-1), &delta, &ps, &probs);
+                let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
+                let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
                 // println!("q:{}, qn:{}", q, qn);
                 assert!(q >= qn, "{} Error: read assignment is not local optimal. {}->{}\ndelta:{:?}\nps:{:?}\nprobs:{:?}\nsigma:{}", k, q, qn, delta, ps, probs, sigma_k);
             }
@@ -1930,8 +1998,8 @@ impl SNPFrag {
                     }
                 }
 
-                let q = SNPFrag::cal_delta_sigma(delta_i, &sigma, &ps, &probs);
-                let qn = SNPFrag::cal_delta_sigma(delta_i * (-1), &sigma, &ps, &probs);
+                let q = SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs);
+                let qn = SNPFrag::cal_delta_sigma_log(delta_i * (-1), &sigma, &ps, &probs);
                 assert!(q >= qn, "{} Error: phase is not local optimal. {}->{}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\ndelta:{}", i, q, qn, sigma, ps, probs, delta_i);
             }
         }
@@ -1967,9 +2035,9 @@ impl SNPFrag {
                     continue;
                 }
                 if sigma.len() > 10 {
-                    let phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma(1, &sigma, &ps, &probs)).log10();
-                    let phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma(-1, &sigma, &ps, &probs)).log10();
-                    if f64::max(phase_score1, phase_score2) > 10.0 {
+                    let phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10();
+                    let phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10();
+                    if f64::max(phase_score1, phase_score2) > 40.0 {
                         if phase_score1 > phase_score2 {
                             self.candidate_snps[*i].haplotype = 1;
                         } else {
