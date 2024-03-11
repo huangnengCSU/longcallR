@@ -2059,6 +2059,7 @@ impl SNPFrag {
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
             let hp = snp.haplotype;
+            if snp.ase == true { continue; }
             if snp.filter == true && snp.rna_editing == false {
                 // Dense SNP. filter==true && rna_editing==false: dense SNP. filter==true && rna_editing==true: rna editing site
                 let mut rd: VCFRecord = VCFRecord::default();
