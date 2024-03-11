@@ -1508,6 +1508,7 @@ impl SNPFrag {
                 probs.push(fe.prob);
                 delta.push(snpfrag.candidate_snps[fe.snp_idx].haplotype);
             }
+            if delta.len() == 0 { continue; }
             logp += SNPFrag::cal_sigma_delta_log(*h, &delta, &ps, &probs);
             pre_logp += SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
         }
@@ -1545,6 +1546,11 @@ impl SNPFrag {
                     probs.push(fe.prob);
                     sigma.push(snpfrag.fragments[*k].haplotag);
                 }
+            }
+            if sigma.len() == 0 {
+                // println!("SNP: {:?}", snpfrag.candidate_snps[*i]);
+                // println!("SNP {} is not covered by any fragment.", snpfrag.candidate_snps[*i].pos);
+                continue;
             }
             logp += SNPFrag::cal_delta_sigma_log(*h, &sigma, &ps, &probs);
             pre_logp += SNPFrag::cal_delta_sigma_log(snpfrag.candidate_snps[*i].haplotype, &sigma, &ps, &probs);
@@ -1971,6 +1977,7 @@ impl SNPFrag {
                     probs.push(fe.prob);
                     delta.push(self.candidate_snps[fe.snp_idx].haplotype);
                 }
+                if delta.len() == 0 { continue; }
                 let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
                 let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
                 // println!("q:{}, qn:{}", q, qn);
@@ -1997,7 +2004,7 @@ impl SNPFrag {
                         }
                     }
                 }
-
+                if sigma.len() == 0 { continue; }
                 let q = SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs);
                 let qn = SNPFrag::cal_delta_sigma_log(delta_i * (-1), &sigma, &ps, &probs);
                 assert!(q >= qn, "{} Error: phase is not local optimal. {}->{}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\ndelta:{}", i, q, qn, sigma, ps, probs, delta_i);
@@ -2043,7 +2050,7 @@ impl SNPFrag {
                         } else {
                             self.candidate_snps[*i].haplotype = -1;
                         }
-                        println!("Rescue ASE SNP: {:?} {} {} {}", String::from_utf8(self.candidate_snps[*i].chromosome.clone()).unwrap(), self.candidate_snps[*i].pos, phase_score1, phase_score2);
+                        println!("Rescue ASE SNP: {} {} {} {}", String::from_utf8(self.candidate_snps[*i].chromosome.clone()).unwrap(), self.candidate_snps[*i].pos, phase_score1, phase_score2);
                         // self.candidate_snps[*i].ase = false;
                     }
                 }
