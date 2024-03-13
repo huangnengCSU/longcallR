@@ -1799,6 +1799,7 @@ impl SNPFrag {
             let check_val = SNPFrag::check_new_haplotag(&self, &tmp_haplotag);
             assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
             for (k, h) in tmp_haplotag.iter() {
+                // when prob is equal, we still perform the flip to avoid bug of underflow
                 self.fragments[*k].haplotag = *h;
             }
             if check_val == 0 {
@@ -1841,6 +1842,7 @@ impl SNPFrag {
             let check_val = SNPFrag::check_new_haplotype(&self, &tmp_haplotype);
             assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
             for (i, h) in tmp_haplotype.iter() {
+                // when prob is equal, we still perform the flip to avoid bug of underflow
                 self.candidate_snps[*i].haplotype = *h;
             }
             if check_val == 0 {
@@ -1851,11 +1853,12 @@ impl SNPFrag {
             }
             self.check_local_optimal_configuration(true, false);
             num_iters += 1;
-            // if num_iters > 20 {
-            //     break;
-            // }
+            if num_iters > 20 {
+                break;
+            }
         }
-        self.check_local_optimal_configuration(true, true);
+        // sigma reaches the optimal solution first and then delta reaches the optimal solution. After this, equal probability flip of delta may destroy the optimum of sigma again.
+        // self.check_local_optimal_configuration(true, true);
         let prob = SNPFrag::cal_overall_probability(&self);
         return prob;
     }
