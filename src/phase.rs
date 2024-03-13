@@ -2196,7 +2196,7 @@ impl SNPFrag {
                 let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
                 let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
                 // println!("q:{}, qn:{}", q, qn);
-                assert!(q >= qn, "{} Error: read assignment is not local optimal. {}->{}\ndelta:{:?}\nps:{:?}\nprobs:{:?}\nsigma:{}\n{:?}\n{:?}", k, q, qn, delta, ps, probs, sigma_k, used_for_haplotype, used_for_haplotag);
+                assert!(q >= qn, "{} Error: read assignment is not local optimal. {}->{}\n{:?}\ndelta:{:?}\nps:{:?}\nprobs:{:?}\nsigma:{}\n{:?}\n{:?}", k, q, qn, self.region, delta, ps, probs, sigma_k, used_for_haplotype, used_for_haplotag);
             }
         }
 
@@ -2224,7 +2224,7 @@ impl SNPFrag {
                 }
                 let q = SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs);
                 let qn = SNPFrag::cal_delta_sigma_log(delta_i * (-1), &sigma, &ps, &probs);
-                assert!(q >= qn, "{} Error: phase is not local optimal. {}->{}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\ndelta:{}\n{:?}\n{:?}", i, q, qn, sigma, ps, probs, delta_i, used_for_haplotype, used_for_haplotag);
+                assert!(q >= qn, "{} Error: phase is not local optimal. {}->{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\ndelta:{}\n{:?}\n{:?}", i, q, qn, self.region, sigma, ps, probs, delta_i, used_for_haplotype, used_for_haplotag);
             }
         }
     }
