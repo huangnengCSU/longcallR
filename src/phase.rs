@@ -700,6 +700,10 @@ impl SNPFrag {
             // }
 
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
+                if variant_quality < min_qual_for_candidate as f64 {
+                    position += 1;
+                    continue;
+                }
                 // candidate homozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -796,6 +800,10 @@ impl SNPFrag {
                     position += 1;
                     continue;
                 }
+                if variant_quality < min_qual_for_candidate as f64 {
+                    position += 1;
+                    continue;
+                }
                 // println!("hete genotype quality: {:?},{:?}", likelihood, candidate_snp.genotype_quality);
                 self.candidate_snps.push(candidate_snp);
                 self.hete_snps.push(self.candidate_snps.len() - 1);
@@ -852,14 +860,12 @@ impl SNPFrag {
         // }
         for i in 0..self.hete_homo_snps.len() {
             for j in i..self.hete_homo_snps.len() {
-                let snp_i = self.hete_homo_snps[i];
-                let snp_j = self.hete_homo_snps[j];
-                if self.candidate_snps[snp_j].pos - self.candidate_snps[snp_i].pos > dense_win_size as i64 {
-                    if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[snp_j - 1].pos - self.candidate_snps[snp_i].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
-                        for tk in snp_i..snp_j {
+                if self.candidate_snps[self.hete_homo_snps[j]].pos - self.candidate_snps[self.hete_homo_snps[i]].pos > dense_win_size as i64 {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[self.hete_homo_snps[j - 1]].pos - self.candidate_snps[self.hete_homo_snps[i]].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
+                        for tk in i..j {
                             // even rna editing may be filtered by dense SNPs
-                            self.candidate_snps[tk].rna_editing = false;
-                            self.candidate_snps[tk].filter = true;
+                            self.candidate_snps[self.hete_homo_snps[tk]].rna_editing = false;
+                            self.candidate_snps[self.hete_homo_snps[tk]].filter = true;
                         }
                     }
                     break;
@@ -1014,7 +1020,7 @@ impl SNPFrag {
                                     frag_elem.ase_snp = true;
                                 }
                                 // filtered SNP will not be used for haplotype phasing, ase snp will still be used for construct fragment.
-                                if self.candidate_snps[frag_elem.snp_idx].filter == false && frag_elem.p != 0 {
+                                if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false && frag_elem.p != 0 {
                                     fragment.list.push(frag_elem);
                                 }
                                 idx += 1;
@@ -2344,6 +2350,7 @@ impl SNPFrag {
         // assert_eq!(self.haplotype.len(), self.snps.len());
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
+            if snp.ase == true { continue; }
             if snp.filter == true && snp.rna_editing == false {
                 // dense SNP
                 let mut rd: VCFRecord = VCFRecord::default();
