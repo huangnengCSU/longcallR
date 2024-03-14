@@ -844,6 +844,22 @@ impl SNPFrag {
                     continue;
                 }
                 if variant_quality < min_qual_for_candidate as f64 {
+                    // heterozygous SNP may have low variant quality
+                    if allele1 != bf.ref_base && allele1_freq >= ase_freq_cutoff {
+                        candidate_snp.ase = true;
+                        candidate_snp.rna_editing = false;
+                        candidate_snp.filter = false;
+                        self.candidate_snps.push(candidate_snp);
+                        self.ase_snps.push(self.candidate_snps.len() - 1);
+                        self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    } else if allele2 != bf.ref_base && allele2_freq >= ase_freq_cutoff {
+                        candidate_snp.ase = true;
+                        candidate_snp.rna_editing = false;
+                        candidate_snp.filter = false;
+                        self.candidate_snps.push(candidate_snp);
+                        self.ase_snps.push(self.candidate_snps.len() - 1);
+                        self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    }
                     position += 1;
                     continue;
                 }
@@ -901,8 +917,23 @@ impl SNPFrag {
         //         }
         //     }
         // }
+
+        // filter dense homozygous and heterozygous SNPs
         for i in 0..self.hete_homo_snps.len() {
             for j in i..self.hete_homo_snps.len() {
+                if j == self.hete_homo_snps.len() - 1 {
+                    // distance from snp i to end snp is smaller than dense_win_size
+                    if self.candidate_snps[self.hete_homo_snps[j]].pos
+                        - self.candidate_snps[self.hete_homo_snps[i]].pos
+                        <= dense_win_size as i64
+                        && (j - i + 1) as u32 >= min_dense_cnt
+                    {
+                        for tk in i..j {
+                            self.candidate_snps[self.hete_homo_snps[tk]].rna_editing = false;
+                            self.candidate_snps[self.hete_homo_snps[tk]].filter = true;
+                        }
+                    }
+                }
                 if self.candidate_snps[self.hete_homo_snps[j]].pos
                     - self.candidate_snps[self.hete_homo_snps[i]].pos
                     > dense_win_size as i64
@@ -918,6 +949,45 @@ impl SNPFrag {
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[self.hete_homo_snps[tk]].rna_editing = false;
                             self.candidate_snps[self.hete_homo_snps[tk]].filter = true;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        // filter dense allele-specific expressed SNPs
+        for i in 0..self.ase_snps.len() {
+            for j in i..self.ase_snps.len() {
+                if j == self.ase_snps.len() - 1 {
+                    // distance from snp i to end snp is smaller than dense_win_size
+                    if self.candidate_snps[self.ase_snps[j]].pos
+                        - self.candidate_snps[self.ase_snps[i]].pos
+                        <= dense_win_size as i64
+                        && (j - i + 1) as u32 >= min_dense_cnt
+                    {
+                        for tk in i..j {
+                            // even rna editing may be filtered by dense SNPs
+                            self.candidate_snps[self.ase_snps[tk]].rna_editing = false;
+                            self.candidate_snps[self.ase_snps[tk]].filter = true;
+                        }
+                    }
+                }
+                if self.candidate_snps[self.ase_snps[j]].pos
+                    - self.candidate_snps[self.ase_snps[i]].pos
+                    > dense_win_size as i64
+                {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt
+                        && ((self.candidate_snps[self.ase_snps[j - 1]].pos
+                            - self.candidate_snps[self.ase_snps[i]].pos
+                            + 1) as f32)
+                            / ((j - 1 - i + 1) as f32)
+                            <= avg_dense_dist
+                    {
+                        for tk in i..j {
+                            // even rna editing may be filtered by dense SNPs
+                            self.candidate_snps[self.ase_snps[tk]].rna_editing = false;
+                            self.candidate_snps[self.ase_snps[tk]].filter = true;
                         }
                     }
                     break;
