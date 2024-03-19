@@ -806,6 +806,7 @@ impl SNPFrag {
                     // alternative allele frequency is smaller than min allele freq
                     if allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
+                        candidate_snp.variant_type = 0;
                         candidate_snp.rna_editing = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         candidate_snp.filter = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         self.candidate_snps.push(candidate_snp);
@@ -818,6 +819,7 @@ impl SNPFrag {
                     // alternative allele frequency is smaller than min allele freq
                     if allele2_freq >= ase_allele_frac_cutoff && allele2_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
+                        candidate_snp.variant_type = 0;
                         candidate_snp.rna_editing = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         candidate_snp.filter = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         self.candidate_snps.push(candidate_snp);
@@ -831,6 +833,7 @@ impl SNPFrag {
                     // heterozygous SNP may have low variant quality
                     if allele1 != bf.ref_base && allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
+                        candidate_snp.variant_type = 0;
                         candidate_snp.rna_editing = false;
                         candidate_snp.filter = false;
                         self.candidate_snps.push(candidate_snp);
@@ -838,6 +841,7 @@ impl SNPFrag {
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     } else if allele2 != bf.ref_base && allele2_freq >= ase_allele_frac_cutoff && allele2_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
+                        candidate_snp.variant_type = 0;
                         candidate_snp.rna_editing = false;
                         candidate_snp.filter = false;
                         self.candidate_snps.push(candidate_snp);
