@@ -182,11 +182,20 @@ struct Args {
 
     /// Allele-specific expression allele fraction cutoff
     #[arg(long, default_value_t = 0.05)]
-    ase_freq_cutoff: f32,
+    ase_allele_frac_cutoff: f32,
 
     /// Allele-specific expression allele count cutoff
     #[arg(long, default_value_t = 3)]
-    ase_count_cutoff: u32,
+    ase_allele_cnt_cutoff: u32,
+
+    /// Allele-specific expression phased read count cutoff
+    #[arg(long, default_value_t = 10)]
+    ase_ps_read_cutoff: u32,
+
+    /// Allele-specific expression phase score cutoff
+    #[arg(long, default_value_t = 20.0)]
+    ase_ps_cutoff: f32,
+
 
     /// Without phasing, only using genotype probability
     #[clap(long, action = ArgAction::SetTrue)]
@@ -275,8 +284,10 @@ fn main() {
     let mut read_assignment_cutoff = arg.read_assignment_cutoff;
     let mut imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
     let mut min_homozygous_freq = arg.min_homozygous_freq;
-    let mut ase_freq_cutoff = arg.ase_freq_cutoff;
-    let mut ase_cnt_cutoff = arg.ase_count_cutoff;
+    let mut ase_allele_frac_cutoff = arg.ase_allele_frac_cutoff;
+    let mut ase_allele_cnt_cutoff = arg.ase_allele_cnt_cutoff;
+    let mut ase_ps_count_cutoff = arg.ase_ps_read_cutoff;
+    let mut ase_ps_cutoff = arg.ase_ps_cutoff;
 
     if preset.is_some() {
         match preset.unwrap() {
@@ -384,12 +395,12 @@ fn main() {
                 window_size = arg.window_size;
                 diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
+                min_phase_score = arg.min_phase_score;
                 min_depth = arg.min_depth;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
-                min_phase_score = 12.0;
                 min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.001;
@@ -479,7 +490,9 @@ fn main() {
         output_read_assignment,
         haplotype_specific_exon,
         min_sup_haplotype_exon,
-        ase_freq_cutoff,
-        ase_cnt_cutoff,
+        ase_allele_frac_cutoff,
+        ase_allele_cnt_cutoff,
+        ase_ps_count_cutoff,
+        ase_ps_cutoff,
     );
 }
