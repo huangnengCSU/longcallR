@@ -1,10 +1,3 @@
-use crate::util::{independent_test, load_reference, parse_fai, Profile, Region, VCFRecord};
-use crate::Platform;
-use bio::bio_types::strand::ReqStrand::Forward;
-use probability::distribution::{Binomial, Distribution};
-use rand::Rng;
-use rayon::prelude::*;
-use rust_htslib::{bam, bam::record::Aux, bam::record::Record, bam::Format, bam::Read};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
@@ -12,6 +5,15 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::Write;
 use std::sync::Mutex;
+
+use bio::bio_types::strand::ReqStrand::Forward;
+use probability::distribution::Distribution;
+use rand::Rng;
+use rayon::prelude::*;
+use rust_htslib::{bam, bam::Format, bam::Read, bam::record::Aux, bam::record::Record};
+
+use crate::Platform;
+use crate::util::{load_reference, parse_fai, Profile, Region, VCFRecord};
 
 #[derive(Debug, Clone, Default)]
 pub struct CandidateSNP {
@@ -162,8 +164,8 @@ impl SNPFrag {
         dense_win_size: u32,
         min_dense_cnt: u32,
         avg_dense_dist: f32,
-        ase_freq_cutoff: f32,
-        ase_cnt_cutoff: u32,
+        ase_allele_frac_cutoff: f32,
+        ase_allele_cnt_cutoff: u32,
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
@@ -285,8 +287,7 @@ impl SNPFrag {
 
             // filtering with depth, considering intron reads
             let depth_include_intron = bf.get_depth_include_intron();
-            if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron
-            {
+            if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // maybe caused by erroneous intron alignment
                 position += 1;
                 continue;
@@ -301,9 +302,7 @@ impl SNPFrag {
             if !no_strand_bias {
                 // filtering snps only covered by one strand reads (may caused by intron alignment error)
                 let total_cover_cnt = bf.forward_cnt + bf.backward_cnt; // does not include intron reads
-                if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold
-                    || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold
-                {
+                if bf.forward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold || bf.backward_cnt as f32 / total_cover_cnt as f32 > cover_strand_bias_threshold {
                     position += 1;
                     continue;
                 }
@@ -356,9 +355,7 @@ impl SNPFrag {
                             }
                         }
                         let total_cnt = fcnt + bcnt;
-                        if fcnt as f32 / total_cnt as f32 > strand_bias_threshold
-                            || bcnt as f32 / total_cnt as f32 > strand_bias_threshold
-                        {
+                        if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
                             // strand bias
                             strand_bias = true;
                             continue;
@@ -523,8 +520,7 @@ impl SNPFrag {
                     lidx -= 1;
                     continue;
                 }
-                let local_error_rate = lbf.get_none_ref_count() as f32
-                    / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
+                let local_error_rate = lbf.get_none_ref_count() as f32 / (lbf.a + lbf.c + lbf.g + lbf.t + lbf.d) as f32;
                 local_misalignment_ratio.push(local_error_rate);
                 lext += 1;
                 lidx -= 1;
@@ -539,8 +535,7 @@ impl SNPFrag {
                     ridx += 1;
                     continue;
                 }
-                let local_error_rate = rbf.get_none_ref_count() as f32
-                    / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
+                let local_error_rate = rbf.get_none_ref_count() as f32 / (rbf.a + rbf.c + rbf.g + rbf.t + rbf.d) as f32;
                 local_misalignment_ratio.push(local_error_rate);
                 rext += 1;
                 ridx += 1;
@@ -603,9 +598,7 @@ impl SNPFrag {
                         high_error_cnt += 1;
                     }
                 }
-                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5
-                    || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.20
-                {
+                if high_error_cnt as f32 / local_misalignment_ratio.len() as f32 >= 0.5 || sum_local_misalignment_ratio / local_misalignment_ratio.len() as f32 > 0.20 {
                     if N_cnts.len() > 0 {
                         if max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32 {
                             position += 1;
@@ -619,9 +612,7 @@ impl SNPFrag {
             let mut insertion_concerned = false;
             let mut ins_cnt = 0;
             for INS_cnt in INS_cnts.iter() {
-                if (*INS_cnt > (num_variant_allele as f32 * 0.8) as u32)
-                    && (max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32)
-                {
+                if (*INS_cnt > (num_variant_allele as f32 * 0.8) as u32) && (max_N_cnt - min_N_cnt > (num_variant_allele as f32 * 0.8) as u32) {
                     insertion_concerned = true;
                     ins_cnt = *INS_cnt;
                 }
@@ -711,14 +702,11 @@ impl SNPFrag {
 
             // calculate GQ: The value of GQ is simply the difference between the second lowest PL and the lowest PL (which is always 0, normalized PL)
             let mut log10_likelihood = loglikelihood.clone();
-            let max_log10_likelihood = log10_likelihood[0]
-                .max(log10_likelihood[1])
-                .max(log10_likelihood[2]);
+            let max_log10_likelihood = log10_likelihood[0].max(log10_likelihood[1]).max(log10_likelihood[2]);
             log10_likelihood[0] = 10.0_f64.powf(log10_likelihood[0] - max_log10_likelihood);
             log10_likelihood[1] = 10.0_f64.powf(log10_likelihood[1] - max_log10_likelihood);
             log10_likelihood[2] = 10.0_f64.powf(log10_likelihood[2] - max_log10_likelihood);
-            let sum_log10_likelihood =
-                log10_likelihood[0] + log10_likelihood[1] + log10_likelihood[2];
+            let sum_log10_likelihood = log10_likelihood[0] + log10_likelihood[1] + log10_likelihood[2];
             let mut genotype_prob = [
                 log10_likelihood[0] / sum_log10_likelihood,
                 log10_likelihood[1] / sum_log10_likelihood,
@@ -755,11 +743,7 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
 
-                if allele1 != bf.ref_base
-                    && allele2 != bf.ref_base
-                    && allele1_freq < min_homozygous_freq
-                    && allele2_freq > 0.0
-                {
+                if allele1 != bf.ref_base && allele2 != bf.ref_base && allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
                     candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
                 } else {
                     candidate_snp.variant_type = 2; // homozygous SNP
@@ -820,7 +804,7 @@ impl SNPFrag {
                 }
                 if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
                     // alternative allele frequency is smaller than min allele freq
-                    if allele1_freq >= ase_freq_cutoff && allele1_cnt >= ase_cnt_cutoff {
+                    if allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         candidate_snp.filter = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
@@ -832,7 +816,7 @@ impl SNPFrag {
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
                     // alternative allele frequency is smaller than min allele freq
-                    if allele2_freq >= ase_freq_cutoff && allele2_cnt >= ase_cnt_cutoff {
+                    if allele2_freq >= ase_allele_frac_cutoff && allele2_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         candidate_snp.filter = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
@@ -845,20 +829,14 @@ impl SNPFrag {
                 }
                 if variant_quality < min_qual_for_candidate as f64 {
                     // heterozygous SNP may have low variant quality
-                    if allele1 != bf.ref_base
-                        && allele1_freq >= ase_freq_cutoff
-                        && allele1_cnt >= ase_cnt_cutoff
-                    {
+                    if allele1 != bf.ref_base && allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false;
                         candidate_snp.filter = false;
                         self.candidate_snps.push(candidate_snp);
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
-                    } else if allele2 != bf.ref_base
-                        && allele2_freq >= ase_freq_cutoff
-                        && allele2_cnt >= ase_cnt_cutoff
-                    {
+                    } else if allele2 != bf.ref_base && allele2_freq >= ase_allele_frac_cutoff && allele2_cnt >= ase_allele_cnt_cutoff {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false;
                         candidate_snp.filter = false;
@@ -888,20 +866,14 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
-                if allele1 != bf.ref_base
-                    && allele1_freq >= ase_freq_cutoff
-                    && allele1_cnt >= ase_cnt_cutoff
-                {
+                if allele1 != bf.ref_base && allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
                     candidate_snp.ase = true;
                     candidate_snp.rna_editing = false;
                     candidate_snp.filter = false;
                     self.candidate_snps.push(candidate_snp);
                     self.ase_snps.push(self.candidate_snps.len() - 1);
                     self.ase_hete_snps.push(self.candidate_snps.len() - 1);
-                } else if allele2 != bf.ref_base
-                    && allele2_freq >= ase_freq_cutoff
-                    && allele2_cnt >= ase_cnt_cutoff
-                {
+                } else if allele2 != bf.ref_base && allele2_freq >= ase_allele_frac_cutoff && allele2_cnt >= ase_allele_cnt_cutoff {
                     candidate_snp.ase = true;
                     candidate_snp.rna_editing = false;
                     candidate_snp.filter = false;
@@ -935,22 +907,15 @@ impl SNPFrag {
             for j in i..self.hete_homo_snps.len() {
                 if j == self.hete_homo_snps.len() - 1 {
                     // distance from snp i to end snp is smaller than dense_win_size
-                    if self.candidate_snps[self.hete_homo_snps[j]].pos
-                        - self.candidate_snps[self.hete_homo_snps[i]].pos
-                        <= dense_win_size as i64
-                        && (j - i + 1) as u32 >= min_dense_cnt
-                    {
+                    if self.candidate_snps[self.hete_homo_snps[j]].pos - self.candidate_snps[self.hete_homo_snps[i]].pos <= dense_win_size as i64 && (j - i + 1) as u32 >= min_dense_cnt {
                         for tk in i..j {
                             self.candidate_snps[self.hete_homo_snps[tk]].rna_editing = false;
                             self.candidate_snps[self.hete_homo_snps[tk]].filter = true;
                         }
                     }
                 }
-                if self.candidate_snps[self.hete_homo_snps[j]].pos
-                    - self.candidate_snps[self.hete_homo_snps[i]].pos
-                    > dense_win_size as i64
-                {
-                    if (j - 1 - i + 1) as u32 >= min_dense_cnt {
+                if self.candidate_snps[self.hete_homo_snps[j]].pos - self.candidate_snps[self.hete_homo_snps[i]].pos > dense_win_size as i64 {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt && ((self.candidate_snps[self.hete_homo_snps[j - 1]].pos - self.candidate_snps[self.hete_homo_snps[i]].pos + 1) as f32) / ((j - 1 - i + 1) as f32) <= avg_dense_dist {
                         for tk in i..j {
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[self.hete_homo_snps[tk]].rna_editing = false;
@@ -967,11 +932,7 @@ impl SNPFrag {
             for j in i..self.ase_snps.len() {
                 if j == self.ase_snps.len() - 1 {
                     // distance from snp i to end snp is smaller than dense_win_size
-                    if self.candidate_snps[self.ase_snps[j]].pos
-                        - self.candidate_snps[self.ase_snps[i]].pos
-                        <= dense_win_size as i64
-                        && (j - i + 1) as u32 >= min_dense_cnt
-                    {
+                    if self.candidate_snps[self.ase_snps[j]].pos - self.candidate_snps[self.ase_snps[i]].pos <= dense_win_size as i64 && (j - i + 1) as u32 >= min_dense_cnt {
                         for tk in i..j {
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[self.ase_snps[tk]].rna_editing = false;
@@ -979,10 +940,7 @@ impl SNPFrag {
                         }
                     }
                 }
-                if self.candidate_snps[self.ase_snps[j]].pos
-                    - self.candidate_snps[self.ase_snps[i]].pos
-                    > dense_win_size as i64
-                {
+                if self.candidate_snps[self.ase_snps[j]].pos - self.candidate_snps[self.ase_snps[i]].pos > dense_win_size as i64 {
                     if (j - 1 - i + 1) as u32 >= min_dense_cnt {
                         for tk in i..j {
                             // even rna editing may be filtered by dense SNPs
@@ -1072,9 +1030,7 @@ impl SNPFrag {
 
     pub fn get_fragments_with_ase(&mut self, bam_path: &str, region: &Region) {
         let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
-        bam_reader
-            .fetch((region.chr.as_str(), region.start, region.end))
-            .unwrap();
+        bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let mut record = Record::new();
         if self.ase_hete_snps.len() == 0 {
             return;
@@ -1151,15 +1107,9 @@ impl SNPFrag {
                                 // } else {
                                 //     frag_elem.p = 0;    // not covered
                                 // }
-                                if frag_elem.base
-                                    == self.candidate_snps[frag_elem.snp_idx].reference
-                                {
+                                if frag_elem.base == self.candidate_snps[frag_elem.snp_idx].reference {
                                     frag_elem.p = 1; // reference allele
-                                } else if (frag_elem.base == alleles[0]
-                                    || frag_elem.base == alleles[1])
-                                    && frag_elem.base
-                                        != self.candidate_snps[frag_elem.snp_idx].reference
-                                {
+                                } else if (frag_elem.base == alleles[0] || frag_elem.base == alleles[1]) && frag_elem.base != self.candidate_snps[frag_elem.snp_idx].reference {
                                     frag_elem.p = -1; // alternate allele
                                 } else {
                                     frag_elem.p = 0; // not covered
@@ -1168,18 +1118,13 @@ impl SNPFrag {
                                     frag_elem.ase_snp = true;
                                 }
                                 // filtered SNP will not be used for haplotype phasing, ase snp will still be used for construct fragment.
-                                if self.candidate_snps[frag_elem.snp_idx].filter == false
-                                    && self.candidate_snps[frag_elem.snp_idx].rna_editing == false
-                                    && frag_elem.p != 0
-                                {
+                                if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false && frag_elem.p != 0 {
                                     fragment.list.push(frag_elem);
                                 }
                                 idx += 1;
                                 if idx < self.ase_hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
-                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]]
-                                        .alleles
-                                        .clone();
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_query += 1;
@@ -1205,9 +1150,7 @@ impl SNPFrag {
                                 idx += 1;
                                 if idx < self.ase_hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
-                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]]
-                                        .alleles
-                                        .clone();
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_ref += 1;
@@ -1247,9 +1190,7 @@ impl SNPFrag {
                                 idx += 1;
                                 if idx < self.ase_hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
-                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]]
-                                        .alleles
-                                        .clone();
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_ref += 1;
@@ -1297,9 +1238,7 @@ impl SNPFrag {
             if link_hete_cnt >= self.min_linkers {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
-                    self.candidate_snps[fe.snp_idx]
-                        .snp_cover_fragments
-                        .push(fragment.fragment_idx);
+                    self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
                 }
                 self.fragments.push(fragment);
             }
@@ -1308,9 +1247,7 @@ impl SNPFrag {
 
     pub fn get_fragments(&mut self, bam_path: &str, region: &Region) {
         let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
-        bam_reader
-            .fetch((region.chr.as_str(), region.start, region.end))
-            .unwrap();
+        bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let mut record = Record::new();
         if self.hete_snps.len() == 0 {
             return;
@@ -1387,31 +1324,21 @@ impl SNPFrag {
                                 // } else {
                                 //     frag_elem.p = 0;    // not covered
                                 // }
-                                if frag_elem.base
-                                    == self.candidate_snps[frag_elem.snp_idx].reference
-                                {
+                                if frag_elem.base == self.candidate_snps[frag_elem.snp_idx].reference {
                                     frag_elem.p = 1; // reference allele
-                                } else if (frag_elem.base == alleles[0]
-                                    || frag_elem.base == alleles[1])
-                                    && frag_elem.base
-                                        != self.candidate_snps[frag_elem.snp_idx].reference
-                                {
+                                } else if (frag_elem.base == alleles[0] || frag_elem.base == alleles[1]) && frag_elem.base != self.candidate_snps[frag_elem.snp_idx].reference {
                                     frag_elem.p = -1; // alternate allele
                                 } else {
                                     frag_elem.p = 0; // not covered
                                 }
                                 // filtered SNP and rna editing site will not be used for haplotype phasing, not covered SNP will not be used for haplotype phasing
-                                if self.candidate_snps[frag_elem.snp_idx].filter == false
-                                    && self.candidate_snps[frag_elem.snp_idx].rna_editing == false
-                                    && frag_elem.p != 0
-                                {
+                                if self.candidate_snps[frag_elem.snp_idx].filter == false && self.candidate_snps[frag_elem.snp_idx].rna_editing == false && frag_elem.p != 0 {
                                     fragment.list.push(frag_elem);
                                 }
                                 idx += 1;
                                 if idx < self.hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
-                                    alleles =
-                                        self.candidate_snps[self.hete_snps[idx]].alleles.clone();
+                                    alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_query += 1;
@@ -1434,8 +1361,7 @@ impl SNPFrag {
                                 idx += 1;
                                 if idx < self.hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
-                                    alleles =
-                                        self.candidate_snps[self.hete_snps[idx]].alleles.clone();
+                                    alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_ref += 1;
@@ -1472,8 +1398,7 @@ impl SNPFrag {
                                 idx += 1;
                                 if idx < self.hete_snps.len() {
                                     snp_pos = self.candidate_snps[self.hete_snps[idx]].pos;
-                                    alleles =
-                                        self.candidate_snps[self.hete_snps[idx]].alleles.clone();
+                                    alleles = self.candidate_snps[self.hete_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_ref += 1;
@@ -1520,9 +1445,7 @@ impl SNPFrag {
             if link_hete_cnt >= self.min_linkers {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
-                    self.candidate_snps[fe.snp_idx]
-                        .snp_cover_fragments
-                        .push(fragment.fragment_idx);
+                    self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
                 }
                 self.fragments.push(fragment);
             }
@@ -1725,9 +1648,7 @@ impl SNPFrag {
                     continue;
                 }
                 assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
-                if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype
-                    == fe.p
-                {
+                if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
                     logp += (1.0 - fe.prob).log10();
                 } else {
                     logp += fe.prob.log10();
@@ -1743,9 +1664,7 @@ impl SNPFrag {
         for k in 0..snpfrag.fragments.len() {
             for fe in snpfrag.fragments[k].list.iter() {
                 assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
-                if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype
-                    == fe.p
-                {
+                if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype == fe.p {
                     logp += (1.0 - fe.prob).log10();
                 } else {
                     logp += fe.prob.log10();
@@ -1776,8 +1695,7 @@ impl SNPFrag {
                 continue;
             }
             logp += SNPFrag::cal_sigma_delta_log(*h, &delta, &ps, &probs);
-            pre_logp +=
-                SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
+            pre_logp += SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
         }
 
         let p = logp;
@@ -1820,8 +1738,7 @@ impl SNPFrag {
                 continue;
             }
             logp += SNPFrag::cal_sigma_delta_log(*h, &delta, &ps, &probs);
-            pre_logp +=
-                SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
+            pre_logp += SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
         }
 
         let p = logp;
@@ -2295,8 +2212,7 @@ impl SNPFrag {
                         for ti in 0..self.hete_snps.len() {
                             let rg: f64 = rng.gen();
                             if rg < random_flip_fraction as f64 {
-                                self.candidate_snps[self.hete_snps[ti]].haplotype =
-                                    self.candidate_snps[self.hete_snps[ti]].haplotype * (-1);
+                                self.candidate_snps[self.hete_snps[ti]].haplotype = self.candidate_snps[self.hete_snps[ti]].haplotype * (-1);
                             }
                         }
                         for tk in 0..self.fragments.len() {
@@ -2409,8 +2325,7 @@ impl SNPFrag {
                         for ti in 0..self.ase_snps.len() {
                             let rg: f64 = rng.gen();
                             if rg < random_flip_fraction as f64 {
-                                self.candidate_snps[self.ase_snps[ti]].haplotype =
-                                    self.candidate_snps[self.ase_snps[ti]].haplotype * (-1);
+                                self.candidate_snps[self.ase_snps[ti]].haplotype = self.candidate_snps[self.ase_snps[ti]].haplotype * (-1);
                             }
                         }
                         for tk in 0..self.fragments.len() {
@@ -2481,9 +2396,7 @@ impl SNPFrag {
                 phase_score = 0.0;
             } else {
                 if sigma.len() > 0 {
-                    phase_score = -10.0_f64
-                        * (1.0 - SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs))
-                            .log10(); // calaulate assignment score
+                    phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 } else {
                     phase_score = 0.0; // all reads belong to unknown group, maybe caused by single SNP
                 }
@@ -2538,8 +2451,7 @@ impl SNPFrag {
             // self.candidate_snps[ti].allele_imbalance = allele_imbalance;
 
             let mut expression_cnt = [0; 2];
-            if (hap1_allele_cnt[0] + hap2_allele_cnt[0]) > (hap1_allele_cnt[1] + hap2_allele_cnt[1])
-            {
+            if (hap1_allele_cnt[0] + hap2_allele_cnt[0]) > (hap1_allele_cnt[1] + hap2_allele_cnt[1]) {
                 if hap1_allele_cnt[0] > hap2_allele_cnt[0] {
                     expression_cnt[0] = hap1_allele_cnt[0];
                     expression_cnt[1] = hap2_allele_cnt[1];
@@ -2659,8 +2571,7 @@ impl SNPFrag {
                 let mut q_ase = 0.0;
                 let mut qn_ase = 0.0;
                 if delta_hete.len() > 0 {
-                    q_hete =
-                        SNPFrag::cal_sigma_delta_log(sigma_k, &delta_hete, &ps_hete, &probs_hete);
+                    q_hete = SNPFrag::cal_sigma_delta_log(sigma_k, &delta_hete, &ps_hete, &probs_hete);
                     qn_hete = SNPFrag::cal_sigma_delta_log(
                         sigma_k * (-1),
                         &delta_hete,
@@ -2678,9 +2589,7 @@ impl SNPFrag {
                     );
                 }
 
-                if (q_hete - qn_hete).abs() > read_assignment_cutoff
-                    && (q_ase - qn_ase).abs() > read_assignment_cutoff
-                {
+                if (q_hete - qn_hete).abs() > read_assignment_cutoff && (q_ase - qn_ase).abs() > read_assignment_cutoff {
                     // consider both ase and hete snps
                     if q_hete >= qn_hete && q_ase >= qn_ase {
                         // both ase and hete snps support the same haplotype
@@ -2997,10 +2906,8 @@ impl SNPFrag {
                     continue;
                 }
                 if sigma.len() > 10 {
-                    let phase_score1 = -10.0_f64
-                        * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10();
-                    let phase_score2 = -10.0_f64
-                        * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10();
+                    let phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10();
+                    let phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10();
                     if f64::max(phase_score1, phase_score2) > 40.0 {
                         if phase_score1 > phase_score2 {
                             self.candidate_snps[*i].haplotype = 1;
@@ -3023,9 +2930,9 @@ impl SNPFrag {
 
     pub fn rescue_ase_snps_v2(
         &mut self,
-        min_depth: u32,
-        ase_count_cutoff: u32,
-        min_phase_score: f32,
+        ase_allele_cnt_cutoff: u32,
+        ase_ps_count_cutoff: u32,
+        ase_ps_cutoff: f32,
     ) {
         // keep the previously calculated phasing for heterozygous snps and only flip the ase snps to get the phasing of ase snps
         for i in self.ase_snps.iter() {
@@ -3054,17 +2961,15 @@ impl SNPFrag {
                     }
                 }
             }
-            if num_hap1 < ase_count_cutoff || num_hap2 < ase_count_cutoff {
+            if num_hap1 < ase_allele_cnt_cutoff || num_hap2 < ase_allele_cnt_cutoff {
                 // each haplotype should have at least 3 reads
                 continue;
             }
-            if sigma.len() > min_depth as usize {
+            if sigma.len() > ase_ps_count_cutoff as usize {
                 // each site should have at least 10 reads
-                let phase_score1 = -10.0_f64
-                    * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10();
-                let phase_score2 = -10.0_f64
-                    * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10();
-                if f64::max(phase_score1, phase_score2) > min_phase_score as f64 {
+                let phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10();
+                let phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10();
+                if f64::max(phase_score1, phase_score2) > ase_ps_cutoff as f64 {
                     if phase_score1 > phase_score2 {
                         self.candidate_snps[*i].haplotype = 1;
                         self.candidate_snps[*i].phase_score = phase_score1;
@@ -3129,8 +3034,7 @@ impl SNPFrag {
                             "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]
                         );
                     } else {
-                        rd.alternative =
-                            vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                        rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                         rd.genotype = format!(
                             "{}:{}:{}:{:.2},{:.2}",
                             "1/2",
@@ -3230,11 +3134,7 @@ impl SNPFrag {
                 rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
             } else if snp.variant_type == 1 {
-                if snp.phase_score < min_phase_score as f64
-                    && snp.allele_freqs[0] > min_homozygous_freq
-                    && snp.alleles[0] != snp.reference
-                    && snp.filter == false
-                {
+                if snp.phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference && snp.filter == false {
                     let mut rd: VCFRecord = VCFRecord::default();
                     rd.chromosome = snp.chromosome.clone();
                     rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
@@ -3298,8 +3198,7 @@ impl SNPFrag {
                                     snp.allele_freqs[0]
                                 );
                             } else {
-                                rd.alternative =
-                                    vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                                 rd.genotype = format!(
                                     "{}:{}:{}:{:.2},{:.2}",
                                     "1/2",
@@ -3388,8 +3287,7 @@ impl SNPFrag {
                                     );
                                 }
                             } else {
-                                rd.alternative =
-                                    vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                                 rd.qual = snp.variant_quality as i32;
                                 rd.genotype = format!(
                                     "{}:{}:{}:{:.2},{:.2}:{:.2}:{},{}",
@@ -3403,9 +3301,7 @@ impl SNPFrag {
                                     snp.haplotype_expression[1]
                                 );
                             }
-                            if snp.phase_score < min_phase_score as f64
-                                || snp.variant_quality < min_qual_for_candidate as f64
-                            {
+                            if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_qual_for_candidate as f64 {
                                 // not confident phase or low variant quality
                                 rd.filter = "LowQual".to_string().into_bytes();
                             } else {
@@ -3443,8 +3339,7 @@ impl SNPFrag {
                                     snp.allele_freqs[0]
                                 );
                             } else {
-                                rd.alternative =
-                                    vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                                 rd.genotype = format!(
                                     "{}:{}:{}:{:.2},{:.2}",
                                     "1/2",
@@ -3506,8 +3401,7 @@ impl SNPFrag {
                                     snp.allele_freqs[0]
                                 );
                             } else {
-                                rd.alternative =
-                                    vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                                 rd.qual = snp.variant_quality as i32;
                                 rd.genotype = format!(
                                     "{}:{}:{}:{:.2},{:.2}",
@@ -3518,9 +3412,7 @@ impl SNPFrag {
                                     snp.allele_freqs[1]
                                 );
                             }
-                            if snp.phase_score < min_phase_score as f64
-                                || snp.variant_quality < min_qual_for_candidate as f64
-                            {
+                            if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_qual_for_candidate as f64 {
                                 // not confident phase or low variant quality
                                 rd.filter = "LowQual".to_string().into_bytes();
                             } else {
@@ -3579,8 +3471,7 @@ impl SNPFrag {
                             "0/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[1]
                         );
                     } else {
-                        rd.alternative =
-                            vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                        rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                         rd.genotype = format!(
                             "{}:{}:{}:{:.2},{:.2}",
                             "1/2",
@@ -3685,8 +3576,7 @@ fn exon_cluster(
     min_sup: i32,
 ) -> HashMap<Exon, Vec<Exon>> {
     let mut cover_vec = vec![0; (largest_end - smallest_start) as usize];
-    let mut cover_exon_idx: Vec<Vec<usize>> =
-        vec![Vec::new(); (largest_end - smallest_start) as usize];
+    let mut cover_exon_idx: Vec<Vec<usize>> = vec![Vec::new(); (largest_end - smallest_start) as usize];
     for idx in 0..exons.len() {
         let e = &exons[idx];
         for j in e.start..e.end {
@@ -3815,13 +3705,12 @@ pub fn multithread_phase_haplotag(
     output_read_assignment: bool,
     haplotype_specific_exon: bool,
     min_sup_haplotype_exon: u32,
-    ase_freq_cutoff: f32,
-    ase_cnt_cutoff: u32,
+    ase_allele_frac_cutoff: f32,
+    ase_allele_cnt_cutoff: u32,
+    ase_ps_count_cutoff: u32,
+    ase_ps_cutoff: f32,
 ) {
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(thread_size)
-        .build()
-        .unwrap();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
     let read_haplotag1_queue = Mutex::new(VecDeque::new());
     let read_haplotag2_queue = Mutex::new(VecDeque::new());
@@ -3878,8 +3767,8 @@ pub fn multithread_phase_haplotag(
                 dense_win_size,
                 min_dense_cnt,
                 avg_dense_dist,
-                ase_freq_cutoff,
-                ase_cnt_cutoff,
+                ase_allele_frac_cutoff,
+                ase_allele_cnt_cutoff,
             );
             // snpfrag.get_fragments(&bam_file, &reg);
             snpfrag.get_fragments_with_ase(&bam_file, &reg);
@@ -3908,7 +3797,7 @@ pub fn multithread_phase_haplotag(
                     // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
                     let read_assignments_ase = snpfrag.assign_reads_ase(read_assignment_cutoff);
                     // snpfrag.rescue_ase_snps();
-                    snpfrag.rescue_ase_snps_v2(min_depth, ase_cnt_cutoff, min_phase_score);
+                    snpfrag.rescue_ase_snps_v2(ase_allele_cnt_cutoff, ase_ps_count_cutoff, ase_ps_cutoff);
 
                     // merge read_assignments and read_assignments_ase, read_assignments_ase first, then read_assignments
                     let mut merge_reads_assignments = read_assignments_ase.clone();
@@ -3958,9 +3847,7 @@ pub fn multithread_phase_haplotag(
                                     if frag.assignment == 1 {
                                         for e in frag.exons.iter() {
                                             hap1_exons.push(e.clone());
-                                            if hap1_smallest_start == 0
-                                                || e.start < hap1_smallest_start
-                                            {
+                                            if hap1_smallest_start == 0 || e.start < hap1_smallest_start {
                                                 hap1_smallest_start = e.start;
                                             }
                                             if e.end > hap1_largest_end {
@@ -3970,9 +3857,7 @@ pub fn multithread_phase_haplotag(
                                     } else if frag.assignment == 2 {
                                         for e in frag.exons.iter() {
                                             hap2_exons.push(e.clone());
-                                            if hap2_smallest_start == 0
-                                                || e.start < hap2_smallest_start
-                                            {
+                                            if hap2_smallest_start == 0 || e.start < hap2_smallest_start {
                                                 hap2_smallest_start = e.start;
                                             }
                                             if e.end > hap2_largest_end {
@@ -3994,15 +3879,13 @@ pub fn multithread_phase_haplotag(
                                     hap2_largest_end,
                                     0,
                                 );
-                                let mut combined_consensus_exons: HashMap<Exon, (i32, i32)> =
-                                    HashMap::new();
+                                let mut combined_consensus_exons: HashMap<Exon, (i32, i32)> = HashMap::new();
                                 for (e, v) in hap1_consensus_exons.iter() {
                                     if combined_consensus_exons.contains_key(e) {
                                         let (c1, c2) = combined_consensus_exons.get_mut(e).unwrap();
                                         *c1 += v.len() as i32;
                                     } else {
-                                        combined_consensus_exons
-                                            .insert(e.clone(), (v.len() as i32, 0));
+                                        combined_consensus_exons.insert(e.clone(), (v.len() as i32, 0));
                                     }
                                 }
                                 for (e, v) in hap2_consensus_exons.iter() {
@@ -4010,14 +3893,11 @@ pub fn multithread_phase_haplotag(
                                         let (c1, c2) = combined_consensus_exons.get_mut(e).unwrap();
                                         *c2 += v.len() as i32;
                                     } else {
-                                        combined_consensus_exons
-                                            .insert(e.clone(), (0, v.len() as i32));
+                                        combined_consensus_exons.insert(e.clone(), (0, v.len() as i32));
                                     }
                                 }
                                 for (e, counts) in combined_consensus_exons.iter() {
-                                    if counts.0 * counts.1 == 0
-                                        && counts.0 + counts.1 >= min_sup_haplotype_exon as i32
-                                    {
+                                    if counts.0 * counts.1 == 0 && counts.0 + counts.1 >= min_sup_haplotype_exon as i32 {
                                         if e.state == 1 {
                                             // println!("exon1: {}:{}-{}, hap1:{:?}, hap2:{:?}", e.chr, e.start + 1, e.end + 1, counts.0, counts.1);
                                             haplotype_exons.push((e.clone(), counts.0, counts.1));
@@ -4027,17 +3907,13 @@ pub fn multithread_phase_haplotag(
                                             let mut start_mean = 0;
                                             let mut exon_cnt = 0;
                                             if counts.0 > 0 {
-                                                for ex in
-                                                    hap1_consensus_exons.get(e).unwrap().iter()
-                                                {
+                                                for ex in hap1_consensus_exons.get(e).unwrap().iter() {
                                                     start_sum += ex.start;
                                                     exon_cnt += 1;
                                                 }
                                                 start_mean = start_sum / exon_cnt;
                                             } else {
-                                                for ex in
-                                                    hap2_consensus_exons.get(e).unwrap().iter()
-                                                {
+                                                for ex in hap2_consensus_exons.get(e).unwrap().iter() {
                                                     start_sum += ex.start;
                                                     exon_cnt += 1;
                                                 }
@@ -4053,17 +3929,13 @@ pub fn multithread_phase_haplotag(
                                             let mut end_mean = 0;
                                             let mut exon_cnt = 0;
                                             if counts.0 > 0 {
-                                                for ex in
-                                                    hap1_consensus_exons.get(e).unwrap().iter()
-                                                {
+                                                for ex in hap1_consensus_exons.get(e).unwrap().iter() {
                                                     end_sum += ex.end;
                                                     exon_cnt += 1;
                                                 }
                                                 end_mean = end_sum / exon_cnt;
                                             } else {
-                                                for ex in
-                                                    hap2_consensus_exons.get(e).unwrap().iter()
-                                                {
+                                                for ex in hap2_consensus_exons.get(e).unwrap().iter() {
                                                     end_sum += ex.end;
                                                     exon_cnt += 1;
                                                 }
@@ -4083,11 +3955,7 @@ pub fn multithread_phase_haplotag(
                                                     if ex.0.state != 3 {
                                                         continue;
                                                     }
-                                                    if ex.0.start >= relaxed_start[0]
-                                                        && ex.0.start <= relaxed_start[1]
-                                                        && ex.0.end >= relaxed_end[0]
-                                                        && ex.0.end <= relaxed_end[1]
-                                                    {
+                                                    if ex.0.start >= relaxed_start[0] && ex.0.start <= relaxed_start[1] && ex.0.end >= relaxed_end[0] && ex.0.end <= relaxed_end[1] {
                                                         // highly overlapped, not unique
                                                         unique_flag = false;
                                                         break;
@@ -4098,11 +3966,7 @@ pub fn multithread_phase_haplotag(
                                                     if ex.0.state != 3 {
                                                         continue;
                                                     }
-                                                    if ex.0.start >= relaxed_start[0]
-                                                        && ex.0.start <= relaxed_start[1]
-                                                        && ex.0.end >= relaxed_end[0]
-                                                        && ex.0.end <= relaxed_end[1]
-                                                    {
+                                                    if ex.0.start >= relaxed_start[0] && ex.0.start <= relaxed_start[1] && ex.0.end >= relaxed_end[0] && ex.0.end <= relaxed_end[1] {
                                                         // highly overlapped, not unique
                                                         unique_flag = false;
                                                         break;
@@ -4165,33 +4029,22 @@ pub fn multithread_phase_haplotag(
     for ctglen in contig_lengths.iter() {
         let chromosome = ctglen.0.clone();
         let chromosome_len = ctglen.1.clone();
-        vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes())
-            .unwrap();
+        vf.write(format!("##contig=<ID={},length={}>\n", chromosome, chromosome_len).as_bytes()).unwrap();
     }
-    vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes())
-        .unwrap();
-    vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes())
-        .unwrap();
-    vf.write("##FILTER=<ID=RnaEdit,Description=\"RNA editing\">\n".as_bytes())
-        .unwrap();
-    vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes())
-        .unwrap();
+    vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=RnaEdit,Description=\"RNA editing\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
-    vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes())
-        .unwrap();
+    vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
     vf.write(
         "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes(),
-    )
-    .unwrap();
-    vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes())
-        .unwrap();
-    vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes())
-        .unwrap();
-    vf.write("##FORMAT=<ID=PQ,Number=1,Type=Float,Description=\"Phasing Quality\">\n".as_bytes())
-        .unwrap();
+    ).unwrap();
+    vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=PQ,Number=1,Type=Float,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=AE,Number=A,Type=Integer,Description=\"Haplotype expression of two alleles\">\n".as_bytes()).unwrap();
-    vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes())
-        .unwrap();
+    vf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n".as_bytes()).unwrap();
 
     for rd in vcf_records_queue.lock().unwrap().iter() {
         if rd.alternative.len() == 1 {
@@ -4208,10 +4061,8 @@ pub fn multithread_phase_haplotag(
                     std::str::from_utf8(&rd.info).unwrap(),
                     std::str::from_utf8(&rd.format).unwrap(),
                     rd.genotype
-                )
-                .as_bytes(),
-            )
-            .unwrap();
+                ).as_bytes(),
+            ).unwrap();
         } else if rd.alternative.len() == 2 {
             vf.write(
                 format!(
@@ -4227,36 +4078,27 @@ pub fn multithread_phase_haplotag(
                     std::str::from_utf8(&rd.info).unwrap(),
                     std::str::from_utf8(&rd.format).unwrap(),
                     rd.genotype
-                )
-                .as_bytes(),
-            )
-            .unwrap();
+                ).as_bytes(),
+            ).unwrap();
         }
     }
     drop(vf);
 
     if output_read_assignment {
-        let mut assignment_writer =
-            File::create(phased_bam_file.replace(".phased.bam", ".assignment.tsv")).unwrap();
+        let mut assignment_writer = File::create(phased_bam_file.replace(".phased.bam", ".assignment.tsv")).unwrap();
         for rd in read_haplotag_queue.lock().unwrap().iter() {
             // println!("{}:{}", rd.0, rd.1);
-            assignment_writer
-                .write(format!("{}\t{}\n", rd.0, rd.1).as_bytes())
-                .unwrap();
+            assignment_writer.write(format!("{}\t{}\n", rd.0, rd.1).as_bytes()).unwrap();
         }
         drop(assignment_writer);
     }
 
     if haplotype_specific_exon {
         let mut exon_hashmap: HashMap<String, Vec<(Exon, i32, i32)>> = HashMap::new();
-        let mut exon_writer =
-            File::create(phased_bam_file.replace(".phased.bam", ".haplotype_exon.tsv")).unwrap();
-        exon_writer
-            .write(
-                "#Chromosome\tExon start\tExon end\tExon state\tHap1 expression\tHap2 expression\n"
-                    .as_bytes(),
-            )
-            .unwrap();
+        let mut exon_writer = File::create(phased_bam_file.replace(".phased.bam", ".haplotype_exon.tsv")).unwrap();
+        exon_writer.write(
+            "#Chromosome\tExon start\tExon end\tExon state\tHap1 expression\tHap2 expression\n".as_bytes(),
+        ).unwrap();
         for rd in haplotype_exon_queue.lock().unwrap().iter() {
             let e = &rd.0;
             if exon_hashmap.contains_key(&e.chr) {
@@ -4274,20 +4116,17 @@ pub fn multithread_phase_haplotag(
             exons_sorted.sort_by(|a, b| a.0.start.cmp(&b.0.start));
             for rd in exons_sorted.iter() {
                 let e = &rd.0;
-                exon_writer
-                    .write(
-                        format!(
-                            "{}\t{}\t{}\t{}\t{}\t{}\n",
-                            e.chr,
-                            e.start + 1,
-                            e.end,
-                            e.state,
-                            rd.1,
-                            rd.2
-                        )
-                        .as_bytes(),
-                    )
-                    .unwrap(); // 1-based, start inclusive, end inclusive
+                exon_writer.write(
+                    format!(
+                        "{}\t{}\t{}\t{}\t{}\t{}\n",
+                        e.chr,
+                        e.start + 1,
+                        e.end,
+                        e.state,
+                        rd.1,
+                        rd.2
+                    ).as_bytes(),
+                ).unwrap(); // 1-based, start inclusive, end inclusive
             }
         }
         drop(exon_writer);
@@ -4301,13 +4140,10 @@ pub fn multithread_phase_haplotag(
             }
             let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
             let header = bam::Header::from_template(&bam_reader.header());
-            let mut bam_writer =
-                bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
+            let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
             bam_writer.set_threads(thread_size).unwrap();
             for region in isolated_regions.iter() {
-                bam_reader
-                    .fetch((region.chr.as_str(), region.start, region.end))
-                    .unwrap(); // set region
+                bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
                 for r in bam_reader.records() {
                     let mut record = r.unwrap();
                     if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
@@ -4339,20 +4175,16 @@ pub fn multithread_phase_haplotag(
                 phased_bam_file.replace("phased", "hap1"),
                 &header,
                 Format::Bam,
-            )
-            .unwrap();
+            ).unwrap();
             let mut hap2_bam_writer = bam::Writer::from_path(
                 phased_bam_file.replace("phased", "hap2"),
                 &header,
                 Format::Bam,
-            )
-            .unwrap();
+            ).unwrap();
             hap1_bam_writer.set_threads(thread_size).unwrap();
             hap2_bam_writer.set_threads(thread_size).unwrap();
             for region in isolated_regions.iter() {
-                bam_reader
-                    .fetch((region.chr.as_str(), region.start, region.end))
-                    .unwrap(); // set region
+                bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
                 for r in bam_reader.records() {
                     let mut record = r.unwrap();
                     if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
