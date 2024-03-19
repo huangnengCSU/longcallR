@@ -1,12 +1,11 @@
-mod util;
 mod phase;
+mod util;
 
-use clap::{Parser, ArgAction, ValueEnum, Error};
-use rust_htslib::{bam::Read};
+use crate::phase::multithread_phase_haplotag;
 use crate::util::*;
+use clap::{ArgAction, Error, Parser, ValueEnum};
 use rand::seq::SliceRandom;
-use crate::phase::{multithread_phase_haplotag};
-
+use rust_htslib::bam::Read;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Preset {
@@ -16,16 +15,15 @@ pub enum Preset {
     // PacBio IsoSeq, transcript strand
     ont,
     // Oxford Nanopore, both strand
-    drna,   // direct RNA, transcript strand
+    drna, // direct RNA, transcript strand
 }
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Platform {
     hifi,
     // PacBio long-read RNA sequencing
-    ont,    // Oxford Nanopore long-read RNA sequencing
+    ont, // Oxford Nanopore long-read RNA sequencing
 }
-
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -182,9 +180,13 @@ struct Args {
     #[arg(long, default_value_t = 2.0)]
     imbalance_allele_expression_cutoff: f32,
 
-    /// Allele-specific expression allele frequency cutoff
+    /// Allele-specific expression allele fraction cutoff
     #[arg(long, default_value_t = 0.05)]
     ase_freq_cutoff: f32,
+
+    /// Allele-specific expression allele count cutoff
+    #[arg(long, default_value_t = 3)]
+    ase_count_cutoff: u32,
 
     /// Without phasing, only using genotype probability
     #[clap(long, action = ArgAction::SetTrue)]
@@ -239,7 +241,7 @@ fn main() {
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
     let genotype_only = arg.genotype_only;
-    let phasing_output = arg.no_phase_vcf;  // default=true
+    let phasing_output = arg.no_phase_vcf; // default=true
     let no_bam_output = arg.no_bam_output; // default=false
     let haplotype_bam_output = arg.haplotype_bam_output; // default=false
     let output_read_assignment = arg.output_read_assignment; // default=false
@@ -274,6 +276,7 @@ fn main() {
     let mut imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
     let mut min_homozygous_freq = arg.min_homozygous_freq;
     let mut ase_freq_cutoff = arg.ase_freq_cutoff;
+    let mut ase_cnt_cutoff = arg.ase_count_cutoff;
 
     if preset.is_some() {
         match preset.unwrap() {
@@ -381,12 +384,12 @@ fn main() {
                 window_size = arg.window_size;
                 diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
-                min_phase_score = arg.min_phase_score;
                 min_depth = arg.min_depth;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_phase_score = 12.0;
                 min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.001;
@@ -422,53 +425,61 @@ fn main() {
     let mut regions = Vec::new();
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
-        regions = vec! {region};
+        regions = vec![region];
     } else {
-        regions = multithread_produce3(bam_path.to_string().clone(), ref_path.to_string().clone(), threads, input_contigs);
+        regions = multithread_produce3(
+            bam_path.to_string().clone(),
+            ref_path.to_string().clone(),
+            threads,
+            input_contigs,
+        );
     }
-    multithread_phase_haplotag(bam_path.to_string().clone(),
-                               ref_path.to_string().clone(),
-                               out_vcf.clone(),
-                               out_bam.clone(),
-                               threads,
-                               regions,
-                               genotype_only,
-                               &platform,
-                               max_iters,
-                               min_mapq,
-                               min_baseq,
-                               diff_baseq,
-                               min_allele_freq,
-                               min_allele_freq_include_intron,
-                               min_qual_for_candidate,
-                               min_qual_for_singlesnp_rnaedit,
-                               min_allele_cnt,
-                               no_strand_bias,
-                               strand_bias_threshold,
-                               cover_strand_bias_threshold,
-                               min_depth,
-                               max_depth,
-                               min_read_length,
-                               distance_to_splicing_site,
-                               window_size,
-                               distance_to_read_end,
-                               diff_distance_to_read_end,
-                               polya_tail_length,
-                               dense_win_size,
-                               min_dense_cnt,
-                               avg_dense_dist,
-                               min_homozygous_freq,
-                               min_linkers,
-                               min_phase_score,
-                               max_enum_snps,
-                               random_flip_fraction,
-                               read_assignment_cutoff,
-                               imbalance_allele_expression_cutoff,
-                               phasing_output,
-                               no_bam_output,
-                               haplotype_bam_output,
-                               output_read_assignment,
-                               haplotype_specific_exon,
-                               min_sup_haplotype_exon,
-                               ase_freq_cutoff);
+    multithread_phase_haplotag(
+        bam_path.to_string().clone(),
+        ref_path.to_string().clone(),
+        out_vcf.clone(),
+        out_bam.clone(),
+        threads,
+        regions,
+        genotype_only,
+        &platform,
+        max_iters,
+        min_mapq,
+        min_baseq,
+        diff_baseq,
+        min_allele_freq,
+        min_allele_freq_include_intron,
+        min_qual_for_candidate,
+        min_qual_for_singlesnp_rnaedit,
+        min_allele_cnt,
+        no_strand_bias,
+        strand_bias_threshold,
+        cover_strand_bias_threshold,
+        min_depth,
+        max_depth,
+        min_read_length,
+        distance_to_splicing_site,
+        window_size,
+        distance_to_read_end,
+        diff_distance_to_read_end,
+        polya_tail_length,
+        dense_win_size,
+        min_dense_cnt,
+        avg_dense_dist,
+        min_homozygous_freq,
+        min_linkers,
+        min_phase_score,
+        max_enum_snps,
+        random_flip_fraction,
+        read_assignment_cutoff,
+        imbalance_allele_expression_cutoff,
+        phasing_output,
+        no_bam_output,
+        haplotype_bam_output,
+        output_read_assignment,
+        haplotype_specific_exon,
+        min_sup_haplotype_exon,
+        ase_freq_cutoff,
+        ase_cnt_cutoff,
+    );
 }

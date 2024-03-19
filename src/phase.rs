@@ -2,7 +2,6 @@ use crate::util::{independent_test, load_reference, parse_fai, Profile, Region, 
 use crate::Platform;
 use bio::bio_types::strand::ReqStrand::Forward;
 use probability::distribution::{Binomial, Distribution};
-use rand::seq::SliceRandom;
 use rand::Rng;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::record::Aux, bam::record::Record, bam::Format, bam::Read};
@@ -164,6 +163,7 @@ impl SNPFrag {
         min_dense_cnt: u32,
         avg_dense_dist: f32,
         ase_freq_cutoff: f32,
+        ase_cnt_cutoff: u32,
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
@@ -820,7 +820,7 @@ impl SNPFrag {
                 }
                 if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
                     // alternative allele frequency is smaller than min allele freq
-                    if allele1_freq >= ase_freq_cutoff {
+                    if allele1_freq >= ase_freq_cutoff && allele1_cnt >= ase_cnt_cutoff {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         candidate_snp.filter = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
@@ -832,7 +832,7 @@ impl SNPFrag {
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
                     // alternative allele frequency is smaller than min allele freq
-                    if allele2_freq >= ase_freq_cutoff {
+                    if allele2_freq >= ase_freq_cutoff && allele2_cnt >= ase_cnt_cutoff {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
                         candidate_snp.filter = false; // The fragment will contain ase snps, so the fields of  rna editing and filter of ase snp are set to false.
@@ -845,14 +845,20 @@ impl SNPFrag {
                 }
                 if variant_quality < min_qual_for_candidate as f64 {
                     // heterozygous SNP may have low variant quality
-                    if allele1 != bf.ref_base && allele1_freq >= ase_freq_cutoff {
+                    if allele1 != bf.ref_base
+                        && allele1_freq >= ase_freq_cutoff
+                        && allele1_cnt >= ase_cnt_cutoff
+                    {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false;
                         candidate_snp.filter = false;
                         self.candidate_snps.push(candidate_snp);
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
-                    } else if allele2 != bf.ref_base && allele2_freq >= ase_freq_cutoff {
+                    } else if allele2 != bf.ref_base
+                        && allele2_freq >= ase_freq_cutoff
+                        && allele2_cnt >= ase_cnt_cutoff
+                    {
                         candidate_snp.ase = true;
                         candidate_snp.rna_editing = false;
                         candidate_snp.filter = false;
@@ -882,14 +888,20 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
-                if allele1 != bf.ref_base && allele1_freq >= ase_freq_cutoff {
+                if allele1 != bf.ref_base
+                    && allele1_freq >= ase_freq_cutoff
+                    && allele1_cnt >= ase_cnt_cutoff
+                {
                     candidate_snp.ase = true;
                     candidate_snp.rna_editing = false;
                     candidate_snp.filter = false;
                     self.candidate_snps.push(candidate_snp);
                     self.ase_snps.push(self.candidate_snps.len() - 1);
                     self.ase_hete_snps.push(self.candidate_snps.len() - 1);
-                } else if allele2 != bf.ref_base && allele2_freq >= ase_freq_cutoff {
+                } else if allele2 != bf.ref_base
+                    && allele2_freq >= ase_freq_cutoff
+                    && allele2_cnt >= ase_cnt_cutoff
+                {
                     candidate_snp.ase = true;
                     candidate_snp.rna_editing = false;
                     candidate_snp.filter = false;
@@ -938,13 +950,7 @@ impl SNPFrag {
                     - self.candidate_snps[self.hete_homo_snps[i]].pos
                     > dense_win_size as i64
                 {
-                    if (j - 1 - i + 1) as u32 >= min_dense_cnt
-                        && ((self.candidate_snps[self.hete_homo_snps[j - 1]].pos
-                            - self.candidate_snps[self.hete_homo_snps[i]].pos
-                            + 1) as f32)
-                            / ((j - 1 - i + 1) as f32)
-                            <= avg_dense_dist
-                    {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt {
                         for tk in i..j {
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[self.hete_homo_snps[tk]].rna_editing = false;
@@ -977,13 +983,7 @@ impl SNPFrag {
                     - self.candidate_snps[self.ase_snps[i]].pos
                     > dense_win_size as i64
                 {
-                    if (j - 1 - i + 1) as u32 >= min_dense_cnt
-                        && ((self.candidate_snps[self.ase_snps[j - 1]].pos
-                            - self.candidate_snps[self.ase_snps[i]].pos
-                            + 1) as f32)
-                            / ((j - 1 - i + 1) as f32)
-                            <= avg_dense_dist
-                    {
+                    if (j - 1 - i + 1) as u32 >= min_dense_cnt {
                         for tk in i..j {
                             // even rna editing may be filtered by dense SNPs
                             self.candidate_snps[self.ase_snps[tk]].rna_editing = false;
@@ -1036,6 +1036,19 @@ impl SNPFrag {
         // initialize haplotype of heterozygous snp
         let mut rng = rand::thread_rng();
         for i in self.hete_snps.iter() {
+            let rg: f64 = rng.gen();
+            if rg < 0.5 {
+                self.candidate_snps[*i].haplotype = -1;
+            } else {
+                self.candidate_snps[*i].haplotype = 1;
+            }
+        }
+    }
+
+    pub unsafe fn init_haplotypes_ase(&mut self) {
+        // initialize haplotype of heterozygous snp
+        let mut rng = rand::thread_rng();
+        for i in self.ase_snps.iter() {
             let rg: f64 = rng.gen();
             if rg < 0.5 {
                 self.candidate_snps[*i].haplotype = -1;
@@ -1724,6 +1737,24 @@ impl SNPFrag {
         return logp;
     }
 
+    pub fn cal_overall_probability_ase(snpfrag: &SNPFrag) -> f64 {
+        // calculate the log10 probability of the current configuration of sigma and delta
+        let mut logp = 0.0;
+        for k in 0..snpfrag.fragments.len() {
+            for fe in snpfrag.fragments[k].list.iter() {
+                assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
+                if snpfrag.fragments[k].haplotag * snpfrag.candidate_snps[fe.snp_idx].haplotype
+                    == fe.p
+                {
+                    logp += (1.0 - fe.prob).log10();
+                } else {
+                    logp += fe.prob.log10();
+                }
+            }
+        }
+        return logp;
+    }
+
     pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i32>) -> i32 {
         // updated_haplotag: the index of the fragments will be updated
         let mut logp = 0.0;
@@ -1769,6 +1800,50 @@ impl SNPFrag {
         return rv;
     }
 
+    pub fn check_new_haplotag_ase(
+        snpfrag: &SNPFrag,
+        updated_haplotag: &HashMap<usize, i32>,
+    ) -> i32 {
+        // updated_haplotag: the index of the fragments will be updated
+        let mut logp = 0.0;
+        let mut pre_logp = 0.0;
+        for (k, h) in updated_haplotag.iter() {
+            let mut delta: Vec<i32> = Vec::new();
+            let mut ps: Vec<i32> = Vec::new();
+            let mut probs: Vec<f64> = Vec::new();
+            for fe in snpfrag.fragments[*k].list.iter() {
+                ps.push(fe.p);
+                probs.push(fe.prob);
+                delta.push(snpfrag.candidate_snps[fe.snp_idx].haplotype);
+            }
+            if delta.len() == 0 {
+                continue;
+            }
+            logp += SNPFrag::cal_sigma_delta_log(*h, &delta, &ps, &probs);
+            pre_logp +=
+                SNPFrag::cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
+        }
+
+        let p = logp;
+        let pre_p = pre_logp;
+        // println!("haplotag p:{}, pre_p:{}", p, pre_p);
+        let mut rv = 0;
+        if p > pre_p {
+            rv = 1;
+        } else if p == pre_p {
+            rv = 0;
+        } else {
+            rv = -1;
+        }
+        assert!(
+            rv >= 0,
+            "Error: update haplotag should not decrease the probability. {} -> {}",
+            pre_logp,
+            logp
+        );
+        return rv;
+    }
+
     pub fn check_new_haplotype(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize, i32>) -> i32 {
         let mut logp = 0.0;
         let mut pre_logp = 0.0;
@@ -1782,6 +1857,60 @@ impl SNPFrag {
                         continue;
                     }
                     if fe.ase_snp == true {
+                        continue;
+                    }
+                    assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
+                    ps.push(fe.p);
+                    probs.push(fe.prob);
+                    sigma.push(snpfrag.fragments[*k].haplotag);
+                }
+            }
+            if sigma.len() == 0 {
+                // println!("SNP: {:?}", snpfrag.candidate_snps[*i]);
+                // println!("SNP {} is not covered by any fragment.", snpfrag.candidate_snps[*i].pos);
+                continue;
+            }
+            logp += SNPFrag::cal_delta_sigma_log(*h, &sigma, &ps, &probs);
+            pre_logp += SNPFrag::cal_delta_sigma_log(
+                snpfrag.candidate_snps[*i].haplotype,
+                &sigma,
+                &ps,
+                &probs,
+            );
+        }
+        let p = logp;
+        let pre_p = pre_logp;
+        // println!("haplotype p:{}, pre_p:{}", p, pre_p);
+        let mut rv = 0;
+        if p > pre_p {
+            rv = 1;
+        } else if p == pre_p {
+            rv = 0;
+        } else {
+            rv = -1;
+        }
+        assert!(
+            rv >= 0,
+            "Error: update haplotype should not decrease the probability. {} -> {}",
+            pre_logp,
+            logp
+        );
+        return rv;
+    }
+
+    pub fn check_new_haplotype_ase(
+        snpfrag: &SNPFrag,
+        updated_haplotype: &HashMap<usize, i32>,
+    ) -> i32 {
+        let mut logp = 0.0;
+        let mut pre_logp = 0.0;
+        for (i, h) in updated_haplotype.iter() {
+            let mut sigma: Vec<i32> = Vec::new();
+            let mut ps: Vec<i32> = Vec::new();
+            let mut probs: Vec<f64> = Vec::new();
+            for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
+                for fe in snpfrag.fragments[*k].list.iter() {
+                    if fe.snp_idx != *i {
                         continue;
                     }
                     assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
@@ -1933,6 +2062,124 @@ impl SNPFrag {
         return prob;
     }
 
+    pub fn cross_optimize_ase_snps(&mut self) -> f64 {
+        // Iteration:
+        //     1. evaluate the assignment of each read based on the current SNP haplotype.
+        //     2. evaluate the SNP haplotype based on the read assignment.
+        // If P(sigma, delta) increase, repeat Iteration;
+        // Else break;
+
+        let mut phasing_increase: bool = true;
+        let mut haplotag_increase: bool = true;
+        let mut num_iters = 0;
+
+        while phasing_increase | haplotag_increase {
+            // optimize sigma
+            let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
+            let mut processed_snps = HashSet::new(); // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
+            for k in 0..self.fragments.len() {
+                let mut sigma_k = self.fragments[k].haplotag;
+                if sigma_k == 0 {
+                    // the fragment may be unphased in the first step phasing with heterozygous snps, random assign sigma
+                    let mut rng = rand::thread_rng();
+                    let rg: f64 = rng.gen();
+                    if rg < 0.5 {
+                        self.fragments[k].haplotag = -1;
+                        sigma_k = -1;
+                    } else {
+                        self.fragments[k].haplotag = 1;
+                        sigma_k = 1;
+                    }
+                }
+                let mut delta: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for fe in self.fragments[k].list.iter() {
+                    ps.push(fe.p);
+                    probs.push(fe.prob);
+                    delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                    processed_snps.insert(fe.snp_idx);
+                }
+
+                let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
+                let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
+
+                if q < qn {
+                    tmp_haplotag.insert(k, sigma_k * (-1));
+                } else {
+                    tmp_haplotag.insert(k, sigma_k);
+                }
+            }
+
+            // assert!(SNPFrag::cal_overall_probability(&self, &processed_snps, &self.haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
+            let check_val = SNPFrag::check_new_haplotag_ase(&self, &tmp_haplotag);
+            assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
+            for (k, h) in tmp_haplotag.iter() {
+                // when prob is equal, we still perform the flip to avoid bug of underflow
+                self.fragments[*k].haplotag = *h;
+            }
+            if check_val == 0 {
+                haplotag_increase = false;
+            } else {
+                haplotag_increase = true;
+                phasing_increase = true;
+            }
+            self.check_local_optimal_configuration_ase(false, true);
+
+            // optimize delta
+            let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
+            for i in self.ase_snps.iter() {
+                // flip ase snps and keep heterozygous snps unchanged
+                let delta_i = self.candidate_snps[*i].haplotype;
+                let mut sigma: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                    // k is fragment index
+                    for fe in self.fragments[*k].list.iter() {
+                        if fe.snp_idx == *i {
+                            assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            sigma.push(self.fragments[*k].haplotag);
+                        }
+                    }
+                }
+
+                let q = SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs);
+                let qn = SNPFrag::cal_delta_sigma_log(delta_i * (-1), &sigma, &ps, &probs);
+                // println!("optimize delta {} q:{:?}, qn:{:?}, delta: {}", i, q, qn, delta_i);
+                if q < qn {
+                    tmp_haplotype.insert(*i, delta_i * (-1));
+                } else {
+                    tmp_haplotype.insert(*i, delta_i);
+                }
+            }
+            let check_val = SNPFrag::check_new_haplotype_ase(&self, &tmp_haplotype);
+            assert!(check_val >= 0, "ckeck val bug: {:?}", self.candidate_snps);
+            for (i, h) in tmp_haplotype.iter() {
+                // when prob is equal, we still perform the flip to avoid bug of underflow
+                self.candidate_snps[*i].haplotype = *h;
+            }
+            if check_val == 0 {
+                phasing_increase = false;
+            } else {
+                phasing_increase = true;
+                haplotag_increase = true;
+            }
+            self.check_local_optimal_configuration_ase(true, false); // maybe failed
+            num_iters += 1;
+            if num_iters > 20 {
+                break;
+            }
+        }
+        // sigma reaches the optimal solution first and then delta reaches the optimal solution. After this, equal probability flip of delta may destroy the optimum of sigma again.
+        // self.check_local_optimal_configuration(true, true);
+        let prob = SNPFrag::cal_overall_probability_ase(&self);
+        return prob;
+    }
+
     fn save_best_configuration(
         &self,
         best_haplotype: &mut HashMap<usize, i32>,
@@ -2060,6 +2307,120 @@ impl SNPFrag {
                         }
                     }
                     let prob = self.cross_optimize();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                    }
+                    self.load_best_configuration(&best_haplotype, &best_haplotag);
+                }
+                self.load_best_configuration(&best_haplotype, &best_haplotag);
+                max_iter -= 1;
+            }
+            self.load_best_configuration(&best_haplotype, &best_haplotag);
+        }
+    }
+
+    pub fn phase_ase_hete_snps(
+        &mut self,
+        max_enum_snps: usize,
+        random_flip_fraction: f32,
+        max_iters: i32,
+    ) {
+        let mut largest_prob = f64::NEG_INFINITY;
+        let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
+        let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
+        if self.ase_snps.len() <= max_enum_snps {
+            // enumerate the haplotype, then optimize the assignment
+            let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
+            let init_hap: Vec<i32> = vec![1; self.ase_snps.len()];
+            haplotype_enum.push(init_hap.clone());
+            for ti in 0..self.ase_snps.len() {
+                for tj in 0..haplotype_enum.len() {
+                    let mut tmp_hap = haplotype_enum[tj].clone();
+                    tmp_hap[ti] = tmp_hap[ti] * (-1);
+                    haplotype_enum.push(tmp_hap);
+                }
+            }
+            assert!(
+                haplotype_enum.len() == 2_usize.pow(self.ase_snps.len() as u32),
+                "Error: Not all combinations included"
+            );
+            for hap in haplotype_enum.iter() {
+                for i in 0..self.ase_snps.len() {
+                    assert!(
+                        self.candidate_snps[self.ase_snps[i]].ase == true,
+                        "Error: only ase snps can be flipped."
+                    );
+                    self.candidate_snps[self.ase_snps[i]].haplotype = hap[i];
+                }
+                let prob = self.cross_optimize_ase_snps();
+                if prob > largest_prob {
+                    largest_prob = prob;
+                    self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                }
+            }
+            self.load_best_configuration(&best_haplotype, &best_haplotag);
+        } else {
+            // optimize haplotype and read assignment alternatively
+            let mut max_iter: i32 = max_iters;
+            while max_iter >= 0 {
+                // random initialization of haplotype for ase snps
+                unsafe {
+                    self.init_haplotypes_ase();
+                }
+                let prob = self.cross_optimize_ase_snps();
+                if prob > largest_prob {
+                    largest_prob = prob;
+                    self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                }
+                self.load_best_configuration(&best_haplotype, &best_haplotag);
+
+                // when initial setting has reached to local optimal, flip all the snps after a specific position to jump out local optimization
+                let mut unflipped_haplotype: Vec<i32> = Vec::new();
+                for i in self.ase_snps.iter() {
+                    unflipped_haplotype.push(self.candidate_snps[*i].haplotype);
+                }
+                for ti in 0..unflipped_haplotype.len() {
+                    let mut tmp_hap: Vec<i32> = Vec::new();
+                    for tj in 0..unflipped_haplotype.len() {
+                        if tj < ti {
+                            tmp_hap.push(unflipped_haplotype[tj]);
+                        } else {
+                            tmp_hap.push(unflipped_haplotype[tj] * (-1));
+                        }
+                    }
+                    // block flip
+                    {
+                        assert_eq!(tmp_hap.len(), self.ase_snps.len());
+                        for i in 0..self.ase_snps.len() {
+                            self.candidate_snps[self.ase_snps[i]].haplotype = tmp_hap[i];
+                        }
+                    }
+                    let prob = self.cross_optimize_ase_snps();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                    }
+                    self.load_best_configuration(&best_haplotype, &best_haplotag);
+
+                    // when current block flip has reached to local optimal, flip a fraction of snps and reads to jump out local optimization
+                    {
+                        let mut rng = rand::thread_rng();
+                        for ti in 0..self.ase_snps.len() {
+                            let rg: f64 = rng.gen();
+                            if rg < random_flip_fraction as f64 {
+                                self.candidate_snps[self.ase_snps[ti]].haplotype =
+                                    self.candidate_snps[self.ase_snps[ti]].haplotype * (-1);
+                            }
+                        }
+                        for tk in 0..self.fragments.len() {
+                            let rg: f64 = rng.gen();
+                            if rg < random_flip_fraction as f64 {
+                                self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
+                            }
+                        }
+                    }
+                    let prob = self.cross_optimize_ase_snps();
                     if prob > largest_prob {
                         largest_prob = prob;
                         self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
@@ -2216,24 +2577,270 @@ impl SNPFrag {
                 probs.push(fe.prob);
                 delta.push(self.candidate_snps[fe.snp_idx].haplotype);
             }
-            assert!(sigma_k != 0, "Error: unasigned haplotag.");
             if sigma_k == 0 {
                 // unasigned haplotag, cluster the read into unknown group
                 self.fragments[k].assignment = 0;
                 self.fragments[k].assignment_score = 0.0;
                 read_assignments.insert(self.fragments[k].read_id.clone(), 0);
             } else {
-                let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
-                let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                let mut q = 0.0;
+                let mut qn = 0.0;
+                if delta.len() > 0 {
+                    q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
+                    qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                }
+
                 if (q - qn).abs() > read_assignment_cutoff {
-                    if sigma_k == 1 {
-                        self.fragments[k].assignment = 1;
-                        self.fragments[k].assignment_score = q;
-                        read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                    if q > qn {
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = q;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        } else {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = q;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        }
                     } else {
-                        self.fragments[k].assignment = 2;
-                        self.fragments[k].assignment_score = q;
-                        read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = qn;
+                            self.fragments[k].haplotag = -1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        } else {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = qn;
+                            self.fragments[k].haplotag = 1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        }
+                    }
+                } else {
+                    // unknown which haplotype the read belongs to, cluster the read into unknown group
+                    self.fragments[k].assignment = 0;
+                    self.fragments[k].assignment_score = 0.0;
+                    read_assignments.insert(self.fragments[k].read_id.clone(), 0);
+                }
+            }
+        }
+        return read_assignments;
+    }
+
+    pub fn assign_reads_ase(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
+        let mut read_assignments: HashMap<String, i32> = HashMap::new();
+        for k in 0..self.fragments.len() {
+            let sigma_k = self.fragments[k].haplotag;
+            let mut delta_hete: Vec<i32> = Vec::new();
+            let mut ps_hete: Vec<i32> = Vec::new();
+            let mut probs_hete: Vec<f64> = Vec::new();
+            let mut delta_ase: Vec<i32> = Vec::new();
+            let mut ps_ase: Vec<i32> = Vec::new();
+            let mut probs_ase: Vec<f64> = Vec::new();
+
+            for fe in self.fragments[k].list.iter() {
+                assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                if fe.ase_snp == true {
+                    ps_ase.push(fe.p);
+                    probs_ase.push(fe.prob);
+                    delta_ase.push(self.candidate_snps[fe.snp_idx].haplotype);
+                } else {
+                    ps_hete.push(fe.p);
+                    probs_hete.push(fe.prob);
+                    delta_hete.push(self.candidate_snps[fe.snp_idx].haplotype);
+                }
+            }
+            if sigma_k == 0 {
+                // unasigned haplotag, cluster the read into unknown group
+                self.fragments[k].assignment = 0;
+                self.fragments[k].assignment_score = 0.0;
+                read_assignments.insert(self.fragments[k].read_id.clone(), 0);
+            } else {
+                let mut q_hete = 0.0;
+                let mut qn_hete = 0.0;
+                let mut q_ase = 0.0;
+                let mut qn_ase = 0.0;
+                if delta_hete.len() > 0 {
+                    q_hete =
+                        SNPFrag::cal_sigma_delta_log(sigma_k, &delta_hete, &ps_hete, &probs_hete);
+                    qn_hete = SNPFrag::cal_sigma_delta_log(
+                        sigma_k * (-1),
+                        &delta_hete,
+                        &ps_hete,
+                        &probs_hete,
+                    );
+                }
+                if delta_ase.len() > 0 {
+                    q_ase = SNPFrag::cal_sigma_delta_log(sigma_k, &delta_ase, &ps_ase, &probs_ase);
+                    qn_ase = SNPFrag::cal_sigma_delta_log(
+                        sigma_k * (-1),
+                        &delta_ase,
+                        &ps_ase,
+                        &probs_ase,
+                    );
+                }
+
+                if (q_hete - qn_hete).abs() > read_assignment_cutoff
+                    && (q_ase - qn_ase).abs() > read_assignment_cutoff
+                {
+                    // consider both ase and hete snps
+                    if q_hete >= qn_hete && q_ase >= qn_ase {
+                        // both ase and hete snps support the same haplotype
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = q_hete.max(q_ase);
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        } else {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = q_hete.max(q_ase);
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        }
+                    } else if q_hete < qn_hete && q_ase < qn_ase {
+                        // both ase and hete snps support the opposite haplotype
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = qn_hete.max(qn_ase);
+                            self.fragments[k].haplotag = -1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        } else {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = qn_hete.max(qn_ase);
+                            self.fragments[k].haplotag = 1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        }
+                    } else if q_hete >= qn_hete && q_ase < qn_ase {
+                        // hete snps and ase snps have conflict read assignment
+                        if delta_hete.len() >= 2 {
+                            // if more than 2 hete snps, use hete snps to assign the read
+                            if sigma_k == 1 {
+                                self.fragments[k].assignment = 1;
+                                self.fragments[k].assignment_score = q_hete;
+                                read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                            } else {
+                                self.fragments[k].assignment = 2;
+                                self.fragments[k].assignment_score = q_hete;
+                                read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                            }
+                        } else {
+                            // if only 1 hete snp, use the higher probability to assign the read
+                            if q_hete >= qn_ase {
+                                if sigma_k == 1 {
+                                    self.fragments[k].assignment = 1;
+                                    self.fragments[k].assignment_score = q_hete;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                                } else {
+                                    self.fragments[k].assignment = 2;
+                                    self.fragments[k].assignment_score = q_hete;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                                }
+                            } else {
+                                if sigma_k == 1 {
+                                    self.fragments[k].assignment = 2;
+                                    self.fragments[k].assignment_score = qn_ase;
+                                    self.fragments[k].haplotag = -1;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                                } else {
+                                    self.fragments[k].assignment = 1;
+                                    self.fragments[k].assignment_score = qn_ase;
+                                    self.fragments[k].haplotag = 1;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                                }
+                            }
+                        }
+                    } else if q_hete < qn_hete && q_ase >= qn_ase {
+                        // hete snps and ase snps have conflict read assignment
+                        if delta_hete.len() >= 2 {
+                            // if more than 2 hete snps, use hete snps to assign the read
+                            if sigma_k == 1 {
+                                self.fragments[k].assignment = 2;
+                                self.fragments[k].assignment_score = qn_hete;
+                                self.fragments[k].haplotag = -1;
+                                read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                            } else {
+                                self.fragments[k].assignment = 1;
+                                self.fragments[k].assignment_score = qn_hete;
+                                self.fragments[k].haplotag = 1;
+                                read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                            }
+                        } else {
+                            // if only 1 hete snp, use the higher probability to assign the read
+                            if qn_hete >= q_ase {
+                                if sigma_k == 1 {
+                                    self.fragments[k].assignment = 2;
+                                    self.fragments[k].assignment_score = qn_hete;
+                                    self.fragments[k].haplotag = -1;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                                } else {
+                                    self.fragments[k].assignment = 1;
+                                    self.fragments[k].assignment_score = qn_hete;
+                                    self.fragments[k].haplotag = 1;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                                }
+                            } else {
+                                if sigma_k == 1 {
+                                    self.fragments[k].assignment = 1;
+                                    self.fragments[k].assignment_score = q_ase;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                                } else {
+                                    self.fragments[k].assignment = 2;
+                                    self.fragments[k].assignment_score = q_ase;
+                                    read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                                }
+                            }
+                        }
+                    } else {
+                        // unknown which haplotype the read belongs to, cluster the read into unknown group
+                        self.fragments[k].assignment = 0;
+                        self.fragments[k].assignment_score = 0.0;
+                        read_assignments.insert(self.fragments[k].read_id.clone(), 0);
+                    }
+                } else if (q_hete - qn_hete).abs() > read_assignment_cutoff {
+                    // only consider hete snps
+                    if q_hete > qn_hete {
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = q_hete;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        } else {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = q_hete;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        }
+                    } else {
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = qn_hete;
+                            self.fragments[k].haplotag = -1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        } else {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = qn_hete;
+                            self.fragments[k].haplotag = 1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        }
+                    }
+                } else if (q_ase - qn_ase).abs() > read_assignment_cutoff {
+                    // only consider ase snps
+                    if q_ase > qn_ase {
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = q_ase;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        } else {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = q_ase;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        }
+                    } else {
+                        if sigma_k == 1 {
+                            self.fragments[k].assignment = 2;
+                            self.fragments[k].assignment_score = qn_ase;
+                            self.fragments[k].haplotag = -1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                        } else {
+                            self.fragments[k].assignment = 1;
+                            self.fragments[k].assignment_score = qn_ase;
+                            self.fragments[k].haplotag = 1;
+                            read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                        }
                     }
                 } else {
                     // unknown which haplotype the read belongs to, cluster the read into unknown group
@@ -2302,7 +2909,63 @@ impl SNPFrag {
         }
     }
 
+    fn check_local_optimal_configuration_ase(
+        &self,
+        used_for_haplotype: bool,
+        used_for_haplotag: bool,
+    ) {
+        // check sigma
+        if used_for_haplotag {
+            for k in 0..self.fragments.len() {
+                let sigma_k = self.fragments[k].haplotag;
+                let mut delta: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for fe in self.fragments[k].list.iter() {
+                    ps.push(fe.p);
+                    probs.push(fe.prob);
+                    delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                }
+                if delta.len() == 0 {
+                    continue;
+                }
+                let q = SNPFrag::cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
+                let qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                // println!("q:{}, qn:{}", q, qn);
+                assert!(q >= qn, "{} Error: read assignment is not local optimal. {}->{}\n{:?}\ndelta:{:?}\nps:{:?}\nprobs:{:?}\nsigma:{}\n{:?}\n{:?}", k, q, qn, self.region, delta, ps, probs, sigma_k, used_for_haplotype, used_for_haplotag);
+            }
+        }
+
+        // check delta
+        if used_for_haplotype {
+            for i in self.ase_snps.iter() {
+                let delta_i = self.candidate_snps[*i].haplotype;
+                let mut sigma: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                    // k is fragment index
+                    for fe in self.fragments[*k].list.iter() {
+                        if fe.snp_idx == *i {
+                            assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            sigma.push(self.fragments[*k].haplotag);
+                        }
+                    }
+                }
+                if sigma.len() == 0 {
+                    continue;
+                }
+                let q = SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs);
+                let qn = SNPFrag::cal_delta_sigma_log(delta_i * (-1), &sigma, &ps, &probs);
+                assert!(q >= qn, "{} Error: phase is not local optimal. {}->{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\ndelta:{}\n{:?}\n{:?}", i, q, qn, self.region, sigma, ps, probs, delta_i, used_for_haplotype, used_for_haplotag);
+            }
+        }
+    }
+
     pub fn rescue_ase_snps(&mut self) {
+        // use surrounding heterozygous snps to evaluate ase snps
         // TODO: add phase score still has problem
         for i in self.ase_hete_snps.iter() {
             if self.candidate_snps[*i].ase == true {
@@ -2358,6 +3021,75 @@ impl SNPFrag {
         }
     }
 
+    pub fn rescue_ase_snps_v2(
+        &mut self,
+        min_depth: u32,
+        ase_count_cutoff: u32,
+        min_phase_score: f32,
+    ) {
+        // keep the previously calculated phasing for heterozygous snps and only flip the ase snps to get the phasing of ase snps
+        for i in self.ase_snps.iter() {
+            assert!(self.candidate_snps[*i].ase == true, "rescue not ase snp.");
+            let mut sigma: Vec<i32> = Vec::new();
+            let mut ps: Vec<i32> = Vec::new();
+            let mut probs: Vec<f64> = Vec::new();
+            let mut num_hap1 = 0;
+            let mut num_hap2 = 0;
+            for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                // k is fragment index
+                if self.fragments[*k].assignment == 0 {
+                    continue;
+                }
+                for fe in self.fragments[*k].list.iter() {
+                    if fe.snp_idx == *i {
+                        if self.fragments[*k].assignment == 1 {
+                            num_hap1 += 1;
+                        } else if self.fragments[*k].assignment == 2 {
+                            num_hap2 += 1;
+                        }
+                        assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                        ps.push(fe.p);
+                        probs.push(fe.prob);
+                        sigma.push(self.fragments[*k].haplotag);
+                    }
+                }
+            }
+            if num_hap1 < ase_count_cutoff || num_hap2 < ase_count_cutoff {
+                // each haplotype should have at least 3 reads
+                continue;
+            }
+            if sigma.len() > min_depth as usize {
+                // each site should have at least 10 reads
+                let phase_score1 = -10.0_f64
+                    * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10();
+                let phase_score2 = -10.0_f64
+                    * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10();
+                if f64::max(phase_score1, phase_score2) > min_phase_score as f64 {
+                    if phase_score1 > phase_score2 {
+                        self.candidate_snps[*i].haplotype = 1;
+                        self.candidate_snps[*i].phase_score = phase_score1;
+                        self.candidate_snps[*i].variant_type = 1;
+                    } else {
+                        self.candidate_snps[*i].haplotype = -1;
+                        self.candidate_snps[*i].phase_score = phase_score2;
+                        self.candidate_snps[*i].variant_type = 1;
+                    }
+                    // println!(
+                    //     "Rescue ASE SNP: {} {} {} {}, \n{:?},\n{:?},\n{:?}",
+                    //     String::from_utf8(self.candidate_snps[*i].chromosome.clone()).unwrap(),
+                    //     self.candidate_snps[*i].pos,
+                    //     phase_score1,
+                    //     phase_score2,
+                    //     &sigma,
+                    //     &ps,
+                    //     &probs
+                    // );
+                    // self.candidate_snps[*i].ase = false;
+                }
+            }
+        }
+    }
+
     pub fn phased_output_vcf(
         &mut self,
         min_phase_score: f32,
@@ -2373,9 +3105,9 @@ impl SNPFrag {
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
             let hp = snp.haplotype;
-            if snp.ase == true {
-                continue;
-            }
+            // if snp.ase == true {
+            //     continue;
+            // }
             if snp.filter == true && snp.rna_editing == false {
                 // Dense SNP. filter==true && rna_editing==false: dense SNP. filter==true && rna_editing==true: rna editing site
                 let mut rd: VCFRecord = VCFRecord::default();
@@ -2679,7 +3411,11 @@ impl SNPFrag {
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
                             }
-                            rd.info = "RDS=.".to_string().into_bytes();
+                            if snp.ase == true {
+                                rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                            } else {
+                                rd.info = "RDS=.".to_string().into_bytes();
+                            }
                             rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                         }
                     }
@@ -2734,7 +3470,12 @@ impl SNPFrag {
                                     rd.filter = "PASS".to_string().into_bytes();
                                 }
                             } else {
-                                rd.info = "RDS=.".to_string().into_bytes();
+                                if snp.ase == true {
+                                    rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                                } else {
+                                    rd.info = "RDS=.".to_string().into_bytes();
+                                }
+                                // rd.info = "RDS=.".to_string().into_bytes();
                                 if snp.variant_quality < min_qual_for_candidate as f64 {
                                     rd.filter = "LowQual".to_string().into_bytes();
                                 } else {
@@ -2785,7 +3526,12 @@ impl SNPFrag {
                             } else {
                                 rd.filter = "PASS".to_string().into_bytes();
                             }
-                            rd.info = "RDS=.".to_string().into_bytes();
+                            if snp.ase == true {
+                                rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                            } else {
+                                rd.info = "RDS=.".to_string().into_bytes();
+                            }
+                            // rd.info = "RDS=.".to_string().into_bytes();
                             rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
                         }
                     }
@@ -3070,6 +3816,7 @@ pub fn multithread_phase_haplotag(
     haplotype_specific_exon: bool,
     min_sup_haplotype_exon: u32,
     ase_freq_cutoff: f32,
+    ase_cnt_cutoff: u32,
 ) {
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(thread_size)
@@ -3132,6 +3879,7 @@ pub fn multithread_phase_haplotag(
                 min_dense_cnt,
                 avg_dense_dist,
                 ase_freq_cutoff,
+                ase_cnt_cutoff,
             );
             // snpfrag.get_fragments(&bam_file, &reg);
             snpfrag.get_fragments_with_ase(&bam_file, &reg);
@@ -3156,7 +3904,19 @@ pub fn multithread_phase_haplotag(
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
                     // TODO: for low frequency sites, use surrounding phased SNPs to rescue the potential allele expressed SNPs
-                    snpfrag.rescue_ase_snps();
+                    snpfrag.phase_ase_hete_snps(max_enum_snps, random_flip_fraction, max_iters);
+                    // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
+                    let read_assignments_ase = snpfrag.assign_reads_ase(read_assignment_cutoff);
+                    // snpfrag.rescue_ase_snps();
+                    snpfrag.rescue_ase_snps_v2(min_depth, ase_cnt_cutoff, min_phase_score);
+
+                    // merge read_assignments and read_assignments_ase, read_assignments_ase first, then read_assignments
+                    let mut merge_reads_assignments = read_assignments_ase.clone();
+                    for (k, v) in read_assignments.iter() {
+                        if !read_assignments_ase.contains_key(k) {
+                            merge_reads_assignments.insert(k.clone(), v.clone());
+                        }
+                    }
 
                     let mut haplotype_exons: Vec<(Exon, i32, i32)> = Vec::new();
                     {
@@ -3362,9 +4122,17 @@ pub fn multithread_phase_haplotag(
                                 }
                             }
                         }
+                        // if !no_bam_output {
+                        //     let mut queue = read_haplotag_queue.lock().unwrap();
+                        //     for a in read_assignments.iter() {
+                        //         queue.push_back((a.0.clone(), a.1.clone()));
+                        //     }
+                        // }
+
+                        // output assignment both for ase snps and heterozygous snps
                         if !no_bam_output {
                             let mut queue = read_haplotag_queue.lock().unwrap();
-                            for a in read_assignments.iter() {
+                            for a in merge_reads_assignments.iter() {
                                 queue.push_back((a.0.clone(), a.1.clone()));
                             }
                         }
