@@ -742,12 +742,11 @@ impl SNPFrag {
                 candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
+                candidate_snp.variant_type = 2;
 
                 if allele1 != bf.ref_base && allele2 != bf.ref_base {
                     if allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
                         candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
-                    } else {
-                        candidate_snp.variant_type = 2; // homozygous SNP
                     }
                 }
 
