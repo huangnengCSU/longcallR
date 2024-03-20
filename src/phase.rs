@@ -743,10 +743,12 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
 
-                if allele1 != bf.ref_base && allele2 != bf.ref_base && allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
-                    candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
-                } else {
-                    candidate_snp.variant_type = 2; // homozygous SNP
+                if allele1 != bf.ref_base && allele2 != bf.ref_base {
+                    if allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
+                        candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
+                    } else {
+                        candidate_snp.variant_type = 2; // homozygous SNP
+                    }
                 }
 
                 candidate_snp.variant_quality = variant_quality;
@@ -802,6 +804,16 @@ impl SNPFrag {
                         candidate_snp.filter = true;
                     }
                 }
+
+                if allele1 != bf.ref_base && allele2 != bf.ref_base {
+                    candidate_snp.variant_type = 3; // triallelic SNP
+                    self.candidate_snps.push(candidate_snp);
+                    self.homo_snps.push(self.candidate_snps.len() - 1);
+                    self.hete_homo_snps.push(self.candidate_snps.len() - 1);
+                    position += 1;
+                    continue;
+                }
+
                 if allele1 != bf.ref_base && allele1_freq < min_allele_freq {
                     // alternative allele frequency is smaller than min allele freq
                     if allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
@@ -870,6 +882,10 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
+                if allele1 != bf.ref_base && allele2 != bf.ref_base {
+                    position += 1;
+                    continue;
+                }
                 if allele1 != bf.ref_base && allele1_freq >= ase_allele_frac_cutoff && allele1_cnt >= ase_allele_cnt_cutoff {
                     candidate_snp.ase = true;
                     candidate_snp.rna_editing = false;
@@ -3556,7 +3572,7 @@ impl SNPFrag {
                     } else if snp.alleles[1] == snp.reference {
                         af = snp.allele_freqs[0];
                     } else {
-                        panic!("Error: unexpected allele. ref: {}, alt1: {}, alt2: {}", snp.reference, snp.alleles[0], snp.alleles[1]);
+                        panic!("Error: unexpected allele. ref: {}, alt1: {}, alt2: {}, {}:{}", snp.reference, snp.alleles[0], snp.alleles[1], String::from_utf8_lossy(&snp.chromosome), snp.pos);
                     }
                     if snp.haplotype == -1 {
                         rd.genotype = format!(
