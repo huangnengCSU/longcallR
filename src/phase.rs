@@ -2356,11 +2356,12 @@ impl SNPFrag {
     pub fn add_phase_score(
         &mut self,
         min_allele_cnt: u32,
-        imbalance_allele_expression_cutoff: f32,
+        min_homozygous_freq: f32,
+        min_phase_score: f32,
     ) {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
-            let snp = &self.candidate_snps[ti];
+            let snp = &mut self.candidate_snps[ti];
             if snp.filter == true || snp.variant_type != 1 || snp.ase == true {
                 continue;
             }
@@ -2404,6 +2405,12 @@ impl SNPFrag {
                 } else {
                     phase_score = 0.0; // all reads belong to unknown group, maybe caused by single SNP
                 }
+            }
+
+            if phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference && snp.filter == false {
+                // transfer from heterozygous to homozygous
+                snp.variant_type = 2;
+                snp.ase = false;
             }
 
             // use binomial test to check allele imbalance expression
@@ -3444,6 +3451,250 @@ impl SNPFrag {
         return records;
     }
 
+    pub fn phased_output_vcf2(&mut self,
+                              min_phase_score: f32,
+                              ase_ps_cutoff: f32,
+                              min_qual_for_candidate: u32,
+                              min_qual_for_singlesnp_rnaedit: u32) -> Vec<VCFRecord> {
+        let mut records: Vec<VCFRecord> = Vec::new();
+        for i in 0..self.candidate_snps.len() {
+            let snp = &self.candidate_snps[i];
+            if snp.variant_type == 0 {
+                continue;
+            }
+            if snp.variant_type == 1 {
+                let mut is_dense = false;
+                let mut is_rna_edit = false;
+                let mut is_single_snp = false;
+                let mut is_ase_snp = false;
+
+                // dense snp?
+                if snp.filter == true && snp.rna_editing == false {
+                    is_dense = true;
+                }
+
+                // rna edit?
+                if snp.rna_editing == true {
+                    is_rna_edit = true;
+                }
+
+                // single snp?
+                if snp.filter == false && snp.rna_editing == false && snp.phase_score == 0.0 {
+                    is_single_snp = true;
+                }
+
+                // ase snp?
+                if snp.ase == true {
+                    is_ase_snp = true;
+                }
+
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
+                rd.id = vec!['.' as u8];
+                rd.reference = vec![snp.reference as u8];
+                if snp.alleles[0] != snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                } else if snp.alleles[1] != snp.reference {
+                    rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                }
+                rd.qual = snp.variant_quality as i32;
+                if is_dense {
+                    rd.filter = "dn".to_string().into_bytes();
+                    rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
+                }
+                if is_rna_edit {
+                    if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    }
+                }
+                if is_single_snp {
+                    if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
+                    }
+                }
+                if is_ase_snp {
+                    if snp.phase_score < ase_ps_cutoff as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                    }
+                }
+                if !is_dense && !is_rna_edit && !is_single_snp && !is_ase_snp {
+                    if snp.variant_quality < min_qual_for_candidate as f64 || snp.phase_score < min_phase_score as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
+                    }
+                }
+
+                if is_dense || is_rna_edit || is_single_snp || snp.phase_score == 0.0 || snp.haplotype == 0 {
+                    rd.genotype = format!(
+                        "{}:{}:{}:{:.2}",
+                        "0/1",
+                        snp.genotype_quality as i32,
+                        snp.depth,
+                        snp.allele_freqs[1]
+                    );
+                    rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                } else {
+                    let mut af = 0.0;
+                    if snp.alleles[0] == snp.reference {
+                        af = snp.allele_freqs[1];
+                    } else if snp.alleles[1] == snp.reference {
+                        af = snp.allele_freqs[0];
+                    } else {
+                        panic!("Error: unexpected allele. ref: {}, alt1: {}, alt2: {}", snp.reference, snp.alleles[0], snp.alleles[1]);
+                    }
+                    if snp.haplotype == -1 {
+                        rd.genotype = format!(
+                            "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                            "0|1",
+                            snp.genotype_quality as i32,
+                            snp.depth,
+                            af,
+                            snp.phase_score,
+                            snp.haplotype_expression[0],
+                            snp.haplotype_expression[1]
+                        );
+                    } else if snp.haplotype == 1 {
+                        rd.genotype = format!(
+                            "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                            "1|0",
+                            snp.genotype_quality as i32,
+                            snp.depth,
+                            af,
+                            snp.phase_score,
+                            snp.haplotype_expression[0],
+                            snp.haplotype_expression[1]
+                        );
+                    }
+                    rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
+                }
+                records.push(rd);
+            }
+            if snp.variant_type == 2 {
+                let mut is_dense = false;
+                let mut is_rna_edit = false;
+
+                if snp.filter == true && snp.rna_editing == false {
+                    is_dense = true;
+                }
+                if snp.rna_editing == true {
+                    is_rna_edit = true;
+                }
+
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
+                rd.id = vec!['.' as u8];
+                rd.reference = vec![snp.reference as u8];
+                rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                rd.qual = snp.variant_quality as i32;
+
+                if is_dense {
+                    rd.filter = "dn".to_string().into_bytes();
+                    rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
+                }
+                if is_rna_edit {
+                    if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    }
+                }
+                if !is_dense && !is_rna_edit {
+                    if snp.variant_quality < min_qual_for_candidate as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
+                    }
+                }
+                rd.genotype = format!(
+                    "{}:{}:{}:{:.2}",
+                    "1/1",
+                    snp.genotype_quality as i32,
+                    snp.depth,
+                    snp.allele_freqs[0]
+                );
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
+            }
+            if snp.variant_type == 3 {
+                let mut is_dense = false;
+                let mut is_rna_edit = false;
+
+                if snp.filter == true && snp.rna_editing == false {
+                    is_dense = true;
+                }
+                if snp.rna_editing == true {
+                    is_rna_edit = true;
+                }
+
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
+                rd.id = vec!['.' as u8];
+                rd.reference = vec![snp.reference as u8];
+                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                rd.qual = snp.variant_quality as i32;
+
+                if is_dense {
+                    rd.filter = "dn".to_string().into_bytes();
+                    rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
+                }
+                if is_rna_edit {
+                    if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                    }
+                }
+                if !is_dense && !is_rna_edit {
+                    if snp.variant_quality < min_qual_for_candidate as f64 {
+                        rd.filter = "LowQual".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
+                    } else {
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
+                    }
+                }
+                rd.genotype = format!(
+                    "{}:{}:{}:{:.2},{:.2}",
+                    "1/2",
+                    snp.genotype_quality as i32,
+                    snp.depth,
+                    snp.allele_freqs[0],
+                    snp.allele_freqs[1]
+                );
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
+            }
+            if snp.variant_type != 0 && snp.variant_type != 1 && snp.variant_type != 2 && snp.variant_type != 3 {
+                panic!("Unknown variant type: {} {}:{}", snp.variant_type, String::from_utf8_lossy(&snp.chromosome), snp.pos);
+            }
+        }
+        return records;
+    }
+
     pub fn output_vcf(&mut self, min_qual: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
 
@@ -3795,7 +4046,7 @@ pub fn multithread_phase_haplotag(
                     }
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                    snpfrag.add_phase_score(min_allele_cnt, imbalance_allele_expression_cutoff);
+                    snpfrag.add_phase_score(min_allele_cnt, min_homozygous_freq, min_phase_score);
                     // TODO: for low frequency sites, use surrounding phased SNPs to rescue the potential allele expressed SNPs
                     snpfrag.phase_ase_hete_snps(max_enum_snps, random_flip_fraction, max_iters);
                     // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
@@ -4012,13 +4263,14 @@ pub fn multithread_phase_haplotag(
                         }
                     }
                 }
-                let vcf_records = snpfrag.phased_output_vcf(
-                    min_phase_score,
-                    min_homozygous_freq,
-                    output_phasing,
-                    min_qual_for_candidate,
-                    min_qual_for_singlesnp_rnaedit,
-                );
+                // let vcf_records = snpfrag.phased_output_vcf(
+                //     min_phase_score,
+                //     min_homozygous_freq,
+                //     output_phasing,
+                //     min_qual_for_candidate,
+                //     min_qual_for_singlesnp_rnaedit,
+                // );
+                let vcf_records = snpfrag.phased_output_vcf2(min_phase_score, ase_ps_cutoff, min_qual_for_candidate, min_qual_for_singlesnp_rnaedit);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
