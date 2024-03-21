@@ -877,7 +877,7 @@ impl SNPFrag {
                 candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
-                candidate_snp.variant_type = 0; // heterozygous SNP
+                candidate_snp.variant_type = 0;
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;

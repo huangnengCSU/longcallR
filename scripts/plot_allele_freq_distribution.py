@@ -2,19 +2,28 @@ import matplotlib
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import sys
+import gzip
 
 def load_dna_hete_snps(dna_snp_truth):
     dna_hete_snps = set()
-    with open(dna_snp_truth, 'r') as f:
-        for line in f:
-            if line.startswith("#"):
-                continue
-            fields = line.strip().split("\t")
-            chrom = fields[0]
-            pos = int(fields[1])
-            gt = fields[-1].split(":")[0]
-            if gt== "0/1" or gt == "1/0":
-                dna_hete_snps.add((chrom, pos))
+    gz_flag = False
+    if dna_snp_truth.endswith(".gz"):
+        gz_flag = True
+        f = gzip.open(dna_snp_truth, 'rb')
+    else:
+        f = open(dna_snp_truth, 'r')
+    for line in f:
+        if gz_flag:
+            line = line.decode('utf-8')
+        if line.startswith("#"):
+            continue
+        fields = line.strip().split("\t")
+        chrom = fields[0]
+        pos = int(fields[1])
+        gt = fields[-1].split(":")[0]
+        if gt == "0/1" or gt == "1/0":
+            dna_hete_snps.add((chrom, pos))
+    f.close()
     return dna_hete_snps
 
 def load_rna_allele_freq(rna_allele_freq, dna_hete_snps, min_allele_cnt):
