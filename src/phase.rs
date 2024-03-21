@@ -1054,7 +1054,7 @@ impl SNPFrag {
         if self.ase_hete_snps.len() == 0 {
             return;
         }
-        assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
+        // assert!(self.min_linkers >= 0, "Error: min_linkers <= 0");
         while let Some(result) = bam_reader.read(&mut record) {
             if result.is_err() {
                 panic!("BAM parsing failed...");
