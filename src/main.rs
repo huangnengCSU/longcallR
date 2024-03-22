@@ -181,7 +181,7 @@ struct Args {
     imbalance_allele_expression_cutoff: f32,
 
     /// Allele-specific expression allele fraction cutoff
-    #[arg(long, default_value_t = 0.05)]
+    #[arg(long, default_value_t = 0.10)]
     ase_allele_frac_cutoff: f32,
 
     /// Allele-specific expression allele count cutoff
