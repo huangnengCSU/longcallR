@@ -1221,15 +1221,20 @@ impl SNPFrag {
             exon_start = -1;
             exon_end = -1;
 
-            // filter fragment with no heterozygous links (deletion, intron, not reference allele and alternate allele do not count as heterozygous links)
-            let mut link_hete_cnt = 0;
+            // hete snps >= 1 || ase snps >= 2
+            let mut hete_links = 0;
+            let mut ase_links = 0;
             for fe in fragment.list.iter() {
-                // if fe.p != 0 && fe.ase_snp == false {
                 if fe.p != 0 {
-                    link_hete_cnt += 1;
+                    if fe.ase_snp == true {
+                        ase_links += 1;
+                    } else {
+                        hete_links += 1;
+                    }
                 }
             }
-            if link_hete_cnt >= self.min_linkers {
+            // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
+            if hete_links >= self.min_linkers || ase_links >= 2 {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
