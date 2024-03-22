@@ -370,7 +370,7 @@ fn main() {
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
-                min_linkers = 0;
+                min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.02;
                 min_homozygous_freq = 0.75;
@@ -401,7 +401,7 @@ fn main() {
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
-                min_linkers = 0;
+                min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.001;
                 min_homozygous_freq = 0.75;

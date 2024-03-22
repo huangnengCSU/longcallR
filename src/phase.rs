@@ -1249,8 +1249,8 @@ impl SNPFrag {
             // filter fragment with no heterozygous links (deletion, intron, not reference allele and alternate allele do not count as heterozygous links)
             let mut link_hete_cnt = 0;
             for fe in fragment.list.iter() {
-                if fe.p != 0 && fe.ase_snp == false {
-                    // ase snp will not be used for haplotype phasing
+                // if fe.p != 0 && fe.ase_snp == false {
+                if fe.p != 0 {
                     link_hete_cnt += 1;
                 }
             }
@@ -1271,7 +1271,7 @@ impl SNPFrag {
         if self.hete_snps.len() == 0 {
             return;
         }
-        assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
+        // assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
         while let Some(result) = bam_reader.read(&mut record) {
             if result.is_err() {
                 panic!("BAM parsing failed...");
