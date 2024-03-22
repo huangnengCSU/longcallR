@@ -153,7 +153,7 @@ struct Args {
     avg_dense_dist: f32,
 
     /// Minimum linked heterozygous snps for phasing
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 1)]
     min_linkers: i32,
 
     /// Minimum phase score to filter SNPs
