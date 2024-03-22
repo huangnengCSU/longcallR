@@ -44,6 +44,8 @@ pub struct CandidateSNP {
     // filter out this SNP or not in phasing process
     pub ase: bool,
     // allele specific expressed
+    pub single: bool,
+    // current snp has surrounding haplotype links or not, only works for heterozygous snps
     pub haplotype_expression: [u32; 2],
     // [allele1, allele2], the number of reads supporting two alleles expreessing on two haplotype
 }
@@ -1234,6 +1236,7 @@ impl SNPFrag {
                 }
             }
             // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
+            assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers || ase_links >= 2 {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
@@ -2360,6 +2363,11 @@ impl SNPFrag {
             if snp.filter == true || snp.variant_type != 1 || snp.ase == true {
                 continue;
             }
+            if snp.snp_cover_fragments.len() == 0 {
+                // no surranding haplotype links
+                snp.single = true;
+                continue;
+            }
             let delta_i = snp.haplotype;
             let mut sigma: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
@@ -2392,13 +2400,13 @@ impl SNPFrag {
             let mut phase_score = 0.0;
 
             if num_hap1 < min_allele_cnt || num_hap2 < min_allele_cnt {
-                // filter SNPs with low allele count, no confident phase
+                // filter SNPs with low allele count, unconfident phase
                 phase_score = 0.0;
             } else {
                 if sigma.len() > 0 {
                     phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 } else {
-                    phase_score = 0.0; // all reads belong to unknown group, maybe caused by single SNP
+                    phase_score = 0.0; // all reads belong to unknown group, unconfident phase
                 }
             }
 
@@ -3705,6 +3713,7 @@ impl SNPFrag {
                 let mut is_dense = false;
                 let mut is_rna_edit = false;
                 let mut is_single_snp = false;
+                let mut is_unconfident_phased_snp = false;
                 let mut is_ase_snp = false;
 
                 // dense snp?
@@ -3718,9 +3727,13 @@ impl SNPFrag {
                 }
 
                 // single snp?
-                // TODO: phase_score == 0.0 is not a good indicator for single snp, other cases may also have phase_score == 0.0
-                if snp.filter == false && snp.phase_score == 0.0 {
+                if snp.single == true {
                     is_single_snp = true;
+                }
+
+                // unconfident phase?
+                if !is_dense && !is_single_snp && snp.phase_score == 0.0 {
+                    is_unconfident_phased_snp = true;
                 }
 
                 // ase snp?
@@ -3764,27 +3777,36 @@ impl SNPFrag {
                 if is_ase_snp {
                     if snp.phase_score < ase_ps_cutoff as f64 {
                         rd.filter = "LowQual".to_string().into_bytes();
-                        rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                        if is_rna_edit {
+                            rd.info = format!("RDS={}", "ase_snp,rna_editing").to_string().into_bytes();    // rna editing snp has bad phase
+                        } else {
+                            rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
+                        }
                     } else {
                         rd.filter = "PASS".to_string().into_bytes();
                         rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
                     }
                 }
                 if !is_dense && !is_single_snp && !is_ase_snp {
-                    if snp.variant_quality < min_qual_for_candidate as f64 || snp.phase_score < min_phase_score as f64 {
+                    if snp.variant_quality < min_qual_for_candidate as f64 {
                         rd.filter = "LowQual".to_string().into_bytes();
                         rd.info = "RDS=.".to_string().into_bytes();
-                    } else {
-                        rd.filter = "PASS".to_string().into_bytes();
+                    } else if snp.phase_score < min_phase_score as f64 {
+                        // bad phase, unconfindent phase
+                        rd.filter = "LowQual".to_string().into_bytes();
                         if is_rna_edit {
-                            rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
+                            rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();    // rna editing snp has bad phase
                         } else {
                             rd.info = "RDS=.".to_string().into_bytes();
                         }
+                    } else {
+                        // good phase, germline snp
+                        rd.filter = "PASS".to_string().into_bytes();
+                        rd.info = "RDS=.".to_string().into_bytes();
                     }
                 }
 
-                if is_dense || is_single_snp || snp.phase_score == 0.0 || snp.haplotype == 0 {
+                if is_dense || is_single_snp || is_unconfident_phased_snp || snp.phase_score == 0.0 || snp.haplotype == 0 {
                     rd.genotype = format!(
                         "{}:{}:{}:{:.2}",
                         "0/1",
@@ -3831,7 +3853,6 @@ impl SNPFrag {
             }
             if snp.variant_type == 2 {
                 let mut is_dense = false;
-                let mut is_rna_edit = false;
 
                 if snp.filter == true {
                     is_dense = true;
@@ -3870,7 +3891,6 @@ impl SNPFrag {
             }
             if snp.variant_type == 3 {
                 let mut is_dense = false;
-                let mut is_rna_edit = false;
 
                 if snp.filter == true {
                     is_dense = true;
