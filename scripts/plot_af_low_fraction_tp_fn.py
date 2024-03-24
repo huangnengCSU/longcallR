@@ -47,9 +47,9 @@ def load_rna_allele_freq(rna_allele_freq, dna_hete_snps, min_allele_cnt):
                 continue
             if len(alt) == 1:
                 if alt[0] in ["A", "C", "G", "T"] and alt[0] != ref:
-                    rna_allele_freq_dict[(chrom, pos)] = 1.0
+                    rna_allele_freq_dict[(chrom, pos)] = [1.0, int(alt_cnt[0])]
                 elif alt[0] in ["A", "C", "G", "T"] and alt[0] == ref:
-                    rna_allele_freq_dict[(chrom, pos)] = 0.0
+                    rna_allele_freq_dict[(chrom, pos)] = [0.0, 0]
             elif len(alt) == 2 and alt[0] in ["A", "C", "G", "T"] and alt[1] in ["A", "C", "G", "T"]:
                 if alt[0] == ref:
                     rna_allele_freq_dict[(chrom, pos)] = [int(alt_cnt[1]) / (int(alt_cnt[0]) + int(alt_cnt[1])), total_allele_cnt]  ## allele fraction, total allele count
@@ -108,24 +108,35 @@ if __name__ == '__main__':
     rna_allele_freq_dict = load_rna_allele_freq(rna_allele_freq, dna_hete_snps, min_allele_cnt)
     tp_snps, fp_snps, fn_snps = load_hap(hap_vcf)
 
-    allele_fraction_list = []
+    tp_allele_fraction_list = []
     for site in tp_snps:
         if site in rna_allele_freq_dict:
-            allele_fraction_list.append(rna_allele_freq_dict[site][0])
+            tp_allele_fraction_list.append(rna_allele_freq_dict[site][0])
+
+    fn_allele_fraction_list = []
+    for site in fn_snps:
+        if site in rna_allele_freq_dict:
+            fn_allele_fraction_list.append(rna_allele_freq_dict[site][0])
+
     plt.figure()
-    plt.hist(allele_fraction_list, bins=100)
+    plt.hist(tp_allele_fraction_list, bins=100)
     plt.xlabel('Allele fraction')
     plt.ylabel('Number of SNPs')
     plt.title('Allele fraction distribution of TP low allele fraction SNPs')
     plt.savefig('tp_low_frac.png')
 
-    allele_fraction_list = []
-    for site in fn_snps:
-        if site in rna_allele_freq_dict:
-            allele_fraction_list.append(rna_allele_freq_dict[site][0])
     plt.figure()
-    plt.hist(allele_fraction_list, bins=100)
+    plt.hist(fn_allele_fraction_list, bins=100)
     plt.xlabel('Allele fraction')
     plt.ylabel('Number of SNPs')
     plt.title('Allele fraction distribution of FN low allele fraction SNPs')
     plt.savefig('fn_low_frac.png')
+
+
+    plt.figure()
+    plt.hist(tp_allele_fraction_list, bins=100, alpha = 0.4, color = 'red')
+    plt.hist(fn_allele_fraction_list, bins=100, alpha = 0.4, color = 'blue')
+    plt.legend(['tp snps', 'fn snps'])
+    plt.xlabel('Allele fraction')
+    plt.ylabel('Number of SNPs')
+    plt.title('Allele fraction distribution of TP and FN low allele fraction SNPs')
