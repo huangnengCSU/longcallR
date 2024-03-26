@@ -153,8 +153,8 @@ struct Args {
     avg_dense_dist: f32,
 
     /// Minimum linked heterozygous snps for phasing
-    #[arg(long, default_value_t = 1)]
-    min_linkers: i32,
+    #[arg(long, default_value_t = 2)]
+    min_linkers: u32,
 
     /// Minimum phase score to filter SNPs
     #[arg(long, default_value_t = 8.0)]
@@ -364,12 +364,13 @@ fn main() {
                 window_size = arg.window_size;
                 diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
-                min_phase_score = arg.min_phase_score;
                 min_depth = arg.min_depth;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_phase_score = 8.0;
+                ase_ps_cutoff = 20.0;
                 min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.02;
@@ -395,12 +396,13 @@ fn main() {
                 window_size = arg.window_size;
                 diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
-                min_phase_score = arg.min_phase_score;
                 min_depth = arg.min_depth;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_phase_score = 8.0;
+                ase_ps_cutoff = 20.0;
                 min_linkers = 1;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.001;
