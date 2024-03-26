@@ -108,6 +108,10 @@ pub struct Fragment {
     // probability of the haplotype assignment
     pub exons: Vec<Exon>,
     // exons of the read on the reference, 0-based, [start, end)
+    pub num_hete_links: u32,
+    // number of linked heterozygous snps in the fragment
+    pub num_ase_links: u32,
+    // number of linked allele specific expressed snps in the fragment
 }
 
 #[derive(Debug, Clone, Default)]
@@ -131,7 +135,7 @@ pub struct SNPFrag {
     // haplotype is phased or not
     pub edges: HashMap<[usize; 2], Edge>,
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
-    pub min_linkers: i32,
+    pub min_linkers: u32,
     // the number of links for snps can be phased
 }
 
@@ -1015,6 +1019,9 @@ impl SNPFrag {
     pub unsafe fn init_assignment(&mut self) {
         let mut rng = rand::thread_rng();
         for k in 0..self.fragments.len() {
+            if self.fragments[k].num_hete_links < self.min_linkers {
+                continue;
+            }
             let rg: f64 = rng.gen();
             if rg < 0.5 {
                 self.fragments[k].haplotag = -1;
@@ -1235,6 +1242,8 @@ impl SNPFrag {
                     }
                 }
             }
+            fragment.num_hete_links = hete_links;
+            fragment.num_ase_links = ase_links;
             // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers || ase_links >= 2 {
@@ -1645,6 +1654,9 @@ impl SNPFrag {
         // calculate the log10 probability of the current configuration of sigma and delta
         let mut logp = 0.0;
         for k in 0..snpfrag.fragments.len() {
+            if snpfrag.fragments[k].haplotag == 0 {
+                continue;
+            }
             for fe in snpfrag.fragments[k].list.iter() {
                 if fe.ase_snp == true {
                     continue;
@@ -1684,6 +1696,9 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
+            if snpfrag.fragments[*k].haplotag == 0 {
+                continue;
+            }
             for fe in snpfrag.fragments[*k].list.iter() {
                 if fe.ase_snp == true {
                     continue;
@@ -1771,6 +1786,9 @@ impl SNPFrag {
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
+                if snpfrag.fragments[*k].haplotag == 0 {
+                    continue;
+                }
                 for fe in snpfrag.fragments[*k].list.iter() {
                     if fe.snp_idx != *i {
                         continue;
@@ -1891,6 +1909,9 @@ impl SNPFrag {
                 let mut delta: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
+                if sigma_k == 0 {
+                    continue;
+                }
                 for fe in self.fragments[k].list.iter() {
                     if fe.ase_snp == true {
                         continue;
@@ -1936,6 +1957,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].haplotag == 0 {
+                        continue;
+                    }
                     // k is fragment index
                     for fe in self.fragments[*k].list.iter() {
                         if fe.snp_idx == *i {
@@ -2218,6 +2242,9 @@ impl SNPFrag {
                             }
                         }
                         for tk in 0..self.fragments.len() {
+                            if self.fragments[tk].haplotag == 0 {
+                                continue;
+                            }
                             let rg: f64 = rng.gen();
                             if rg < random_flip_fraction as f64 {
                                 self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
@@ -2376,6 +2403,9 @@ impl SNPFrag {
             let mut num_hap2 = 0;
             for k in snp.snp_cover_fragments.iter() {
                 if self.fragments[*k].assignment == 0 {
+                    continue;
+                }
+                if self.fragments[*k].num_hete_links < self.min_linkers {
                     continue;
                 }
                 for fe in self.fragments[*k].list.iter() {
@@ -2784,6 +2814,9 @@ impl SNPFrag {
                 let mut delta: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
+                if sigma_k == 0 {
+                    continue;
+                }
                 for fe in self.fragments[k].list.iter() {
                     if fe.ase_snp == true {
                         continue;
@@ -2811,6 +2844,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].haplotag == 0 {
+                        continue;
+                    }
                     // k is fragment index
                     for fe in self.fragments[*k].list.iter() {
                         if fe.snp_idx == *i {
@@ -4317,7 +4353,7 @@ pub fn multithread_phase_haplotag(
     min_dense_cnt: u32,
     avg_dense_dist: f32,
     min_homozygous_freq: f32,
-    min_linkers: i32,
+    min_linkers: u32,
     min_phase_score: f32,
     max_enum_snps: usize,
     random_flip_fraction: f32,
