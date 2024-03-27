@@ -1,18 +1,20 @@
-use rust_htslib::{bam, bam::{Read, ext::BamRecordExtensions}};
-use std::sync::{mpsc, Arc, Mutex, Condvar};
-use rayon::prelude::*;
 use std::{fs, fs::File};
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader};
+use std::sync::Mutex;
 use std::time::Instant;
+
 use bio::bio_types::strand::ReqStrand::Forward;
 use bio::io::fasta;
-use seq_io::fasta::{Reader, Record};
-use crate::Platform;
 use fishers_exact::fishers_exact;
 use mathru::statistics::test::{ChiSquare, Test};
+use rayon::prelude::*;
+use rust_htslib::{bam, bam::{ext::BamRecordExtensions, Read}};
+use seq_io::fasta::{Reader, Record};
 
-#[derive(Default,Clone,Debug)]
+use crate::Platform;
+
+#[derive(Default, Clone, Debug)]
 pub struct Region {
     pub(crate) chr: String,
     pub(crate) start: u32,
@@ -214,8 +216,6 @@ pub struct VCFRecord {
 }
 
 
-
-
 pub fn load_reference(ref_path: String) -> HashMap<String, Vec<u8>> {
     let mut ref_seqs: HashMap<String, Vec<u8>> = HashMap::new();
     let reader = fasta::Reader::from_file(ref_path).unwrap();
@@ -239,7 +239,7 @@ pub fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
     return contig_lengths;
 }
 
-pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32) -> Vec<Region> {
+pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32, min_mapq: u8, min_read_length: usize) -> Vec<Region> {
     let mut isolated_regions: Vec<Region> = Vec::new();
     let mut depth_vec: Vec<u32> = vec![0; ref_len as usize];
     let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
@@ -247,6 +247,9 @@ pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32)
     bam.fetch(chr).unwrap();
     for r in bam.records() {
         let record = r.unwrap();
+        if record.mapq() < min_mapq || record.seq_len() < min_read_length || record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+            continue;
+        }
         let ref_start = record.reference_start();   // 0-based, left-closed
         let ref_end = record.reference_end();   // 0-based, right-open
         for i in ref_start..ref_end {
@@ -281,7 +284,7 @@ pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32)
     return isolated_regions;
 }
 
-pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usize, contigs: Option<Vec<String>>) -> Vec<Region> {
+pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usize, contigs: Option<Vec<String>>, min_mapq: u8, min_read_length: usize) -> Vec<Region> {
     let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
     let bam = bam::IndexedReader::from_path(bam_file.clone()).unwrap();
@@ -306,7 +309,7 @@ pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usi
     }
     pool.install(|| {
         contig_names.par_iter().for_each(|ctg| {
-            let isolated_regions = find_isolated_regions_with_depth(bam_file.as_str(), ctg, contig_lengths.iter().find(|(chr, _)| chr == ctg).unwrap().1);
+            let isolated_regions = find_isolated_regions_with_depth(bam_file.as_str(), ctg, contig_lengths.iter().find(|(chr, _)| chr == ctg).unwrap().1, min_mapq, min_read_length);
             for region in isolated_regions {
                 results.lock().unwrap().push(region);
             }

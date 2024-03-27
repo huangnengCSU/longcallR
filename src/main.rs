@@ -445,6 +445,8 @@ fn main() {
             ref_path.to_string().clone(),
             threads,
             input_contigs,
+            min_mapq,
+            min_read_length
         );
     }
     multithread_phase_haplotag(
