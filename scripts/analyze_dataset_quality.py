@@ -11,15 +11,13 @@ def parse_bam(bam_path):
     lengths = []
     samfile = pysam.AlignmentFile(bam_path, "rb")
     for read in samfile.fetch():
-        if read.is_duplicate or read.is_secondary or read.is_supplementary or read.is_unmapped or not read.has_tag(
-                "NM"):
+        if read.is_duplicate or read.is_secondary or read.is_supplementary or read.is_unmapped or not read.has_tag("NM"):
             continue
-        ref_start = read.reference_start
-        ref_end = read.reference_end
+        query_alignment_length = read.query_alignment_length  ## reference length contains introns, query length is almost the same as lengths of exons
         nm = read.get_tag("NM")
         mapq = read.mapping_quality
         query_length = read.query_length
-        error_rate = nm / (ref_end - ref_start)
+        error_rate = nm / query_alignment_length * 100
         qualities.append(mapq)
         lengths.append(query_length)
         errors.append(error_rate)
@@ -28,7 +26,7 @@ def parse_bam(bam_path):
 
 def plot_error(errors):
     plt.figure()
-    plt.hist(errors, range=(0, 1), bins=500)
+    plt.hist(errors, range=(0,40), bins=200)
     plt.xlabel("error rate (%)")
     plt.ylabel("number of reads")
     plt.savefig("error_rate.png")
