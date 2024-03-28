@@ -10,6 +10,7 @@ use fishers_exact::fishers_exact;
 use mathru::statistics::test::{ChiSquare, Test};
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::{ext::BamRecordExtensions, Read}};
+use rust_lapper::{Interval, Lapper};
 use seq_io::fasta::{Reader, Record};
 
 use crate::Platform;
@@ -18,8 +19,9 @@ use crate::Platform;
 pub struct Region {
     pub(crate) chr: String,
     pub(crate) start: u32,
-    // 1-based
-    pub(crate) end: u32,   // 1-based
+    // 1-based, inclusive
+    pub(crate) end: u32,
+    // 1-based, exclusive
 }
 
 impl Region {
@@ -284,6 +286,75 @@ pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32,
     return isolated_regions;
 }
 
+pub fn parse_annotation(anno_path: String) -> HashMap<String, Vec<Region>> {
+    let mut gene_regions: HashMap<String, Vec<Region>> = HashMap::new();
+    let file = File::open(anno_path).unwrap();
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        let line = line.unwrap();
+        if line.starts_with("#") { continue; }
+        let parts = line.split('\t').collect::<Vec<&str>>();
+        let seqname = parts[0].to_string();
+        let feature = parts[2];
+        let start = parts[3].parse::<u32>().unwrap();   // 1-based, inclusive
+        let end = parts[4].parse::<u32>().unwrap(); // 1-based, inclusive
+        if feature == "gene" {
+            if !gene_regions.contains_key(&seqname) {
+                gene_regions.insert(seqname.clone(), Vec::new());
+            }
+            gene_regions.get_mut(&seqname).unwrap().push(Region { chr: seqname.clone(), start: start, end: end + 1 });
+        } else {
+            continue;
+        }
+    }
+    return gene_regions;
+}
+
+pub fn lapper_intervals(query_regions: &Vec<Region>, target_regions: &Vec<Region>) -> Vec<Region> {
+    let mut result_regions = Vec::new();
+    let mut invs: Vec<Interval<usize, u8>> = Vec::new();
+    for region in target_regions {
+        invs.push(Interval { start: region.start as usize, stop: region.end as usize, val: 0 });
+    }
+    let mut interval_tree = Lapper::new(invs);
+    interval_tree.merge_overlaps(); // genes may overlap, so merge the overlapped regions
+    for q in query_regions {
+        let q_inv = Interval { start: q.start as usize, stop: q.end as usize, val: 0 };
+        for h_inv in interval_tree.find(q.start as usize, q.end as usize) {
+            let intersected_start = q_inv.start.max(h_inv.start);
+            let intersected_end = q_inv.stop.min(h_inv.stop);
+            assert!(intersected_start < intersected_end, "Error: intersected_start >= intersected_end, query:{:?}", q_inv);
+            result_regions.push(Region { chr: q.chr.clone(), start: intersected_start as u32, end: intersected_end as u32 });
+        }
+    }
+    return result_regions;
+}
+
+pub fn intersect_gene_regions(alignment_regions: &Vec<Region>, gene_regions: &HashMap<String, Vec<Region>>, thread_size: usize) -> Vec<Region> {
+    let intersected_regions: Mutex<Vec<Region>> = Mutex::new(Vec::new());
+    let mut region_map = HashMap::new();
+    for region in alignment_regions {
+        if !region_map.contains_key(&region.chr) {
+            region_map.insert(region.chr.clone(), Vec::new());
+        }
+        region_map.get_mut(&region.chr).unwrap().push(region.clone());
+    }
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
+    let contig_names = region_map.keys().collect::<Vec<&String>>();
+    pool.install(|| {
+        contig_names.par_iter().for_each(|ctg| {
+            if gene_regions.contains_key(*ctg) {
+                let chr_intersected_region = lapper_intervals(region_map.get(*ctg).unwrap(), gene_regions.get(*ctg).unwrap());
+                for region in chr_intersected_region {
+                    intersected_regions.lock().unwrap().push(region);
+                }
+            }
+        });
+    });
+
+    return intersected_regions.into_inner().unwrap();
+}
+
 pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usize, contigs: Option<Vec<String>>, min_mapq: u8, min_read_length: usize) -> Vec<Region> {
     let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size - 1).build().unwrap();
@@ -367,7 +438,7 @@ impl Profile {
             let leading_softclips = cigar.leading_softclips();
             let trailing_softclips = cigar.trailing_softclips();
 
-            let mut pos_in_freq_vec = start_pos - freq_vec_pos;
+            let mut pos_in_freq_vec: i32 = start_pos as i32 - freq_vec_pos as i32;
             let mut pos_in_read = if leading_softclips > 0 { leading_softclips as usize } else { 0 };
             for cg in cigar.iter() {
                 match cg.char() as u8 {
@@ -376,11 +447,19 @@ impl Profile {
                     }
                     b'M' | b'X' | b'=' => {
                         for cgi in 0..cg.len() {
+                            if pos_in_freq_vec < 0 {
+                                pos_in_freq_vec += 1;
+                                pos_in_read += 1;
+                                continue;
+                            }
+                            if pos_in_freq_vec >= vec_size as i32 {
+                                break;
+                            }
                             let base = seq[pos_in_read] as char;
                             let baseq = base_qual[pos_in_read];
 
                             // close to left read end or right read end, check whether current position is in polyA tail
-                            let ref_base = self.freq_vec[pos_in_freq_vec].ref_base;
+                            let ref_base = self.freq_vec[pos_in_freq_vec as usize].ref_base;
                             let mut polyA_flag = false;
                             let mut homopolymer_flag = false;
                             let mut trimed_flag = false;    // trime the end of ont reads
@@ -436,53 +515,53 @@ impl Profile {
 
                                 match base {
                                     'A' | 'a' => {
-                                        self.freq_vec[pos_in_freq_vec].a += 1;
-                                        self.freq_vec[pos_in_freq_vec].baseq.a.push(baseq);
+                                        self.freq_vec[pos_in_freq_vec as usize].a += 1;
+                                        self.freq_vec[pos_in_freq_vec as usize].baseq.a.push(baseq);
                                         if strand == 0 {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.a[0] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.a[0] += 1;
                                         } else {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.a[1] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.a[1] += 1;
                                         }
-                                        self.freq_vec[pos_in_freq_vec].distance_to_end.a.push(dist);
+                                        self.freq_vec[pos_in_freq_vec as usize].distance_to_end.a.push(dist);
                                     }
                                     'C' | 'c' => {
-                                        self.freq_vec[pos_in_freq_vec].c += 1;
-                                        self.freq_vec[pos_in_freq_vec].baseq.c.push(baseq);
+                                        self.freq_vec[pos_in_freq_vec as usize].c += 1;
+                                        self.freq_vec[pos_in_freq_vec as usize].baseq.c.push(baseq);
                                         if strand == 0 {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.c[0] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.c[0] += 1;
                                         } else {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.c[1] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.c[1] += 1;
                                         }
-                                        self.freq_vec[pos_in_freq_vec].distance_to_end.c.push(dist);
+                                        self.freq_vec[pos_in_freq_vec as usize].distance_to_end.c.push(dist);
                                     }
                                     'G' | 'g' => {
-                                        self.freq_vec[pos_in_freq_vec].g += 1;
-                                        self.freq_vec[pos_in_freq_vec].baseq.g.push(baseq);
+                                        self.freq_vec[pos_in_freq_vec as usize].g += 1;
+                                        self.freq_vec[pos_in_freq_vec as usize].baseq.g.push(baseq);
                                         if strand == 0 {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.g[0] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.g[0] += 1;
                                         } else {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.g[1] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.g[1] += 1;
                                         }
-                                        self.freq_vec[pos_in_freq_vec].distance_to_end.g.push(dist);
+                                        self.freq_vec[pos_in_freq_vec as usize].distance_to_end.g.push(dist);
                                     }
                                     'T' | 't' => {
-                                        self.freq_vec[pos_in_freq_vec].t += 1;
-                                        self.freq_vec[pos_in_freq_vec].baseq.t.push(baseq);
+                                        self.freq_vec[pos_in_freq_vec as usize].t += 1;
+                                        self.freq_vec[pos_in_freq_vec as usize].baseq.t.push(baseq);
                                         if strand == 0 {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.t[0] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.t[0] += 1;
                                         } else {
-                                            self.freq_vec[pos_in_freq_vec].base_strands.t[1] += 1;
+                                            self.freq_vec[pos_in_freq_vec as usize].base_strands.t[1] += 1;
                                         }
-                                        self.freq_vec[pos_in_freq_vec].distance_to_end.t.push(dist);
+                                        self.freq_vec[pos_in_freq_vec as usize].distance_to_end.t.push(dist);
                                     }
                                     _ => {
                                         panic!("Invalid nucleotide base: {}", base);
                                     }
                                 }
                                 if strand == 0 {
-                                    self.freq_vec[pos_in_freq_vec].forward_cnt += 1;
+                                    self.freq_vec[pos_in_freq_vec as usize].forward_cnt += 1;
                                 } else {
-                                    self.freq_vec[pos_in_freq_vec].backward_cnt += 1;
+                                    self.freq_vec[pos_in_freq_vec as usize].backward_cnt += 1;
                                 }
                             }
 
@@ -492,17 +571,39 @@ impl Profile {
                     }
                     b'D' => {
                         for _ in 0..cg.len() {
-                            self.freq_vec[pos_in_freq_vec].d += 1;
+                            if pos_in_freq_vec < 0 {
+                                pos_in_freq_vec += 1;
+                                continue;
+                            }
+                            if pos_in_freq_vec >= vec_size as i32 {
+                                break;
+                            }
+                            self.freq_vec[pos_in_freq_vec as usize].d += 1;
                             pos_in_freq_vec += 1;
                         }
                     }
                     b'I' => {
-                        self.freq_vec[pos_in_freq_vec - 1].ni += 1; // insertion is counted as the previous position
+                        if pos_in_freq_vec < 1 {
+                            // smaller than 1 instead of 0, because insertion is counted as the previous position
+                            pos_in_read += cg.len() as usize;
+                            continue;
+                        }
+                        if pos_in_freq_vec >= vec_size as i32 {
+                            break;
+                        }
+                        self.freq_vec[(pos_in_freq_vec - 1) as usize].ni += 1; // insertion is counted as the previous position
                         pos_in_read += cg.len() as usize;
                     }
                     b'N' => {
                         for _ in 0..cg.len() {
-                            self.freq_vec[pos_in_freq_vec].n += 1;
+                            if pos_in_freq_vec < 0 {
+                                pos_in_freq_vec += 1;
+                                continue;
+                            }
+                            if pos_in_freq_vec >= vec_size as i32 {
+                                break;
+                            }
+                            self.freq_vec[pos_in_freq_vec as usize].n += 1;
                             pos_in_freq_vec += 1;
                         }
                     }

@@ -1,11 +1,12 @@
-mod phase;
-mod util;
+use clap::{ArgAction, Parser, ValueEnum};
+use rand::seq::SliceRandom;
+use rust_htslib::bam::Read;
 
 use crate::phase::multithread_phase_haplotag;
 use crate::util::*;
-use clap::{ArgAction, Error, Parser, ValueEnum};
-use rand::seq::SliceRandom;
-use rust_htslib::bam::Read;
+
+mod phase;
+mod util;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Preset {
@@ -35,6 +36,10 @@ struct Args {
     /// Path to reference file
     #[arg(short = 'f', long)]
     ref_path: String,
+
+    /// annotation file
+    #[arg(short = 'a', long)]
+    annotation: Option<String>,
 
     /// Output bam file path
     #[arg(short = 'o', long)]
@@ -196,7 +201,6 @@ struct Args {
     #[arg(long, default_value_t = 20.0)]
     ase_ps_cutoff: f32,
 
-
     /// Without phasing, only using genotype probability
     #[clap(long, action = ArgAction::SetTrue)]
     genotype_only: bool,
@@ -241,9 +245,11 @@ fn main() {
     let out_vcf = (arg.output.clone() + ".vcf").clone();
     // let output_file = arg.output.as_str();
     let ref_path = arg.ref_path.as_str();
+    let anno_path = arg.annotation;
     let input_region = arg.region;
     let input_contigs = arg.contigs;
     let threads = arg.threads;
+    let debug_block = arg.debug_block;
     let preset = arg.preset;
     let platform = arg.platform;
     let max_iters = arg.max_iters;
@@ -435,6 +441,32 @@ fn main() {
         }
     }
 
+    if debug_block {
+        let mut regions = Vec::new();
+        if input_region.is_some() {
+            let region = Region::new(input_region.unwrap());
+            regions = vec![region];
+        } else {
+            regions = multithread_produce3(
+                bam_path.to_string().clone(),
+                ref_path.to_string().clone(),
+                threads,
+                input_contigs,
+                min_mapq,
+                min_read_length,
+            );
+        }
+
+        if anno_path.is_some() {
+            let gene_regions = parse_annotation(anno_path.unwrap());
+            regions = intersect_gene_regions(&regions, &gene_regions, threads);
+        }
+        for reg in regions.iter() {
+            println!("{}:{}-{}", reg.chr, reg.start, reg.end);
+        }
+        return;
+    }
+
     let mut regions = Vec::new();
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
@@ -446,9 +478,15 @@ fn main() {
             threads,
             input_contigs,
             min_mapq,
-            min_read_length
+            min_read_length,
         );
     }
+
+    if anno_path.is_some() {
+        let gene_regions = parse_annotation(anno_path.unwrap());
+        regions = intersect_gene_regions(&regions, &gene_regions, threads);
+    }
+
     multithread_phase_haplotag(
         bam_path.to_string().clone(),
         ref_path.to_string().clone(),
