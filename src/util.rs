@@ -50,6 +50,9 @@ impl Region {
             panic!("region format error!");
         }
     }
+    pub fn to_string(&self) -> String {
+        return format!("{}:{}-{}", self.chr, self.start, self.end);
+    }
 }
 
 #[derive(Default, Debug, Clone)]

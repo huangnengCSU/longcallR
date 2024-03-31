@@ -7,6 +7,8 @@ use std::io::Write;
 use std::sync::Mutex;
 
 use bio::bio_types::strand::ReqStrand::Forward;
+use petgraph::algo::kosaraju_scc;
+use petgraph::prelude::*;
 use probability::distribution::Distribution;
 use rand::Rng;
 use rayon::prelude::*;
@@ -2806,6 +2808,100 @@ impl SNPFrag {
         return read_assignments;
     }
 
+
+    pub fn assign_phase_set(&self, min_qual_for_candidate: u32, min_phase_score: f32, ase_ps_cutoff: f32) -> HashMap<String, String> {
+        let mut phase_set: HashMap<String, String> = HashMap::new();
+        let mut graph: GraphMap<usize, Vec<usize>, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
+        // construct graph for hete snps
+        for i in 0..self.candidate_snps.len() {
+            let snp = &self.candidate_snps[i];
+            if snp.variant_type == 0 || snp.variant_type == 2 || snp.variant_type == 3 {
+                continue;
+            }
+            if snp.variant_type == 1 {
+                // hete snps
+                let mut is_low_qual = false;
+                let mut is_dense = false;
+                let mut is_rna_edit = false;
+                let mut is_single_snp = false;
+                let mut is_unconfident_phased_snp = false;
+                let mut is_ase_snp = false;
+                if snp.filter == true {
+                    is_dense = true;
+                }
+                if snp.single == true {
+                    is_single_snp = true;
+                }
+                if snp.ase == true {
+                    is_ase_snp = true;
+                }
+                if !is_dense && !is_single_snp && snp.phase_score == 0.0 {
+                    is_unconfident_phased_snp = true;
+                }
+                if is_dense || is_single_snp || is_unconfident_phased_snp || snp.haplotype == 0 {
+                    continue;
+                }
+                // ase snp
+                if is_ase_snp && snp.phase_score < ase_ps_cutoff as f64 {
+                    continue;
+                }
+                // hete snp
+                if !is_ase_snp {
+                    if snp.variant_quality < min_qual_for_candidate as f64 {
+                        continue;
+                    }
+                    if snp.phase_score < min_phase_score as f64 {
+                        continue;
+                    }
+                }
+                // ase snps > ase_ps_cutoff or hete snps > min_phase_score, construct graph
+                graph.add_node(i);
+            }
+        }
+        for k in 0..self.fragments.len() {
+            let frag = &self.fragments[k];
+            if frag.assignment == 0 { continue; }
+            let mut node_snps = Vec::new();
+            for fe in frag.list.iter() {
+                if graph.contains_node(fe.snp_idx) {
+                    node_snps.push(fe.snp_idx);
+                }
+            }
+            if node_snps.len() >= 2 {
+                for j in 0..node_snps.len() - 1 {
+                    if !graph.contains_edge(node_snps[j], node_snps[j + 1]) {
+                        graph.add_edge(node_snps[j], node_snps[j + 1], vec![k]);    // weight is a vector of fragment index, which is covered by the edge
+                    } else {
+                        graph.edge_weight_mut(node_snps[j], node_snps[j + 1]).unwrap().push(k);
+                    }
+                }
+            }
+        }
+        let scc = kosaraju_scc(&graph);
+        let region = self.region.clone().to_string();
+        let mut connected_component_ids = 0;
+        for component_nodes in scc.iter() {
+            if component_nodes.len() <= 1 {
+                continue;
+            }
+            for node in component_nodes.iter() {
+                for edge in graph.edges(*node) {
+                    let frag_idxes = edge.2;
+                    for k in frag_idxes.iter() {
+                        let fragment = &self.fragments[*k];
+                        let read_id = fragment.read_id.clone();
+                        if phase_set.contains_key(&read_id) {
+                            continue;
+                        }
+                        phase_set.insert(read_id, format!("{}:{}", &region, connected_component_ids.to_string()));
+                    }
+                }
+            }
+            connected_component_ids += 1;
+        }
+        return phase_set;
+    }
+
     fn check_local_optimal_configuration(&self, used_for_haplotype: bool, used_for_haplotag: bool) {
         // check sigma
         if used_for_haplotag {
@@ -4375,6 +4471,7 @@ pub fn multithread_phase_haplotag(
     let read_haplotag1_queue = Mutex::new(VecDeque::new());
     let read_haplotag2_queue = Mutex::new(VecDeque::new());
     let read_haplotag_queue = Mutex::new(VecDeque::new());
+    let read_phaseset_queue = Mutex::new(VecDeque::new());
     let haplotype_exon_queue = Mutex::new(VecDeque::new());
     let ref_seqs = load_reference(ref_file.clone());
     let fai_path = ref_file + ".fai";
@@ -4466,6 +4563,7 @@ pub fn multithread_phase_haplotag(
                             merge_reads_assignments.insert(k.clone(), v.clone());
                         }
                     }
+                    let phase_sets = snpfrag.assign_phase_set(min_qual_for_candidate, min_phase_score, ase_ps_cutoff);
 
                     let mut haplotype_exons: Vec<(Exon, i32, i32)> = Vec::new();
                     {
@@ -4659,6 +4757,10 @@ pub fn multithread_phase_haplotag(
                             for a in merge_reads_assignments.iter() {
                                 queue.push_back((a.0.clone(), a.1.clone()));
                             }
+                            let mut queue = read_phaseset_queue.lock().unwrap();
+                            for a in phase_sets.iter() {
+                                queue.push_back((a.0.clone(), a.1.clone()));
+                            }
                         }
                     }
                     if haplotype_specific_exon {
@@ -4799,11 +4901,16 @@ pub fn multithread_phase_haplotag(
             for rd in read_haplotag_queue.lock().unwrap().iter() {
                 read_assignments.insert(rd.0.clone(), rd.1.clone());
             }
+            let mut read_phasesets: HashMap<String, String> = HashMap::new();
+            for rd in read_phaseset_queue.lock().unwrap().iter() {
+                read_phasesets.insert(rd.0.clone(), rd.1.clone());
+            }
             let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
             let header = bam::Header::from_template(&bam_reader.header());
             let mut bam_writer = bam::Writer::from_path(phased_bam_file, &header, Format::Bam).unwrap();
             bam_writer.set_threads(thread_size).unwrap();
             for region in isolated_regions.iter() {
+                // TODO: duplicate reads in different regions
                 bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap(); // set region
                 for r in bam_reader.records() {
                     let mut record = r.unwrap();
@@ -4816,6 +4923,10 @@ pub fn multithread_phase_haplotag(
                         if *asg != 0 {
                             let _ = record.push_aux(b"HP:i", Aux::I32(*asg));
                         }
+                    }
+                    if read_phasesets.contains_key(&qname) {
+                        let ps = read_phasesets.get(&qname).unwrap();
+                        let _ = record.push_aux(b"PS:Z", Aux::String(ps));
                     }
                     let _ = bam_writer.write(&record).unwrap();
                 }
