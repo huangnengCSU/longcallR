@@ -12,7 +12,7 @@ use petgraph::prelude::*;
 use probability::distribution::Distribution;
 use rand::Rng;
 use rayon::prelude::*;
-use rust_htslib::{bam, bam::Format, bam::Read, bam::record::Aux, bam::record::Record};
+use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::Format, bam::Read, bam::record::Aux, bam::record::Record};
 
 use crate::Platform;
 use crate::util::{load_reference, parse_fai, Profile, Region, VCFRecord};
@@ -48,6 +48,8 @@ pub struct CandidateSNP {
     // allele specific expressed
     pub single: bool,
     // current snp has surrounding haplotype links or not, only works for heterozygous snps
+    pub phase_set: u32,
+    // phase set id is the position of the first snp in the phase set
     pub haplotype_expression: [u32; 2],
     // [allele1, allele2], the number of reads supporting two alleles expreessing on two haplotype
 }
@@ -2809,8 +2811,8 @@ impl SNPFrag {
     }
 
 
-    pub fn assign_phase_set(&self, min_qual_for_candidate: u32, min_phase_score: f32, ase_ps_cutoff: f32) -> HashMap<String, String> {
-        let mut phase_set: HashMap<String, String> = HashMap::new();
+    pub fn assign_phase_set(&mut self, min_qual_for_candidate: u32, min_phase_score: f32, ase_ps_cutoff: f32) -> HashMap<String, u32> {
+        let mut phase_set: HashMap<String, u32> = HashMap::new();
         let mut graph: GraphMap<usize, Vec<usize>, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
         // construct graph for hete snps
         for i in 0..self.candidate_snps.len() {
@@ -2879,12 +2881,16 @@ impl SNPFrag {
         }
         let scc = kosaraju_scc(&graph);
         let region = self.region.clone().to_string();
-        let mut connected_component_ids = 0;
         for component_nodes in scc.iter() {
             if component_nodes.len() <= 1 {
                 continue;
             }
+            let mut phase_id = 0;
             for node in component_nodes.iter() {
+                if phase_id == 0 {
+                    phase_id = (self.candidate_snps[*node].pos + 1) as u32;  // 1-based;
+                }
+                self.candidate_snps[*node].phase_set = phase_id;
                 for edge in graph.edges(*node) {
                     let frag_idxes = edge.2;
                     for k in frag_idxes.iter() {
@@ -2893,11 +2899,10 @@ impl SNPFrag {
                         if phase_set.contains_key(&read_id) {
                             continue;
                         }
-                        phase_set.insert(read_id, format!("{}:{}", &region, connected_component_ids.to_string()));
+                        phase_set.insert(read_id, phase_id);
                     }
                 }
             }
-            connected_component_ids += 1;
         }
         return phase_set;
     }
@@ -3888,15 +3893,6 @@ impl SNPFrag {
                     rd.filter = "dn".to_string().into_bytes();
                     rd.info = format!("RDS={}", "dense_snp").to_string().into_bytes();
                 }
-                // if is_rna_edit {
-                //     if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
-                //         rd.filter = "RnaEdit".to_string().into_bytes();
-                //         rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
-                //     } else {
-                //         rd.filter = "PASS".to_string().into_bytes();
-                //         rd.info = format!("RDS={}", "rna_editing").to_string().into_bytes();
-                //     }
-                // }
                 if is_single_snp {
                     if snp.variant_quality < min_qual_for_singlesnp_rnaedit as f64 {
                         rd.filter = "LowQual".to_string().into_bytes();
@@ -3956,30 +3952,59 @@ impl SNPFrag {
                     } else {
                         panic!("Error: unexpected allele. ref: {}, alt1: {}, alt2: {}, {}:{}", snp.reference, snp.alleles[0], snp.alleles[1], String::from_utf8_lossy(&snp.chromosome), snp.pos);
                     }
-                    if snp.haplotype == -1 {
-                        rd.genotype = format!(
-                            "{}:{}:{}:{:.2}:{:.2}:{},{}",
-                            "0|1",
-                            snp.genotype_quality as i32,
-                            snp.depth,
-                            af,
-                            snp.phase_score,
-                            snp.haplotype_expression[0],
-                            snp.haplotype_expression[1]
-                        );
-                    } else if snp.haplotype == 1 {
-                        rd.genotype = format!(
-                            "{}:{}:{}:{:.2}:{:.2}:{},{}",
-                            "1|0",
-                            snp.genotype_quality as i32,
-                            snp.depth,
-                            af,
-                            snp.phase_score,
-                            snp.haplotype_expression[0],
-                            snp.haplotype_expression[1]
-                        );
+                    if snp.phase_set != 0 {
+                        if snp.haplotype == -1 {
+                            rd.genotype = format!(
+                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "0|1",
+                                snp.phase_set,
+                                snp.genotype_quality as i32,
+                                snp.depth,
+                                af,
+                                snp.phase_score,
+                                snp.haplotype_expression[0],
+                                snp.haplotype_expression[1]
+                            );
+                        } else if snp.haplotype == 1 {
+                            rd.genotype = format!(
+                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "1|0",
+                                snp.phase_set,
+                                snp.genotype_quality as i32,
+                                snp.depth,
+                                af,
+                                snp.phase_score,
+                                snp.haplotype_expression[0],
+                                snp.haplotype_expression[1]
+                            );
+                        }
+                        rd.format = "GT:PS:GQ:DP:AF:PQ:AE".to_string().into_bytes();
+                    } else {
+                        if snp.haplotype == -1 {
+                            rd.genotype = format!(
+                                "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "0|1",
+                                snp.genotype_quality as i32,
+                                snp.depth,
+                                af,
+                                snp.phase_score,
+                                snp.haplotype_expression[0],
+                                snp.haplotype_expression[1]
+                            );
+                        } else if snp.haplotype == 1 {
+                            rd.genotype = format!(
+                                "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "1|0",
+                                snp.genotype_quality as i32,
+                                snp.depth,
+                                af,
+                                snp.phase_score,
+                                snp.haplotype_expression[0],
+                                snp.haplotype_expression[1]
+                            );
+                        }
+                        rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                     }
-                    rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                 }
                 records.push(rd);
             }
@@ -4800,9 +4825,8 @@ pub fn multithread_phase_haplotag(
     vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n".as_bytes()).unwrap();
-    vf.write(
-        "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes(),
-    ).unwrap();
+    vf.write("##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase Set\">\n".as_bytes()).unwrap();
+    vf.write("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"Genotype Quality\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n".as_bytes()).unwrap();
     vf.write("##FORMAT=<ID=PQ,Number=1,Type=Float,Description=\"Phasing Quality\">\n".as_bytes()).unwrap();
@@ -4899,11 +4923,19 @@ pub fn multithread_phase_haplotag(
         if !haplotype_bam_output {
             let mut read_assignments: HashMap<String, i32> = HashMap::new();
             for rd in read_haplotag_queue.lock().unwrap().iter() {
-                read_assignments.insert(rd.0.clone(), rd.1.clone());
+                if read_assignments.contains_key(&rd.0) {
+                    read_assignments.remove(&rd.0);   // one read belongs to at least two regions
+                } else {
+                    read_assignments.insert(rd.0.clone(), rd.1);
+                }
             }
-            let mut read_phasesets: HashMap<String, String> = HashMap::new();
+            let mut read_phasesets: HashMap<String, u32> = HashMap::new();
             for rd in read_phaseset_queue.lock().unwrap().iter() {
-                read_phasesets.insert(rd.0.clone(), rd.1.clone());
+                if read_phasesets.contains_key(&rd.0) {
+                    read_phasesets.remove(&rd.0);   // one read belongs to at least two regions or two phase sets
+                } else {
+                    read_phasesets.insert(rd.0.clone(), rd.1);
+                }
             }
             let mut bam_reader = bam::IndexedReader::from_path(&bam_file).unwrap();
             let header = bam::Header::from_template(&bam_reader.header());
@@ -4917,6 +4949,10 @@ pub fn multithread_phase_haplotag(
                     if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
                         continue;
                     }
+                    if record.reference_start() + 1 < region.start as i64 || record.reference_end() + 1 > region.end as i64 {
+                        // reads beyond the region boundary will be ignored to provent duplicated reads
+                        continue;
+                    }
                     let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
                     if read_assignments.contains_key(&qname) {
                         let asg = read_assignments.get(&qname).unwrap();
@@ -4926,7 +4962,7 @@ pub fn multithread_phase_haplotag(
                     }
                     if read_phasesets.contains_key(&qname) {
                         let ps = read_phasesets.get(&qname).unwrap();
-                        let _ = record.push_aux(b"PS:Z", Aux::String(ps));
+                        let _ = record.push_aux(b"PS:i", Aux::U32(*ps));
                     }
                     let _ = bam_writer.write(&record).unwrap();
                 }
@@ -4960,6 +4996,10 @@ pub fn multithread_phase_haplotag(
                 for r in bam_reader.records() {
                     let mut record = r.unwrap();
                     if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                        continue;
+                    }
+                    if record.reference_start() + 1 < region.start as i64 || record.reference_end() + 1 > region.end as i64 {
+                        // reads beyond the region boundary will be ignored to provent duplicated reads
                         continue;
                     }
                     let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
