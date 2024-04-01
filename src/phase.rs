@@ -50,8 +50,8 @@ pub struct CandidateSNP {
     // current snp has surrounding haplotype links or not, only works for heterozygous snps
     pub phase_set: u32,
     // phase set id is the position of the first snp in the phase set
-    pub haplotype_expression: [u32; 2],
-    // [allele1, allele2], the number of reads supporting two alleles expreessing on two haplotype
+    pub haplotype_expression: [u32; 4],
+    // hap1_ref, hap1_alt, hap2_ref, hap2_alt
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2450,73 +2450,25 @@ impl SNPFrag {
                 snp.ase = false;
             }
 
-            // use binomial test to check allele imbalance expression
-            let mut hap1_allele_cnt: [u32; 2] = [0, 0];
-            let mut hap2_allele_cnt: [u32; 2] = [0, 0];
-
+            let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
             for k in 0..sigma.len() {
                 if sigma[k] == 1 {
                     // hap1
                     if ps[k] == 1 {
-                        hap1_allele_cnt[0] += 1; // hap1 allele1
+                        haplotype_allele_expression[0] += 1; // hap1 allele1, reference allele
                     } else if ps[k] == -1 {
-                        hap1_allele_cnt[1] += 1; // hap1 allele2
+                        haplotype_allele_expression[1] += 1; // hap1 allele2, alternative allele
                     }
                 } else if sigma[k] == -1 {
                     // hap2
                     if ps[k] == 1 {
-                        hap2_allele_cnt[0] += 1; // hap2 allele1
+                        haplotype_allele_expression[2] += 1; // hap2 allele1, reference allele
                     } else if ps[k] == -1 {
-                        hap2_allele_cnt[1] += 1; // hap2 allele2
+                        haplotype_allele_expression[3] += 1; // hap2 allele2, alternative allele
                     }
                 }
             }
-
-            // let mut observed_cnt = 0;    // the number of observation
-            // let mut trails_cnt = 0;  // the number of trials
-            // if (hap1_allele_cnt[0] + hap2_allele_cnt[0]) > (hap1_allele_cnt[1] + hap2_allele_cnt[1]) {
-            //     if hap1_allele_cnt[0] > hap2_allele_cnt[0] {
-            //         observed_cnt = hap2_allele_cnt[1];
-            //         trails_cnt += hap2_allele_cnt[1] + hap1_allele_cnt[0];
-            //     } else {
-            //         observed_cnt = hap1_allele_cnt[1];
-            //         trails_cnt += hap1_allele_cnt[1] + hap2_allele_cnt[0];
-            //     }
-            // } else {
-            //     if hap1_allele_cnt[1] > hap2_allele_cnt[1] {
-            //         observed_cnt = hap2_allele_cnt[0];
-            //         trails_cnt += hap2_allele_cnt[0] + hap1_allele_cnt[1];
-            //     } else {
-            //         observed_cnt = hap1_allele_cnt[0];
-            //         trails_cnt += hap1_allele_cnt[0] + hap2_allele_cnt[1];
-            //     }
-            // }
-            // let mut allele_imbalance: bool = false;
-            // let binom = Binomial::new(trails_cnt as usize, 0.5);
-            // let less_p = binom.distribution(observed_cnt as f64);
-            // let phred_pvalue = -10.0_f64 * less_p.log10();
-            // if phred_pvalue > 50.0 { allele_imbalance = true; }
-            // self.candidate_snps[ti].allele_imbalance = allele_imbalance;
-
-            let mut expression_cnt = [0; 2];
-            if (hap1_allele_cnt[0] + hap2_allele_cnt[0]) > (hap1_allele_cnt[1] + hap2_allele_cnt[1]) {
-                if hap1_allele_cnt[0] > hap2_allele_cnt[0] {
-                    expression_cnt[0] = hap1_allele_cnt[0];
-                    expression_cnt[1] = hap2_allele_cnt[1];
-                } else {
-                    expression_cnt[0] = hap2_allele_cnt[0];
-                    expression_cnt[1] = hap1_allele_cnt[1];
-                }
-            } else {
-                if hap1_allele_cnt[1] > hap2_allele_cnt[1] {
-                    expression_cnt[0] = hap2_allele_cnt[0];
-                    expression_cnt[1] = hap1_allele_cnt[1];
-                } else {
-                    expression_cnt[0] = hap1_allele_cnt[0];
-                    expression_cnt[1] = hap2_allele_cnt[1];
-                }
-            }
-            self.candidate_snps[ti].haplotype_expression = expression_cnt;
+            self.candidate_snps[ti].haplotype_expression = haplotype_allele_expression;
             self.candidate_snps[ti].phase_score = phase_score;
         }
     }
@@ -3130,17 +3082,25 @@ impl SNPFrag {
                         self.candidate_snps[*i].phase_score = phase_score2;
                         self.candidate_snps[*i].variant_type = 1;
                     }
-                    // println!(
-                    //     "Rescue ASE SNP: {} {} {} {}, \n{:?},\n{:?},\n{:?}",
-                    //     String::from_utf8(self.candidate_snps[*i].chromosome.clone()).unwrap(),
-                    //     self.candidate_snps[*i].pos,
-                    //     phase_score1,
-                    //     phase_score2,
-                    //     &sigma,
-                    //     &ps,
-                    //     &probs
-                    // );
-                    // self.candidate_snps[*i].ase = false;
+                    let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
+                    for k in 0..sigma.len() {
+                        if sigma[k] == 1 {
+                            // hap1
+                            if ps[k] == 1 {
+                                haplotype_allele_expression[0] += 1;
+                            } else if ps[k] == -1 {
+                                haplotype_allele_expression[1] += 1;
+                            }
+                        } else if sigma[k] == -1 {
+                            // hap2
+                            if ps[k] == 1 {
+                                haplotype_allele_expression[2] += 1;
+                            } else if ps[k] == -1 {
+                                haplotype_allele_expression[3] += 1;
+                            }
+                        }
+                    }
+                    self.candidate_snps[*i].haplotype_expression = haplotype_allele_expression;
                 }
             }
         }
@@ -3390,25 +3350,29 @@ impl SNPFrag {
                                 rd.qual = snp.variant_quality as i32;
                                 if hp == -1 {
                                     rd.genotype = format!(
-                                        "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                        "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                         "0|1",
                                         snp.genotype_quality as i32,
                                         snp.depth,
                                         snp.allele_freqs[1],
                                         snp.phase_score,
                                         snp.haplotype_expression[0],
-                                        snp.haplotype_expression[1]
+                                        snp.haplotype_expression[1],
+                                        snp.haplotype_expression[2],
+                                        snp.haplotype_expression[3]
                                     );
                                 } else if hp == 1 {
                                     rd.genotype = format!(
-                                        "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                        "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                         "1|0",
                                         snp.genotype_quality as i32,
                                         snp.depth,
                                         snp.allele_freqs[1],
                                         snp.phase_score,
                                         snp.haplotype_expression[0],
-                                        snp.haplotype_expression[1]
+                                        snp.haplotype_expression[1],
+                                        snp.haplotype_expression[2],
+                                        snp.haplotype_expression[3]
                                     );
                                 }
                             } else if snp.alleles[1] == snp.reference {
@@ -3416,32 +3380,36 @@ impl SNPFrag {
                                 rd.qual = snp.variant_quality as i32;
                                 if hp == -1 {
                                     rd.genotype = format!(
-                                        "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                        "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                         "0|1",
                                         snp.genotype_quality as i32,
                                         snp.depth,
                                         snp.allele_freqs[0],
                                         snp.phase_score,
                                         snp.haplotype_expression[0],
-                                        snp.haplotype_expression[1]
+                                        snp.haplotype_expression[1],
+                                        snp.haplotype_expression[2],
+                                        snp.haplotype_expression[3]
                                     );
                                 } else if hp == 1 {
                                     rd.genotype = format!(
-                                        "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                        "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                         "1|0",
                                         snp.genotype_quality as i32,
                                         snp.depth,
                                         snp.allele_freqs[0],
                                         snp.phase_score,
                                         snp.haplotype_expression[0],
-                                        snp.haplotype_expression[1]
+                                        snp.haplotype_expression[1],
+                                        snp.haplotype_expression[2],
+                                        snp.haplotype_expression[3]
                                     );
                                 }
                             } else {
                                 rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                                 rd.qual = snp.variant_quality as i32;
                                 rd.genotype = format!(
-                                    "{}:{}:{}:{:.2},{:.2}:{:.2}:{},{}",
+                                    "{}:{}:{}:{:.2},{:.2}:{:.2}:{},{},{},{}",
                                     "1|2",
                                     snp.genotype_quality as i32,
                                     snp.depth,
@@ -3449,7 +3417,9 @@ impl SNPFrag {
                                     snp.allele_freqs[1],
                                     snp.phase_score,
                                     snp.haplotype_expression[0],
-                                    snp.haplotype_expression[1]
+                                    snp.haplotype_expression[1],
+                                    snp.haplotype_expression[2],
+                                    snp.haplotype_expression[3]
                                 );
                             }
                             if snp.phase_score < min_phase_score as f64 || snp.variant_quality < min_qual_for_candidate as f64 {
@@ -3700,25 +3670,29 @@ impl SNPFrag {
                     }
                     if snp.haplotype == -1 {
                         rd.genotype = format!(
-                            "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                            "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                             "0|1",
                             snp.genotype_quality as i32,
                             snp.depth,
                             af,
                             snp.phase_score,
                             snp.haplotype_expression[0],
-                            snp.haplotype_expression[1]
+                            snp.haplotype_expression[1],
+                            snp.haplotype_expression[2],
+                            snp.haplotype_expression[3]
                         );
                     } else if snp.haplotype == 1 {
                         rd.genotype = format!(
-                            "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                            "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                             "1|0",
                             snp.genotype_quality as i32,
                             snp.depth,
                             af,
                             snp.phase_score,
                             snp.haplotype_expression[0],
-                            snp.haplotype_expression[1]
+                            snp.haplotype_expression[1],
+                            snp.haplotype_expression[2],
+                            snp.haplotype_expression[3]
                         );
                     }
                     rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
@@ -3955,7 +3929,7 @@ impl SNPFrag {
                     if snp.phase_set != 0 {
                         if snp.haplotype == -1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "0|1",
                                 snp.phase_set,
                                 snp.genotype_quality as i32,
@@ -3963,11 +3937,13 @@ impl SNPFrag {
                                 af,
                                 snp.phase_score,
                                 snp.haplotype_expression[0],
-                                snp.haplotype_expression[1]
+                                snp.haplotype_expression[1],
+                                snp.haplotype_expression[2],
+                                snp.haplotype_expression[3]
                             );
                         } else if snp.haplotype == 1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "1|0",
                                 snp.phase_set,
                                 snp.genotype_quality as i32,
@@ -3975,32 +3951,38 @@ impl SNPFrag {
                                 af,
                                 snp.phase_score,
                                 snp.haplotype_expression[0],
-                                snp.haplotype_expression[1]
+                                snp.haplotype_expression[1],
+                                snp.haplotype_expression[2],
+                                snp.haplotype_expression[3]
                             );
                         }
                         rd.format = "GT:PS:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                     } else {
                         if snp.haplotype == -1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "0|1",
                                 snp.genotype_quality as i32,
                                 snp.depth,
                                 af,
                                 snp.phase_score,
                                 snp.haplotype_expression[0],
-                                snp.haplotype_expression[1]
+                                snp.haplotype_expression[1],
+                                snp.haplotype_expression[2],
+                                snp.haplotype_expression[3]
                             );
                         } else if snp.haplotype == 1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{:.2}:{:.2}:{},{}",
+                                "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "1|0",
                                 snp.genotype_quality as i32,
                                 snp.depth,
                                 af,
                                 snp.phase_score,
                                 snp.haplotype_expression[0],
-                                snp.haplotype_expression[1]
+                                snp.haplotype_expression[1],
+                                snp.haplotype_expression[2],
+                                snp.haplotype_expression[3]
                             );
                         }
                         rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
