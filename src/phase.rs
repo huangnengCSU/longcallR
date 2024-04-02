@@ -48,6 +48,8 @@ pub struct CandidateSNP {
     // allele specific expressed
     pub single: bool,
     // current snp has surrounding haplotype links or not, only works for heterozygous snps
+    pub somatic: bool,
+    // somatic mutation
     pub phase_set: u32,
     // phase set id is the position of the first snp in the phase set
     pub haplotype_expression: [u32; 4],
@@ -2468,6 +2470,7 @@ impl SNPFrag {
                     }
                 }
             }
+            // TODO: detect whether candidate with low phase score is a potential somatic mutation
             self.candidate_snps[ti].haplotype_expression = haplotype_allele_expression;
             self.candidate_snps[ti].phase_score = phase_score;
         }
@@ -3082,26 +3085,27 @@ impl SNPFrag {
                         self.candidate_snps[*i].phase_score = phase_score2;
                         self.candidate_snps[*i].variant_type = 1;
                     }
-                    let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
-                    for k in 0..sigma.len() {
-                        if sigma[k] == 1 {
-                            // hap1
-                            if ps[k] == 1 {
-                                haplotype_allele_expression[0] += 1;
-                            } else if ps[k] == -1 {
-                                haplotype_allele_expression[1] += 1;
-                            }
-                        } else if sigma[k] == -1 {
-                            // hap2
-                            if ps[k] == 1 {
-                                haplotype_allele_expression[2] += 1;
-                            } else if ps[k] == -1 {
-                                haplotype_allele_expression[3] += 1;
-                            }
+                }
+                let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
+                for k in 0..sigma.len() {
+                    if sigma[k] == 1 {
+                        // hap1
+                        if ps[k] == 1 {
+                            haplotype_allele_expression[0] += 1;
+                        } else if ps[k] == -1 {
+                            haplotype_allele_expression[1] += 1;
+                        }
+                    } else if sigma[k] == -1 {
+                        // hap2
+                        if ps[k] == 1 {
+                            haplotype_allele_expression[2] += 1;
+                        } else if ps[k] == -1 {
+                            haplotype_allele_expression[3] += 1;
                         }
                     }
-                    self.candidate_snps[*i].haplotype_expression = haplotype_allele_expression;
                 }
+                self.candidate_snps[*i].haplotype_expression = haplotype_allele_expression;
+                // TODO: detect whether candidate with low phase score is a potential somatic mutation
             }
         }
     }
