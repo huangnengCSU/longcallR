@@ -22,6 +22,8 @@ pub struct Region {
     // 1-based, inclusive
     pub(crate) end: u32,
     // 1-based, exclusive
+    pub(crate) gene_id: Option<String>,
+    // if load annotation, this field will tell which gene this region covers. Multiple gene separated by comma
 }
 
 impl Region {
@@ -33,6 +35,7 @@ impl Region {
                 chr,
                 start: 0,
                 end: 0,
+                gene_id: None,
             };
         } else if region.contains(":") && region.contains("-") {
             let region_vec: Vec<&str> = region.split(":").collect();
@@ -40,11 +43,13 @@ impl Region {
             let pos_vec: Vec<&str> = region_vec[1].split("-").collect();
             let start = pos_vec[0].parse::<u32>().unwrap();
             let end = pos_vec[1].parse::<u32>().unwrap();
+            let gene_id = None;
             assert!(start <= end);
             return Region {
                 chr,
                 start,
                 end,
+                gene_id,
             };
         } else {
             panic!("region format error!");
@@ -268,7 +273,7 @@ pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32,
             if region_end > region_start {
                 assert!(region_start >= 0);
                 assert!(region_end >= 0);
-                isolated_regions.push(Region { chr: chr.to_string(), start: (region_start + 1) as u32, end: (region_end + 2) as u32 });
+                isolated_regions.push(Region { chr: chr.to_string(), start: (region_start + 1) as u32, end: (region_end + 2) as u32, gene_id: None });
                 region_start = -1;
                 region_end = -1;
             }
@@ -282,17 +287,20 @@ pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32,
         }
     }
     if region_end > region_start {
-        isolated_regions.push(Region { chr: chr.to_string(), start: (region_start + 1) as u32, end: (region_end + 2) as u32 });
+        isolated_regions.push(Region { chr: chr.to_string(), start: (region_start + 1) as u32, end: (region_end + 2) as u32, gene_id: None });
         region_start = -1;
         region_end = -1;
     }
     return isolated_regions;
 }
 
-pub fn parse_annotation(anno_path: String) -> HashMap<String, Vec<Region>> {
-    let mut gene_regions: HashMap<String, Vec<Region>> = HashMap::new();
+pub fn parse_annotation(anno_path: String) -> (HashMap<String, VecDeque<Region>>, HashMap<String, Vec<Interval<usize, u8>>>) {
+    let mut gene_regions: HashMap<String, VecDeque<Region>> = HashMap::new();    // key is chr, value is a stack of gene regions
+    let mut exon_regions: HashMap<String, Vec<Interval<usize, u8>>> = HashMap::new();  // key is gene id, value is exon regions
     let file = File::open(anno_path).unwrap();
     let reader = BufReader::new(file);
+    let mut invs: Vec<Interval<usize, u8>> = Vec::new(); // for merging gene exons
+    let mut gene_id: String = String::new();
     for line in reader.lines() {
         let line = line.unwrap();
         if line.starts_with("#") { continue; }
@@ -302,38 +310,93 @@ pub fn parse_annotation(anno_path: String) -> HashMap<String, Vec<Region>> {
         let start = parts[3].parse::<u32>().unwrap();   // 1-based, inclusive
         let end = parts[4].parse::<u32>().unwrap(); // 1-based, inclusive
         if feature == "gene" {
-            if !gene_regions.contains_key(&seqname) {
-                gene_regions.insert(seqname.clone(), Vec::new());
+            if invs.len() > 0 {
+                exon_regions.insert(gene_id.clone(), invs.clone());
+                invs.clear();
             }
-            gene_regions.get_mut(&seqname).unwrap().push(Region { chr: seqname.clone(), start: start, end: end + 1 });
+            if !gene_regions.contains_key(&seqname) {
+                gene_regions.insert(seqname.clone(), VecDeque::new());
+            }
+            for subpart in parts[8].trim_end().split(";").collect::<Vec<&str>>() {
+                if subpart.starts_with("gene_id") {
+                    gene_id = subpart.replace("gene_id=", "");  // gff3 format
+                    break;
+                }
+                if subpart.starts_with("gene_id") {
+                    gene_id = subpart.replace("gene_id ", "").replace("\"", "");  // gtf format
+                    break;
+                }
+            }
+            let mut top = gene_regions.get_mut(&seqname).unwrap().pop_back();
+            if top.is_some() {
+                let mut top = top.unwrap();
+                assert!(start >= top.start, "Error: annotation file is not sorted. {}:{}-{}", seqname, start, end);
+                // if overlap, merge the overlapped regions
+                if top.end <= start {
+                    // end of top region is exclusive, so top.end == start is not overlap
+                    gene_regions.get_mut(&seqname).unwrap().push_back(top);
+                    gene_regions.get_mut(&seqname).unwrap().push_back(Region { chr: seqname.clone(), start: start, end: end + 1, gene_id: Option::from(gene_id.clone()) });
+                } else if top.end < end + 1 {
+                    // top.end is exclusive, end is inclusive
+                    // merge two overlapped regions
+                    top.end = end + 1;
+                    top.gene_id = Option::from(top.gene_id.unwrap() + "," + &gene_id);
+                    gene_regions.get_mut(&seqname).unwrap().push_back(top);
+                } else {
+                    // equal end or contained
+                    top.gene_id = Option::from(top.gene_id.unwrap() + "," + &gene_id);
+                    gene_regions.get_mut(&seqname).unwrap().push_back(top);
+                }
+            } else {
+                // first gene region in stack
+                gene_regions.get_mut(&seqname).unwrap().push_back(Region { chr: seqname.clone(), start: start, end: end + 1, gene_id: Option::from(gene_id.clone()) });
+            }
+        } else if feature == "exon" {
+            let mut exon_gene_id = String::new();
+            for subpart in parts[8].trim_end().split(";").collect::<Vec<&str>>() {
+                if subpart.starts_with("gene_id") {
+                    exon_gene_id = subpart.replace("gene_id=", "");  // gff3 format
+                    break;
+                }
+                if subpart.starts_with("gene_id") {
+                    exon_gene_id = subpart.replace("gene_id ", "").replace("\"", "");  // gtf format
+                    break;
+                }
+            }
+            assert!(exon_gene_id == gene_id, "Error: gene_id in gene and exon are different: gene_id:{}, exon_gene_id:{}", gene_id, exon_gene_id);
+            invs.push(Interval { start: start as usize, stop: (end + 1) as usize, val: 0 });    // 1-based,
         } else {
             continue;
         }
     }
-    return gene_regions;
+    if invs.len() > 0 {
+        exon_regions.insert(gene_id.clone(), invs.clone());
+        invs.clear();
+    }
+    return (gene_regions, exon_regions);
 }
 
-pub fn lapper_intervals(query_regions: &Vec<Region>, target_regions: &Vec<Region>) -> Vec<Region> {
+pub fn lapper_intervals(query_regions: &Vec<Region>, target_regions: &VecDeque<Region>) -> Vec<Region> {
     let mut result_regions = Vec::new();
-    let mut invs: Vec<Interval<usize, u8>> = Vec::new();
+    let mut invs: Vec<Interval<usize, String>> = Vec::new();
     for region in target_regions {
-        invs.push(Interval { start: region.start as usize, stop: region.end as usize, val: 0 });
+        invs.push(Interval { start: region.start as usize, stop: region.end as usize, val: region.gene_id.clone().unwrap() });
     }
     let mut interval_tree = Lapper::new(invs);
-    interval_tree.merge_overlaps(); // genes may overlap, so merge the overlapped regions
     for q in query_regions {
         let q_inv = Interval { start: q.start as usize, stop: q.end as usize, val: 0 };
         for h_inv in interval_tree.find(q.start as usize, q.end as usize) {
             let intersected_start = q_inv.start.max(h_inv.start);
             let intersected_end = q_inv.stop.min(h_inv.stop);
+            let h_gene = h_inv.val.clone();
             assert!(intersected_start < intersected_end, "Error: intersected_start >= intersected_end, query:{:?}", q_inv);
-            result_regions.push(Region { chr: q.chr.clone(), start: intersected_start as u32, end: intersected_end as u32 });
+            result_regions.push(Region { chr: q.chr.clone(), start: intersected_start as u32, end: intersected_end as u32, gene_id: Option::from(h_gene) });
         }
     }
     return result_regions;
 }
 
-pub fn intersect_gene_regions(alignment_regions: &Vec<Region>, gene_regions: &HashMap<String, Vec<Region>>, thread_size: usize) -> Vec<Region> {
+pub fn intersect_gene_regions(alignment_regions: &Vec<Region>, gene_regions: &HashMap<String, VecDeque<Region>>, thread_size: usize) -> Vec<Region> {
     let intersected_regions: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let mut region_map = HashMap::new();
     for region in alignment_regions {

@@ -13,6 +13,7 @@ use probability::distribution::Distribution;
 use rand::Rng;
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::Format, bam::Read, bam::record::Aux, bam::record::Record};
+use rust_lapper::{Interval, Lapper};
 
 use crate::Platform;
 use crate::util::{load_reference, parse_fai, Profile, Region, VCFRecord};
@@ -158,6 +159,7 @@ impl SNPFrag {
     pub fn get_candidate_snps(
         &mut self,
         profile: &Profile,
+        exon_region_vec: Vec<Interval<usize, u8>>,
         min_allele_freq: f32,
         min_allele_freq_include_intron: f32,
         min_qual_for_candidate: u32,
@@ -181,10 +183,19 @@ impl SNPFrag {
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
+        let mut use_annotation: bool = false;
+        if exon_region_vec.len() > 0 { use_annotation = true; }
+        let mut exon_intervaltree = Lapper::new(exon_region_vec);
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
             let bf = &pileup[bfidx];
             if bf.i {
+                continue;
+            }
+
+            if use_annotation && exon_intervaltree.find((position + 1) as usize, (position + 2) as usize).count() == 0 {
+                // filter, not covered by exon
+                position += 1;
                 continue;
             }
 
@@ -4434,6 +4445,7 @@ pub fn multithread_phase_haplotag(
     phased_bam_file: String,
     thread_size: usize,
     isolated_regions: Vec<Region>,
+    exon_regions: HashMap<String, Vec<Interval<usize, u8>>>,
     genotype_only: bool,
     platform: &Platform,
     max_iters: i32,
@@ -4499,6 +4511,19 @@ pub fn multithread_phase_haplotag(
         isolated_regions.par_iter().for_each(|reg| {
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
+            let mut exon_region_vec = Vec::new();
+            if !reg.gene_id.is_none() {
+                let gene_id_field = reg.gene_id.clone().unwrap();
+                for gene_id in gene_id_field.split(",").collect::<Vec<&str>>() {
+                    if exon_regions.contains_key(gene_id) {
+                        exon_region_vec.extend(exon_regions.get(gene_id).unwrap().clone());
+                    }
+                }
+                if exon_region_vec.len() == 0 {
+                    // this region is done, no exon region covered
+                    return;
+                }
+            }
             profile.init_with_pileup(
                 &bam_file.as_str(),
                 &reg,
@@ -4517,6 +4542,7 @@ pub fn multithread_phase_haplotag(
             snpfrag.min_linkers = min_linkers;
             snpfrag.get_candidate_snps(
                 &profile,
+                exon_region_vec,
                 min_allele_freq,
                 min_allele_freq_include_intron,
                 min_qual_for_candidate,

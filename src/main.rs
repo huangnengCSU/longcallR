@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use clap::{ArgAction, Parser, ValueEnum};
 use rand::seq::SliceRandom;
 use rust_htslib::bam::Read;
@@ -458,16 +460,22 @@ fn main() {
         }
 
         if anno_path.is_some() {
-            let gene_regions = parse_annotation(anno_path.unwrap());
+            let (gene_regions, exon_regions) = parse_annotation(anno_path.unwrap());
             regions = intersect_gene_regions(&regions, &gene_regions, threads);
         }
         for reg in regions.iter() {
-            println!("{}:{}-{}", reg.chr, reg.start, reg.end);
+            if reg.gene_id.is_none() {
+                println!("{}:{}-{}", reg.chr, reg.start, reg.end);
+            } else {
+                println!("{}:{}-{} {:?}", reg.chr, reg.start, reg.end, reg.gene_id.clone().unwrap());
+            }
         }
         return;
     }
 
     let mut regions = Vec::new();
+    let mut gene_regions = HashMap::new();
+    let mut exon_regions = HashMap::new();
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
         regions = vec![region];
@@ -483,7 +491,7 @@ fn main() {
     }
 
     if anno_path.is_some() {
-        let gene_regions = parse_annotation(anno_path.unwrap());
+        (gene_regions, exon_regions) = parse_annotation(anno_path.unwrap());
         regions = intersect_gene_regions(&regions, &gene_regions, threads);
     }
 
@@ -494,6 +502,7 @@ fn main() {
         out_bam.clone(),
         threads,
         regions,
+        exon_regions,
         genotype_only,
         &platform,
         max_iters,
