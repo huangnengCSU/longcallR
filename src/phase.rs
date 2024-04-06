@@ -136,6 +136,8 @@ pub struct SNPFrag {
     // index of candidate heterozygous SNPs and homozygous SNPs, used for dense snps filter
     pub ase_hete_snps: Vec<usize>,
     // index of potential allele specific expressed SNPs and heterozygous SNPs, used for construct fragment of hete snps and ase snps
+    pub somatic_snps: Vec<usize>,
+    // index of candidate somatic mutation
     pub fragments: Vec<Fragment>,
     // multiple fragments
     pub phased: bool,
@@ -743,15 +745,9 @@ impl SNPFrag {
             phred_genotype_prob.sort_by(cmp_f64);
             let genotype_quality = phred_genotype_prob[1] - phred_genotype_prob[0];
 
-            // TODO: since we will add some homo ref snps to ase snps, we can not filter snps with low variant quality at here.
-            // filter low variant quality
-            // if variant_quality < min_qual_for_candidate as f64 {
-            //     position += 1;
-            //     continue;
-            // }
-
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
                 if variant_quality < min_qual_for_candidate as f64 {
+                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 }
@@ -839,6 +835,7 @@ impl SNPFrag {
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     }
+                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
@@ -850,6 +847,7 @@ impl SNPFrag {
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     }
+                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 }
@@ -868,6 +866,7 @@ impl SNPFrag {
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     }
+                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 }
@@ -905,6 +904,7 @@ impl SNPFrag {
                     self.ase_snps.push(self.candidate_snps.len() - 1);
                     self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                 }
+                // TODO: keep the site to find somatic mutation
             }
             position += 1;
         }
@@ -4564,6 +4564,7 @@ pub fn multithread_phase_haplotag(
                 ase_allele_frac_cutoff,
                 ase_allele_cnt_cutoff,
             );
+            // TODO: for very high depth region, down-sampling the reads
             // snpfrag.get_fragments(&bam_file, &reg);
             snpfrag.get_fragments_with_ase(&bam_file, &reg);
             if genotype_only {
@@ -4586,7 +4587,7 @@ pub fn multithread_phase_haplotag(
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, min_homozygous_freq, min_phase_score);
-                    // TODO: for low frequency sites, use surrounding phased SNPs to rescue the potential allele expressed SNPs
+                    // TODO: assign phased fragments to somatic mutations
                     snpfrag.phase_ase_hete_snps(max_enum_snps, random_flip_fraction, max_iters);
                     // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
                     let read_assignments_ase = snpfrag.assign_reads_ase(read_assignment_cutoff);

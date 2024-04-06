@@ -480,6 +480,7 @@ fn main() {
         let region = Region::new(input_region.unwrap());
         regions = vec![region];
     } else {
+        // TODO: cut weak connected regions caused by alignment error to avoid too large regions
         regions = multithread_produce3(
             bam_path.to_string().clone(),
             ref_path.to_string().clone(),
