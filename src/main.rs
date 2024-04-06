@@ -203,6 +203,14 @@ struct Args {
     #[arg(long, default_value_t = 20.0)]
     ase_ps_cutoff: f32,
 
+    /// Somatic mutation allele fraction cutoff
+    #[arg(long, default_value_t = 0.01)]
+    somatic_allele_frac_cutoff: f32,
+
+    /// Somatic mutation allele count cutoff
+    #[arg(long, default_value_t = 2)]
+    somatic_allele_cnt_cutoff: u32,
+
     /// Without phasing, only using genotype probability
     #[clap(long, action = ArgAction::SetTrue)]
     genotype_only: bool,
@@ -296,6 +304,8 @@ fn main() {
     let mut ase_allele_cnt_cutoff = arg.ase_allele_cnt_cutoff;
     let mut ase_ps_count_cutoff = arg.ase_ps_read_cutoff;
     let mut ase_ps_cutoff = arg.ase_ps_cutoff;
+    let mut somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
+    let mut somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
 
     if preset.is_some() {
         match preset.unwrap() {
@@ -546,5 +556,7 @@ fn main() {
         ase_allele_cnt_cutoff,
         ase_ps_count_cutoff,
         ase_ps_cutoff,
+        somatic_allele_frac_cutoff,
+        somatic_allele_cnt_cutoff,
     );
 }

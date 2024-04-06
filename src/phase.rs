@@ -182,6 +182,8 @@ impl SNPFrag {
         avg_dense_dist: f32,
         ase_allele_frac_cutoff: f32,
         ase_allele_cnt_cutoff: u32,
+        somatic_allele_frac_cutoff: f32,
+        somatic_allele_cnt_cutoff: u32,
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
@@ -746,11 +748,6 @@ impl SNPFrag {
             let genotype_quality = phred_genotype_prob[1] - phred_genotype_prob[0];
 
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
-                if variant_quality < min_qual_for_candidate as f64 {
-                    // TODO: keep the site to find somatic mutation
-                    position += 1;
-                    continue;
-                }
                 // candidate homozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
                 let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -762,7 +759,6 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 2;
-
                 if allele1 != bf.ref_base && allele2 != bf.ref_base {
                     if allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
                         candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
@@ -772,6 +768,20 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
+
+                if variant_quality < min_qual_for_candidate as f64 {
+                    // keep this site to rescue somatic mutation after phasing het snps
+                    if allele1 != bf.ref_base && allele2 == bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
+                        self.candidate_snps.push(candidate_snp);
+                        self.somatic_snps.push(self.candidate_snps.len() - 1);
+                    } else if allele2 != bf.ref_base && allele1 == bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
+                        self.candidate_snps.push(candidate_snp);
+                        self.somatic_snps.push(self.candidate_snps.len() - 1);
+                    }
+                    position += 1;
+                    continue;
+                }
+
                 if candidate_snp.variant_type == 2 {
                     if bf.ref_base == 'A' && allele1 == 'G' {
                         candidate_snp.rna_editing = true;
@@ -834,8 +844,11 @@ impl SNPFrag {
                         self.candidate_snps.push(candidate_snp);
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    } else if allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
+                        // keep this site to rescue somatic mutation after phasing het snps
+                        self.candidate_snps.push(candidate_snp);
+                        self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
-                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 } else if allele2 != bf.ref_base && allele2_freq < min_allele_freq {
@@ -846,8 +859,11 @@ impl SNPFrag {
                         self.candidate_snps.push(candidate_snp);
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    } else if allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
+                        // keep this site to rescue somatic mutation after phasing het snps
+                        self.candidate_snps.push(candidate_snp);
+                        self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
-                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 }
@@ -865,8 +881,15 @@ impl SNPFrag {
                         self.candidate_snps.push(candidate_snp);
                         self.ase_snps.push(self.candidate_snps.len() - 1);
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                    } else if allele1 != bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
+                        // keep this site to rescue somatic mutation after phasing het snps
+                        self.candidate_snps.push(candidate_snp);
+                        self.somatic_snps.push(self.candidate_snps.len() - 1);
+                    } else if allele2 != bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
+                        // keep this site to rescue somatic mutation after phasing het snps
+                        self.candidate_snps.push(candidate_snp);
+                        self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
-                    // TODO: keep the site to find somatic mutation
                     position += 1;
                     continue;
                 }
@@ -903,8 +926,15 @@ impl SNPFrag {
                     self.candidate_snps.push(candidate_snp);
                     self.ase_snps.push(self.candidate_snps.len() - 1);
                     self.ase_hete_snps.push(self.candidate_snps.len() - 1);
+                } else if allele1 != bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
+                    // keep this site to rescue somatic mutation after phasing het snps
+                    self.candidate_snps.push(candidate_snp);
+                    self.somatic_snps.push(self.candidate_snps.len() - 1);
+                } else if allele2 != bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
+                    // keep this site to rescue somatic mutation after phasing het snps
+                    self.candidate_snps.push(candidate_snp);
+                    self.somatic_snps.push(self.candidate_snps.len() - 1);
                 }
-                // TODO: keep the site to find somatic mutation
             }
             position += 1;
         }
@@ -4488,6 +4518,8 @@ pub fn multithread_phase_haplotag(
     ase_allele_cnt_cutoff: u32,
     ase_ps_count_cutoff: u32,
     ase_ps_cutoff: f32,
+    somatic_allele_frac_cutoff: f32,
+    somatic_allele_cnt_cutoff: u32,
 ) {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(thread_size).build().unwrap();
     let vcf_records_queue = Mutex::new(VecDeque::new());
@@ -4563,6 +4595,8 @@ pub fn multithread_phase_haplotag(
                 avg_dense_dist,
                 ase_allele_frac_cutoff,
                 ase_allele_cnt_cutoff,
+                somatic_allele_frac_cutoff,
+                somatic_allele_cnt_cutoff,
             );
             // TODO: for very high depth region, down-sampling the reads
             // snpfrag.get_fragments(&bam_file, &reg);
