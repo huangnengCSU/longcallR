@@ -19,6 +19,14 @@ use crate::Platform;
 use crate::util::{load_reference, parse_fai, Profile, Region, VCFRecord};
 
 #[derive(Debug, Clone, Default)]
+pub struct HapQuals {
+    hap1_ref_baseqs: Vec<u8>,
+    hap1_alt_baseqs: Vec<u8>,
+    hap2_ref_baseqs: Vec<u8>,
+    hap2_alt_baseqs: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct CandidateSNP {
     pub chromosome: Vec<u8>,
     pub pos: i64,
@@ -51,6 +59,8 @@ pub struct CandidateSNP {
     // current snp has surrounding haplotype links or not, only works for heterozygous snps
     pub somatic: bool,
     // somatic mutation
+    pub hap_quals: HapQuals,
+    // base qualities for identifying somatic mutation
     pub phase_set: u32,
     // phase set id is the position of the first snp in the phase set
     pub haplotype_expression: [u32; 4],
@@ -1518,6 +1528,136 @@ impl SNPFrag {
         }
     }
 
+    pub fn get_somatic_hapquals(&mut self, bam_path: &str, region: &Region, phased_fragments: &HashMap<String, i32>) {
+        let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+        bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
+        let mut record = Record::new();
+        // assert!(self.min_linkers >= 0, "Error: min_linkers <= 0");
+        while let Some(result) = bam_reader.read(&mut record) {
+            if self.somatic_snps.len() == 0 {
+                continue;
+            }
+            if result.is_err() {
+                panic!("BAM parsing failed...");
+            }
+            // TODO: filtering unmapped, secondary, supplementary reads?
+            if record.is_unmapped() || record.is_secondary() || record.is_supplementary() {
+                continue;
+            }
+            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+            if !phased_fragments.contains_key(&qname) {
+                continue;
+            }
+            let assignment = phased_fragments[&qname];
+            let pos = record.pos(); // 0-based
+            if pos > self.candidate_snps[*self.somatic_snps.last().unwrap()].pos {
+                continue;
+            }
+            let cigar = record.cigar();
+            let seq = record.seq().as_bytes();
+            let mut pos_on_ref = pos; // 0-based
+            let mut pos_on_query = cigar.leading_softclips(); // 0-based
+            let mut idx = 0; // index in self.somatic_snps
+            let mut snp_pos = -1; // pre-computed position of candidate SNPs
+            let mut alleles; // pre-computed alleles of candidate SNPs
+            if pos <= self.candidate_snps[*self.somatic_snps.first().unwrap()].pos {
+                snp_pos = self.candidate_snps[self.somatic_snps[idx]].pos;
+                alleles = self.candidate_snps[self.somatic_snps[idx]].alleles.clone();
+            } else {
+                // find the first SNP in the read
+                while idx < self.somatic_snps.len() {
+                    if self.candidate_snps[self.somatic_snps[idx]].pos >= pos {
+                        break;
+                    }
+                    idx += 1;
+                }
+                assert!(
+                    idx < self.somatic_snps.len(),
+                    "Error: idx < self.candidate_snps.len()"
+                );
+                snp_pos = self.candidate_snps[self.somatic_snps[idx]].pos;
+                alleles = self.candidate_snps[self.somatic_snps[idx]].alleles.clone();
+            }
+
+            for cg in cigar.iter() {
+                match cg.char() as u8 {
+                    b'S' | b'H' => {
+                        continue;
+                    }
+                    b'M' | b'X' | b'=' => {
+                        for _ in 0..cg.len() {
+                            if pos_on_ref == snp_pos {
+                                let somatic_cand = &mut self.candidate_snps[self.somatic_snps[idx]];
+                                let base = seq[pos_on_query as usize] as char;
+                                let baseq = record.qual()[pos_on_query as usize];
+                                let [allele1, allele2] = somatic_cand.alleles.clone();
+                                let ref_allele = somatic_cand.reference;
+                                if allele1 == ref_allele || allele2 == ref_allele {
+                                    if base == allele1 || base == allele2 {
+                                        if base == ref_allele {
+                                            if assignment == 1 {
+                                                somatic_cand.hap_quals.hap1_ref_baseqs.push(baseq);
+                                            } else {
+                                                somatic_cand.hap_quals.hap2_ref_baseqs.push(baseq);
+                                            }
+                                        } else {
+                                            if assignment == 1 {
+                                                somatic_cand.hap_quals.hap1_alt_baseqs.push(baseq);
+                                            } else {
+                                                somatic_cand.hap_quals.hap2_alt_baseqs.push(baseq);
+                                            }
+                                        }
+                                    }
+                                }
+                                idx += 1;
+                                if idx < self.somatic_snps.len() {
+                                    snp_pos = self.candidate_snps[self.somatic_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.somatic_snps[idx]].alleles.clone();
+                                }
+                            }
+                            pos_on_query += 1;
+                            pos_on_ref += 1;
+                        }
+                    }
+                    b'I' => {
+                        pos_on_query += cg.len() as i64;
+                    }
+                    b'D' => {
+                        for _ in 0..cg.len() {
+                            if pos_on_ref == snp_pos {
+                                idx += 1;
+                                if idx < self.somatic_snps.len() {
+                                    snp_pos = self.candidate_snps[self.somatic_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.somatic_snps[idx]].alleles.clone();
+                                }
+                            }
+                            pos_on_ref += 1;
+                        }
+                    }
+                    b'N' => {
+                        for _ in 0..cg.len() {
+                            if pos_on_ref == snp_pos {
+                                idx += 1;
+                                if idx < self.ase_hete_snps.len() {
+                                    snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+                                }
+                            }
+                            pos_on_ref += 1;
+                        }
+                    }
+                    _ => {
+                        panic!("Error: unknown cigar operation: {}", cg.char());
+                    }
+                }
+            }
+        }
+        for idx in self.somatic_snps.iter() {
+            println!("somatic snp:{:?}\n, hap1_ref_baseqs:{:?}\n, hap1_alt_baseqs:{:?}\n, hap2_ref_baseqs:{:?}\n, hap2_alt_baseqs:{:?}\n", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].hap_quals.hap1_ref_baseqs, self.candidate_snps[*idx].hap_quals.hap1_alt_baseqs, self.candidate_snps[*idx].hap_quals.hap2_ref_baseqs, self.candidate_snps[*idx].hap_quals.hap2_alt_baseqs);
+        }
+    }
+
+
     pub fn keep_reliable_snps_in_component(&mut self) {
         let mut gqmap: HashMap<usize, f64> = HashMap::new();
         for i in self.hete_snps.iter() {
@@ -2911,10 +3051,20 @@ impl SNPFrag {
         return phase_set;
     }
 
-    pub fn detect_somatic_by_het(&self) {
+    pub fn detect_somatic_by_het(&mut self, bam_path: &str, region: &Region) {
+        if self.somatic_snps.len() == 0 {
+            return;
+        }
         // detect confident somatic mutation with phasing result of high allele fraction het snps.
         // 1. assign phased result for candidate somatic sites.
-        let mut phased_fragment_set: HashSet<String> = HashSet::new(); // read id set
+        let mut phased_fragments: HashMap<String, i32> = HashMap::new(); // read id, assignment
+        for i in 0..self.fragments.len() {
+            let frag = &self.fragments[i];
+            if frag.assignment == 1 || frag.assignment == 2 {
+                phased_fragments.insert(frag.read_id.clone(), frag.assignment);
+            }
+        }
+        self.get_somatic_hapquals(bam_path, region, &phased_fragments);
         // 2. find candidates meet the criteria of somatic mutation. haplotype-specific
     }
 
@@ -4638,7 +4788,8 @@ pub fn multithread_phase_haplotag(
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, min_homozygous_freq, min_phase_score);
                     // assign phased fragments to somatic mutations and detect condifent somatic mutations
-                    snpfrag.detect_somatic_by_het();
+                    println!("somatic: {}", snpfrag.somatic_snps.len());
+                    snpfrag.detect_somatic_by_het(&bam_file.as_str(), &reg);
                     snpfrag.phase_ase_hete_snps(max_enum_snps, random_flip_fraction, max_iters);
                     // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
                     let read_assignments_ase = snpfrag.assign_reads_ase(read_assignment_cutoff);
