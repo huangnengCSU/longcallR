@@ -66,8 +66,10 @@ pub struct CandidateSNP {
     // allele specific expressed
     pub single: bool,
     // current snp has surrounding haplotype links or not, only works for heterozygous snps
+    pub cand_somatic: bool,
+    // candidate site for somatic mutation detection
     pub somatic: bool,
-    // somatic mutation
+    // detected somatic mutation by model
     pub somatic_score: f64,
     // phred somatic score
     pub hap_quals: HapQuals,
@@ -793,9 +795,11 @@ impl SNPFrag {
                 if variant_quality < min_qual_for_candidate as f64 {
                     // keep this site to rescue somatic mutation after phasing het snps
                     if allele1 != bf.ref_base && allele2 == bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
+                        candidate_snp.cand_somatic = true;
                         self.candidate_snps.push(candidate_snp);
                         self.somatic_snps.push(self.candidate_snps.len() - 1);
                     } else if allele2 != bf.ref_base && allele1 == bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
+                        candidate_snp.cand_somatic = true;
                         self.candidate_snps.push(candidate_snp);
                         self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
@@ -867,6 +871,7 @@ impl SNPFrag {
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     } else if allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
                         // keep this site to rescue somatic mutation after phasing het snps
+                        candidate_snp.cand_somatic = true;
                         self.candidate_snps.push(candidate_snp);
                         self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
@@ -882,6 +887,7 @@ impl SNPFrag {
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     } else if allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
                         // keep this site to rescue somatic mutation after phasing het snps
+                        candidate_snp.cand_somatic = true;
                         self.candidate_snps.push(candidate_snp);
                         self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
@@ -904,10 +910,12 @@ impl SNPFrag {
                         self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                     } else if allele1 != bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
                         // keep this site to rescue somatic mutation after phasing het snps
+                        candidate_snp.cand_somatic = true;
                         self.candidate_snps.push(candidate_snp);
                         self.somatic_snps.push(self.candidate_snps.len() - 1);
                     } else if allele2 != bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
                         // keep this site to rescue somatic mutation after phasing het snps
+                        candidate_snp.cand_somatic = true;
                         self.candidate_snps.push(candidate_snp);
                         self.somatic_snps.push(self.candidate_snps.len() - 1);
                     }
@@ -949,10 +957,12 @@ impl SNPFrag {
                     self.ase_hete_snps.push(self.candidate_snps.len() - 1);
                 } else if allele1 != bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
                     // keep this site to rescue somatic mutation after phasing het snps
+                    candidate_snp.cand_somatic = true;
                     self.candidate_snps.push(candidate_snp);
                     self.somatic_snps.push(self.candidate_snps.len() - 1);
                 } else if allele2 != bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
                     // keep this site to rescue somatic mutation after phasing het snps
+                    candidate_snp.cand_somatic = true;
                     self.candidate_snps.push(candidate_snp);
                     self.somatic_snps.push(self.candidate_snps.len() - 1);
                 }
@@ -2586,6 +2596,8 @@ impl SNPFrag {
         min_allele_cnt: u32,
         min_homozygous_freq: f32,
         min_phase_score: f32,
+        somatic_allele_frac_cutoff: f32,
+        somatic_allele_cnt_cutoff: u32,
     ) {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
@@ -2593,6 +2605,11 @@ impl SNPFrag {
             if snp.filter == true || snp.variant_type != 1 || snp.ase == true {
                 continue;
             }
+
+            if snp.cand_somatic == true {
+                continue;
+            }
+
             if snp.snp_cover_fragments.len() == 0 {
                 // no surranding haplotype links
                 snp.single = true;
@@ -2670,21 +2687,30 @@ impl SNPFrag {
                         }
                     }
                 }
-                let (hap1_allele_class, hap2_allele_class) = calculate_prob_somatic(&snp.hap_quals.hap1_ref_baseqs, &snp.hap_quals.hap1_alt_baseqs, &snp.hap_quals.hap2_ref_baseqs, &snp.hap_quals.hap2_alt_baseqs, 0.3);
-                if hap1_allele_class.allcls == 0 && hap2_allele_class.allcls == 2 {
-                    let somatic_score = -10.0_f64 * (1.0 - hap2_allele_class.prob).log10();
-                    snp.somatic = true;
-                    snp.somatic_score = somatic_score;
-                    // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
-                    // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
-                    // println!("hap1_ref_baseqs:{:?}\nhap1_alt_baseqs:{:?}\nhap2_ref_baseqs:{:?}\nhap2_alt_baseqs:{:?}", snp.hap_quals.hap1_ref_baseqs, snp.hap_quals.hap1_alt_baseqs, snp.hap_quals.hap2_ref_baseqs, snp.hap_quals.hap2_alt_baseqs);
-                } else if hap1_allele_class.allcls == 2 && hap2_allele_class.allcls == 0 {
-                    let somatic_score = -10.0_f64 * (1.0 - hap1_allele_class.prob).log10();
-                    snp.somatic = true;
-                    snp.somatic_score = somatic_score;
-                    // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
-                    // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
-                    // println!("hap1_ref_baseqs:{:?}\nhap1_alt_baseqs:{:?}\nhap2_ref_baseqs:{:?}\nhap2_alt_baseqs:{:?}", snp.hap_quals.hap1_ref_baseqs, snp.hap_quals.hap1_alt_baseqs, snp.hap_quals.hap2_ref_baseqs, snp.hap_quals.hap2_alt_baseqs);
+                let ref_allele_cnt = snp.hap_quals.hap1_ref_baseqs.len() + snp.hap_quals.hap2_ref_baseqs.len();
+                let alt_allele_cnt = snp.hap_quals.hap1_alt_baseqs.len() + snp.hap_quals.hap2_alt_baseqs.len();
+                if ref_allele_cnt + alt_allele_cnt > 0 && alt_allele_cnt as u32 >= somatic_allele_cnt_cutoff && alt_allele_cnt as f32 / (ref_allele_cnt + alt_allele_cnt) >= somatic_allele_frac_cutoff {
+                    // calculate somatic mutation probability
+                    let (hap1_allele_class, hap2_allele_class) = calculate_prob_somatic(&snp.hap_quals.hap1_ref_baseqs, &snp.hap_quals.hap1_alt_baseqs, &snp.hap_quals.hap2_ref_baseqs, &snp.hap_quals.hap2_alt_baseqs, 0.3);
+                    if hap1_allele_class.allcls == 0 && hap2_allele_class.allcls == 2 {
+                        let somatic_score = -10.0_f64 * (1.0 - hap2_allele_class.prob).log10();
+                        snp.cand_somatic = true;
+                        snp.somatic = true;
+                        snp.somatic_score = somatic_score;
+                        snp.phase_score = 0.0;
+                        // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
+                        // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
+                        // println!("hap1_ref_baseqs:{:?}\nhap1_alt_baseqs:{:?}\nhap2_ref_baseqs:{:?}\nhap2_alt_baseqs:{:?}", snp.hap_quals.hap1_ref_baseqs, snp.hap_quals.hap1_alt_baseqs, snp.hap_quals.hap2_ref_baseqs, snp.hap_quals.hap2_alt_baseqs);
+                    } else if hap1_allele_class.allcls == 2 && hap2_allele_class.allcls == 0 {
+                        let somatic_score = -10.0_f64 * (1.0 - hap1_allele_class.prob).log10();
+                        snp.cand_somatic = true;
+                        snp.somatic = true;
+                        snp.somatic_score = somatic_score;
+                        snp.phase_score = 0.0;
+                        // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
+                        // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
+                        // println!("hap1_ref_baseqs:{:?}\nhap1_alt_baseqs:{:?}\nhap2_ref_baseqs:{:?}\nhap2_alt_baseqs:{:?}", snp.hap_quals.hap1_ref_baseqs, snp.hap_quals.hap1_alt_baseqs, snp.hap_quals.hap2_ref_baseqs, snp.hap_quals.hap2_alt_baseqs);
+                    }
                 }
             }
 
@@ -4093,6 +4119,7 @@ impl SNPFrag {
                               min_qual_for_singlesnp_rnaedit: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
+            // TODO: somatic mutation variant_type == 0
             let snp = &self.candidate_snps[i];
             if snp.variant_type == 0 {
                 continue;
@@ -4672,12 +4699,12 @@ fn calculate_prob_somatic(hap1_ref_baseqs: &Vec<u8>, hap1_alt_baseqs: &Vec<u8>, 
     let hap1_prob_ref = prob_read_ref_with_prior / (prob_read_ref_with_prior + prob_read_het_with_prior + prob_read_som_with_prior);
     let hap1_prob_het = prob_read_het_with_prior / (prob_read_ref_with_prior + prob_read_het_with_prior + prob_read_som_with_prior);
     let hap1_prob_som = prob_read_som_with_prior / (prob_read_ref_with_prior + prob_read_het_with_prior + prob_read_som_with_prior);
-    if hap1_prob_ref > hap1_prob_het && hap1_prob_ref > hap1_prob_som {
-        hap1_allele_class = AlleleClass { allcls: 0, prob: hap1_prob_ref };
+    if hap1_prob_som > hap1_prob_ref && hap1_prob_som > hap1_prob_het {
+        hap1_allele_class = AlleleClass { allcls: 2, prob: hap1_prob_som };
     } else if hap1_prob_het > hap1_prob_ref && hap1_prob_het > hap1_prob_som {
         hap1_allele_class = AlleleClass { allcls: 1, prob: hap1_prob_het };
     } else {
-        hap1_allele_class = AlleleClass { allcls: 2, prob: hap1_prob_som };
+        hap1_allele_class = AlleleClass { allcls: 0, prob: hap1_prob_ref };
     }
 
     // for Hap2
@@ -4706,12 +4733,12 @@ fn calculate_prob_somatic(hap1_ref_baseqs: &Vec<u8>, hap1_alt_baseqs: &Vec<u8>, 
     let hap2_prob_ref = prob_read_ref_with_prior / (prob_read_ref_with_prior + prob_read_het_with_prior + prob_read_som_with_prior);
     let hap2_prob_het = prob_read_het_with_prior / (prob_read_ref_with_prior + prob_read_het_with_prior + prob_read_som_with_prior);
     let hap2_prob_som = prob_read_som_with_prior / (prob_read_ref_with_prior + prob_read_het_with_prior + prob_read_som_with_prior);
-    if hap2_prob_ref > hap2_prob_het && hap2_prob_ref > hap2_prob_som {
-        hap2_allele_class = AlleleClass { allcls: 0, prob: hap2_prob_ref };
+    if hap2_prob_som > hap2_prob_ref && hap2_prob_som > hap2_prob_het {
+        hap2_allele_class = AlleleClass { allcls: 2, prob: hap2_prob_som };
     } else if hap2_prob_het > hap2_prob_ref && hap2_prob_het > hap2_prob_som {
         hap2_allele_class = AlleleClass { allcls: 1, prob: hap2_prob_het };
     } else {
-        hap2_allele_class = AlleleClass { allcls: 2, prob: hap2_prob_som };
+        hap2_allele_class = AlleleClass { allcls: 0, prob: hap2_prob_ref };
     }
     return (hap1_allele_class, hap2_allele_class);
 }
@@ -4959,7 +4986,7 @@ pub fn multithread_phase_haplotag(
                     }
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
-                    snpfrag.add_phase_score(min_allele_cnt, min_homozygous_freq, min_phase_score);
+                    snpfrag.add_phase_score(min_allele_cnt, min_homozygous_freq, min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     // assign phased fragments to somatic mutations and detect condifent somatic mutations
                     println!("somatic: {}", snpfrag.somatic_snps.len());
                     snpfrag.detect_somatic_by_het(&bam_file.as_str(), &reg);
