@@ -793,16 +793,16 @@ impl SNPFrag {
                 candidate_snp.genotype_quality = genotype_quality;
 
                 if variant_quality < min_qual_for_candidate as f64 {
-                    // keep this site to rescue somatic mutation after phasing het snps
-                    if allele1 != bf.ref_base && allele2 == bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
-                        candidate_snp.cand_somatic = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.somatic_snps.push(self.candidate_snps.len() - 1);
-                    } else if allele2 != bf.ref_base && allele1 == bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
-                        candidate_snp.cand_somatic = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.somatic_snps.push(self.candidate_snps.len() - 1);
-                    }
+                    // // keep this site to rescue somatic mutation after phasing het snps
+                    // if allele1 != bf.ref_base && allele2 == bf.ref_base && allele1_freq >= somatic_allele_frac_cutoff && allele1_cnt >= somatic_allele_cnt_cutoff {
+                    //     candidate_snp.cand_somatic = true;
+                    //     self.candidate_snps.push(candidate_snp);
+                    //     self.somatic_snps.push(self.candidate_snps.len() - 1);
+                    // } else if allele2 != bf.ref_base && allele1 == bf.ref_base && allele2_freq >= somatic_allele_frac_cutoff && allele2_cnt >= somatic_allele_cnt_cutoff {
+                    //     candidate_snp.cand_somatic = true;
+                    //     self.candidate_snps.push(candidate_snp);
+                    //     self.somatic_snps.push(self.candidate_snps.len() - 1);
+                    // }
                     position += 1;
                     continue;
                 }
@@ -2689,13 +2689,14 @@ impl SNPFrag {
                 }
                 let ref_allele_cnt = snp.hap_quals.hap1_ref_baseqs.len() + snp.hap_quals.hap2_ref_baseqs.len();
                 let alt_allele_cnt = snp.hap_quals.hap1_alt_baseqs.len() + snp.hap_quals.hap2_alt_baseqs.len();
-                if ref_allele_cnt + alt_allele_cnt > 0 && alt_allele_cnt as u32 >= somatic_allele_cnt_cutoff && alt_allele_cnt as f32 / (ref_allele_cnt + alt_allele_cnt) >= somatic_allele_frac_cutoff {
+                if ref_allele_cnt + alt_allele_cnt > 0 && alt_allele_cnt as u32 >= somatic_allele_cnt_cutoff && alt_allele_cnt as f32 / (ref_allele_cnt + alt_allele_cnt) as f32 >= somatic_allele_frac_cutoff {
                     // calculate somatic mutation probability
                     let (hap1_allele_class, hap2_allele_class) = calculate_prob_somatic(&snp.hap_quals.hap1_ref_baseqs, &snp.hap_quals.hap1_alt_baseqs, &snp.hap_quals.hap2_ref_baseqs, &snp.hap_quals.hap2_alt_baseqs, 0.3);
                     if hap1_allele_class.allcls == 0 && hap2_allele_class.allcls == 2 {
                         let somatic_score = -10.0_f64 * (1.0 - hap2_allele_class.prob).log10();
                         snp.cand_somatic = true;
                         snp.somatic = true;
+                        snp.variant_type = 1;
                         snp.somatic_score = somatic_score;
                         snp.phase_score = 0.0;
                         // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
@@ -2705,6 +2706,7 @@ impl SNPFrag {
                         let somatic_score = -10.0_f64 * (1.0 - hap1_allele_class.prob).log10();
                         snp.cand_somatic = true;
                         snp.somatic = true;
+                        snp.variant_type = 1;
                         snp.somatic_score = somatic_score;
                         snp.phase_score = 0.0;
                         // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
@@ -3145,6 +3147,7 @@ impl SNPFrag {
             if hap1_allele_class.allcls == 0 && hap2_allele_class.allcls == 2 {
                 let somatic_score = -10.0_f64 * (1.0 - hap2_allele_class.prob).log10();
                 som_cand.somatic = true;
+                som_cand.variant_type = 1;
                 som_cand.somatic_score = somatic_score;
                 // println!("somatic snp:{}, score: {}", som_cand.pos, somatic_score);
                 // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
@@ -3152,6 +3155,7 @@ impl SNPFrag {
             } else if hap1_allele_class.allcls == 2 && hap2_allele_class.allcls == 0 {
                 let somatic_score = -10.0_f64 * (1.0 - hap1_allele_class.prob).log10();
                 som_cand.somatic = true;
+                som_cand.variant_type = 1;
                 som_cand.somatic_score = somatic_score;
                 // println!("somatic snp:{}, score: {}", som_cand.pos, somatic_score);
                 // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
@@ -3404,7 +3408,7 @@ impl SNPFrag {
                     }
                 }
                 self.candidate_snps[*i].haplotype_expression = haplotype_allele_expression;
-                // TODO: detect whether candidate with low phase score is a potential somatic mutation
+                // TODO: If phase score does not meet ase_ps_cutoff, detect whether candidate with low phase score is a potential somatic mutation
             }
         }
     }
@@ -4119,7 +4123,6 @@ impl SNPFrag {
                               min_qual_for_singlesnp_rnaedit: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
-            // TODO: somatic mutation variant_type == 0
             let snp = &self.candidate_snps[i];
             if snp.variant_type == 0 {
                 continue;
@@ -4130,7 +4133,6 @@ impl SNPFrag {
                 let mut is_single_snp = false;
                 let mut is_unconfident_phased_snp = false;
                 let mut is_ase_snp = false;
-                let mut is_somatic_mutation = false;
 
                 // dense snp?
                 if snp.filter == true {
@@ -4155,11 +4157,6 @@ impl SNPFrag {
                 // ase snp?
                 if snp.ase == true {
                     is_ase_snp = true;
-                }
-
-                // somatic mutation?
-                if snp.somatic == true {
-                    is_somatic_mutation = true;
                 }
 
                 let mut rd: VCFRecord = VCFRecord::default();
@@ -4199,25 +4196,7 @@ impl SNPFrag {
                         rd.info = format!("RDS={}", "ase_snp").to_string().into_bytes();
                     }
                 }
-                if is_somatic_mutation {
-                    if snp.variant_quality < min_qual_for_candidate as f64 {
-                        rd.filter = "LowQual".to_string().into_bytes();
-                        rd.info = format!("RDS={}", "somatic").to_string().into_bytes();
-                    } else if snp.phase_score < min_phase_score as f64 {
-                        // bad phase, unconfindent phase
-                        rd.filter = "LowQual".to_string().into_bytes();
-                        if is_rna_edit {
-                            rd.info = format!("RDS={}", "rna_editing,somatic").to_string().into_bytes();    // rna editing snp has bad phase
-                        } else {
-                            rd.info = format!("RDS={}", "somatic").to_string().into_bytes();
-                        }
-                    } else {
-                        // good phase
-                        rd.filter = "PASS".to_string().into_bytes();
-                        rd.info = format!("RDS={}", "somatic").to_string().into_bytes();
-                    }
-                }
-                if !is_dense && !is_single_snp && !is_ase_snp && !is_somatic_mutation {
+                if !is_dense && !is_single_snp && !is_ase_snp {
                     if snp.variant_quality < min_qual_for_candidate as f64 {
                         rd.filter = "LowQual".to_string().into_bytes();
                         rd.info = "RDS=.".to_string().into_bytes();
@@ -4236,16 +4215,15 @@ impl SNPFrag {
                     }
                 }
 
-                if is_dense || is_single_snp || is_unconfident_phased_snp || snp.phase_score == 0.0 || snp.haplotype == 0 || is_somatic_mutation {
+                if is_dense || is_single_snp || is_unconfident_phased_snp || snp.phase_score == 0.0 || snp.haplotype == 0 {
                     rd.genotype = format!(
-                        "{}:{}:{}:{:.2}:{}",
+                        "{}:{}:{}:{:.2}",
                         "0/1",
                         snp.genotype_quality as i32,
                         snp.depth,
-                        snp.allele_freqs[1],
-                        snp.somatic_score
+                        snp.allele_freqs[1]
                     );
-                    rd.format = "GT:GQ:DP:AF:SQ".to_string().into_bytes();
+                    rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 } else {
                     let mut af = 0.0;
                     if snp.alleles[0] == snp.reference {
@@ -4258,7 +4236,7 @@ impl SNPFrag {
                     if snp.phase_set != 0 {
                         if snp.haplotype == -1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{},{},{}:{}",
+                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "0|1",
                                 snp.phase_set,
                                 snp.genotype_quality as i32,
@@ -4268,12 +4246,11 @@ impl SNPFrag {
                                 snp.haplotype_expression[0],
                                 snp.haplotype_expression[1],
                                 snp.haplotype_expression[2],
-                                snp.haplotype_expression[3],
-                                snp.somatic_score,
+                                snp.haplotype_expression[3]
                             );
                         } else if snp.haplotype == 1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{},{},{}:{}",
+                                "{}:{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "1|0",
                                 snp.phase_set,
                                 snp.genotype_quality as i32,
@@ -4283,15 +4260,14 @@ impl SNPFrag {
                                 snp.haplotype_expression[0],
                                 snp.haplotype_expression[1],
                                 snp.haplotype_expression[2],
-                                snp.haplotype_expression[3],
-                                snp.somatic_score,
+                                snp.haplotype_expression[3]
                             );
                         }
-                        rd.format = "GT:PS:GQ:DP:AF:PQ:AE:SQ".to_string().into_bytes();
+                        rd.format = "GT:PS:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                     } else {
                         if snp.haplotype == -1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}:{}",
+                                "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "0|1",
                                 snp.genotype_quality as i32,
                                 snp.depth,
@@ -4300,12 +4276,11 @@ impl SNPFrag {
                                 snp.haplotype_expression[0],
                                 snp.haplotype_expression[1],
                                 snp.haplotype_expression[2],
-                                snp.haplotype_expression[3],
-                                snp.somatic_score,
+                                snp.haplotype_expression[3]
                             );
                         } else if snp.haplotype == 1 {
                             rd.genotype = format!(
-                                "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}:{}",
+                                "{}:{}:{}:{:.2}:{:.2}:{},{},{},{}",
                                 "1|0",
                                 snp.genotype_quality as i32,
                                 snp.depth,
@@ -4314,11 +4289,10 @@ impl SNPFrag {
                                 snp.haplotype_expression[0],
                                 snp.haplotype_expression[1],
                                 snp.haplotype_expression[2],
-                                snp.haplotype_expression[3],
-                                snp.somatic_score,
+                                snp.haplotype_expression[3]
                             );
                         }
-                        rd.format = "GT:GQ:DP:AF:PQ:AE:SQ".to_string().into_bytes();
+                        rd.format = "GT:GQ:DP:AF:PQ:AE".to_string().into_bytes();
                     }
                 }
                 records.push(rd);
