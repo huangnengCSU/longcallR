@@ -1651,9 +1651,9 @@ impl SNPFrag {
                         for _ in 0..cg.len() {
                             if pos_on_ref == snp_pos {
                                 idx += 1;
-                                if idx < self.ase_hete_snps.len() {
-                                    snp_pos = self.candidate_snps[self.ase_hete_snps[idx]].pos;
-                                    alleles = self.candidate_snps[self.ase_hete_snps[idx]].alleles.clone();
+                                if idx < self.somatic_snps.len() {
+                                    snp_pos = self.candidate_snps[self.somatic_snps[idx]].pos;
+                                    alleles = self.candidate_snps[self.somatic_snps[idx]].alleles.clone();
                                 }
                             }
                             pos_on_ref += 1;
@@ -4962,7 +4962,7 @@ pub fn multithread_phase_haplotag(
                     let read_assignments = snpfrag.assign_reads(read_assignment_cutoff);
                     snpfrag.add_phase_score(min_allele_cnt, min_homozygous_freq, min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     // assign phased fragments to somatic mutations and detect condifent somatic mutations
-                    println!("somatic: {}", snpfrag.somatic_snps.len());
+                    // println!("somatic: {}", snpfrag.somatic_snps.len());
                     snpfrag.detect_somatic_by_het(&bam_file.as_str(), &reg);
                     snpfrag.phase_ase_hete_snps(max_enum_snps, random_flip_fraction, max_iters);
                     // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
