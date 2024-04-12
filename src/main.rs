@@ -96,7 +96,7 @@ struct Args {
     min_allele_freq: f32,
 
     /// Minimum allele frequency for candidate SNPs include intron
-    #[arg(long, default_value_t = 0.05)]
+    #[arg(long, default_value_t = 0.0)]
     min_allele_freq_include_intron: f32,
 
     /// Minimum allele frequency for homozygous SNPs
@@ -392,7 +392,7 @@ fn main() {
                 min_linkers = 1;
                 min_allele_cnt = 0;
                 min_allele_freq = 0.25;
-                min_allele_freq_include_intron = 0.02;
+                min_allele_freq_include_intron = 0.0;
                 min_homozygous_freq = 0.75;
                 min_qual_for_candidate = 60;
                 min_qual_for_singlesnp_rnaedit = 80;
@@ -424,7 +424,7 @@ fn main() {
                 min_linkers = 1;
                 min_allele_cnt = 0;
                 min_allele_freq = 0.25;
-                min_allele_freq_include_intron = 0.001;
+                min_allele_freq_include_intron = 0.0;
                 min_homozygous_freq = 0.75;
                 min_qual_for_candidate = 60;
                 min_qual_for_singlesnp_rnaedit = 80;
