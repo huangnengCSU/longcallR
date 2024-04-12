@@ -112,7 +112,7 @@ struct Args {
     min_qual_for_singlesnp_rnaedit: u32,
 
     /// Minimum support number for each allele
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = 0)]
     min_allele_cnt: u32,
 
     /// When set, ignore strand bias
@@ -314,7 +314,6 @@ fn main() {
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
                 diff_baseq = arg.diff_baseq;
-                min_allele_cnt = arg.min_allele_cnt;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
@@ -327,6 +326,7 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_linkers = 2;
+                min_allele_cnt = 3;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_homozygous_freq = 0.75;
@@ -358,6 +358,7 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_linkers = 2;
+                min_allele_cnt = 3;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_homozygous_freq = 0.75;
@@ -376,7 +377,6 @@ fn main() {
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
                 diff_baseq = arg.diff_baseq;
-                min_allele_cnt = arg.min_allele_cnt;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
@@ -390,6 +390,7 @@ fn main() {
                 min_phase_score = 8.0;
                 ase_ps_cutoff = 20.0;
                 min_linkers = 1;
+                min_allele_cnt = 0;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.02;
                 min_homozygous_freq = 0.75;
@@ -408,7 +409,6 @@ fn main() {
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
                 diff_baseq = arg.diff_baseq;
-                min_allele_cnt = arg.min_allele_cnt;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
@@ -422,6 +422,7 @@ fn main() {
                 min_phase_score = 8.0;
                 ase_ps_cutoff = 20.0;
                 min_linkers = 1;
+                min_allele_cnt = 0;
                 min_allele_freq = 0.25;
                 min_allele_freq_include_intron = 0.001;
                 min_homozygous_freq = 0.75;
