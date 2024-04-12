@@ -239,6 +239,12 @@ impl SNPFrag {
 
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
 
+            let specific_pos = 32584228;
+
+            if position == specific_pos - 1 {
+                println!("{:?}", bf);
+            }
+
             // filtering average distance to read end is significant different for allele1 and allele2
             // filtering average base quality is significant different for allele1 and allele2
             let mut allele1_dists: Vec<i64> = Vec::new();
@@ -338,6 +344,7 @@ impl SNPFrag {
             // filtering with depth, considering intron reads
             let depth_include_intron = bf.get_depth_include_intron();
             if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
+                // only ont reads have this filter, hifi reads don't have this filter
                 // maybe caused by erroneous intron alignment
                 position += 1;
                 continue;
@@ -347,6 +354,10 @@ impl SNPFrag {
             if bf.d > allele1_cnt {
                 position += 1;
                 continue;
+            }
+
+            if position == specific_pos - 1 {
+                println!("pass filter depth");
             }
 
             if !no_strand_bias {
@@ -415,6 +426,10 @@ impl SNPFrag {
                         position += 1;
                         continue;
                     }
+                }
+
+                if position == specific_pos - 1 {
+                    println!("pass strand bias");
                 }
 
                 // // use fisher's test or chi-square test to test strand bias
@@ -658,6 +673,10 @@ impl SNPFrag {
                 }
             }
 
+            if position == specific_pos - 1 {
+                println!("pass error rate");
+            }
+
             // filtering insertion cause false variant near splicing site
             let mut insertion_concerned = false;
             let mut ins_cnt = 0;
@@ -670,6 +689,10 @@ impl SNPFrag {
             if insertion_concerned {
                 position += 1;
                 continue;
+            }
+
+            if position == specific_pos - 1 {
+                println!("pass filter insertion");
             }
 
             // genotype likelihood
@@ -770,6 +793,10 @@ impl SNPFrag {
             phred_genotype_prob.sort_by(cmp_f64);
             let genotype_quality = phred_genotype_prob[1] - phred_genotype_prob[0];
 
+            if position == specific_pos - 1 {
+                println!("{:?}", genotype_prob);
+            }
+
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
                 // candidate homozygous SNP
                 let allele1_freq = (allele1_cnt as f32) / (depth as f32);
@@ -782,6 +809,9 @@ impl SNPFrag {
                 candidate_snp.reference = bf.ref_base;
                 candidate_snp.depth = depth;
                 candidate_snp.variant_type = 2;
+                if position == specific_pos - 1 {
+                    println!("hom var:{:?}", candidate_snp);
+                }
                 if allele1 != bf.ref_base && allele2 != bf.ref_base {
                     if allele1_freq < min_homozygous_freq && allele2_freq > 0.0 {
                         candidate_snp.variant_type = 3; // triallelic SNP, triallelic SNP is also considered as homozygous SNP, e.g. ref: A, alt: C, G
@@ -841,6 +871,9 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
+                if position == specific_pos - 1 {
+                    println!("het var:{:?}", candidate_snp);
+                }
                 if bf.ref_base == 'A' {
                     if (allele1 == 'A' && allele2 == 'G') || (allele1 == 'G' && allele2 == 'A') {
                         candidate_snp.rna_editing = true;
@@ -941,6 +974,9 @@ impl SNPFrag {
                 candidate_snp.variant_quality = variant_quality;
                 candidate_snp.genotype_probability = genotype_prob.clone();
                 candidate_snp.genotype_quality = genotype_quality;
+                if position == specific_pos - 1 {
+                    println!("hom ref: {:?}", candidate_snp);
+                }
                 if allele1 != bf.ref_base && allele2 != bf.ref_base {
                     position += 1;
                     continue;
@@ -1316,7 +1352,13 @@ impl SNPFrag {
                     if fe.ase_snp == true {
                         ase_links += 1;
                     } else {
-                        hete_links += 1;
+                        if self.candidate_snps[fe.snp_idx].reference == 'A' && (self.candidate_snps[fe.snp_idx].alleles[0] == 'G'|| self.candidate_snps[fe.snp_idx].alleles[1] == 'G') {
+                            continue;
+                        } else if self.candidate_snps[fe.snp_idx].reference == 'T' && (self.candidate_snps[fe.snp_idx].alleles[0] == 'C'|| self.candidate_snps[fe.snp_idx].alleles[1] == 'C') {
+                            continue;
+                        } else {
+                            hete_links += 1;
+                        }
                     }
                 }
             }
@@ -2651,10 +2693,16 @@ impl SNPFrag {
                 }
             }
 
+            let specific_pos = 32584228;
+            if snp.pos == specific_pos - 1 {
+                println!("ps:{:?}\n, probs:{:?}\n, sigma:{:?}\n, assigns:{:?}\n", ps, probs, sigma, assigns);
+            }
+
             let mut phase_score = 0.0;
 
+
             if num_hap1 < min_allele_cnt || num_hap2 < min_allele_cnt {
-                // filter SNPs with low allele count, unconfident phase
+                // ont has min_allele_cnt, hifi should not have this filter
                 phase_score = 0.0;
             } else {
                 if sigma.len() > 0 {
@@ -2747,6 +2795,9 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
+            if self.fragments[k].read_id == "SRR18130587.547655".to_string() {
+                println!("{:?}", self.fragments[k]);
+            }
             for fe in self.fragments[k].list.iter() {
                 if fe.ase_snp == true {
                     continue;
@@ -4124,6 +4175,10 @@ impl SNPFrag {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
+            let specific_pos = 32584228;
+            if snp.pos == specific_pos - 1 {
+                println!("{:?}", snp);
+            }
             if snp.variant_type == 0 {
                 continue;
             }
@@ -4179,6 +4234,9 @@ impl SNPFrag {
                         rd.filter = "LowQual".to_string().into_bytes();
                         rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
                     } else {
+                        if (rd.reference[0] == b'A' && rd.alternative[0][0] == b'G') || (rd.reference[0] == b'T' && rd.alternative[0][0] == b'C') {
+                            continue;
+                        }
                         rd.filter = "PASS".to_string().into_bytes();
                         rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
                     }
