@@ -388,7 +388,9 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_phase_score = 8.0;
-                ase_ps_cutoff = 20.0;
+                ase_ps_cutoff = 15.0;
+                ase_ps_count_cutoff = 6;
+                ase_allele_cnt_cutoff = 0;
                 min_linkers = 1;
                 min_allele_cnt = 0;
                 min_allele_freq = 0.25;
@@ -420,7 +422,9 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_phase_score = 8.0;
-                ase_ps_cutoff = 20.0;
+                ase_ps_cutoff = 15.0;
+                ase_ps_count_cutoff = 6;
+                ase_allele_cnt_cutoff = 0;
                 min_linkers = 1;
                 min_allele_cnt = 0;
                 min_allele_freq = 0.25;
