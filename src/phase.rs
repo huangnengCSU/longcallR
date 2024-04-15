@@ -239,7 +239,7 @@ impl SNPFrag {
 
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
 
-            let specific_pos = 9413048;
+            let specific_pos = 56378807;
 
             if position == specific_pos - 1 {
                 println!("{:?}", bf);
@@ -327,23 +327,65 @@ impl SNPFrag {
             }
 
             {
-                let mut avg_alleles_baseq = 0.0;
-                for baseq in allele1_quals.iter() {
-                    avg_alleles_baseq += *baseq as f32;
-                }
-                for baseq in allele2_quals.iter() {
-                    avg_alleles_baseq += *baseq as f32;
-                }
-                avg_alleles_baseq /= (allele1_quals.len() + allele2_quals.len()) as f32;
-                if avg_alleles_baseq < min_baseq as f32 {
-                    position += 1;
-                    continue;
+                // let mut avg_alleles_baseq = 0.0;
+                // for baseq in allele1_quals.iter() {
+                //     avg_alleles_baseq += *baseq as f32;
+                // }
+                // for baseq in allele2_quals.iter() {
+                //     avg_alleles_baseq += *baseq as f32;
+                // }
+                // avg_alleles_baseq /= (allele1_quals.len() + allele2_quals.len()) as f32;
+                // if avg_alleles_baseq < min_baseq as f32 {
+                //     position += 1;
+                //     continue;
+                // }
+
+                // filter if all alt alleles have low base quality
+                if allele1 != bf.ref_base && allele2 != bf.ref_base {
+                    let mut allele1_bq_cnt = 0;
+                    let mut allele2_bq_cnt = 0;
+                    for bq in allele1_quals.iter() {
+                        if *bq >= min_baseq {
+                            allele1_bq_cnt += 1;
+                        }
+                    }
+                    for bq in allele2_quals.iter() {
+                        if *bq >= min_baseq {
+                            allele2_bq_cnt += 1;
+                        }
+                    }
+                    if allele1_bq_cnt < 2 && allele2_bq_cnt < 2 {
+                        position += 1;
+                        continue;
+                    }
+                } else if allele1 != bf.ref_base {
+                    let mut allele1_bq_cnt = 0;
+                    for bq in allele1_quals.iter() {
+                        if *bq >= min_baseq {
+                            allele1_bq_cnt += 1;
+                        }
+                    }
+                    if allele1_bq_cnt < 2 {
+                        position += 1;
+                        continue;
+                    }
+                } else if allele2 != bf.ref_base {
+                    let mut allele2_bq_cnt = 0;
+                    for bq in allele2_quals.iter() {
+                        if *bq >= min_baseq {
+                            allele2_bq_cnt += 1;
+                        }
+                    }
+                    if allele2_bq_cnt < 2 {
+                        position += 1;
+                        continue;
+                    }
                 }
             }
 
             // filtering with depth, considering intron reads
             let depth_include_intron = bf.get_depth_include_intron();
-            if (allele1_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
+            if (allele1_cnt as f32 + allele2_cnt as f32) / (depth_include_intron as f32) < min_allele_freq_include_intron {
                 // only ont reads have this filter, hifi reads don't have this filter
                 // maybe caused by erroneous intron alignment
                 position += 1;
@@ -351,9 +393,25 @@ impl SNPFrag {
             }
 
             // filtering with deletion frequency
-            if bf.d > allele1_cnt {
-                position += 1;
-                continue;
+            // if bf.d > allele1_cnt {
+            //     position += 1;
+            //     continue;
+            // }
+            if allele1 != bf.ref_base && allele2 != bf.ref_base {
+                if bf.d >= allele1_cnt && bf.d >= allele2_cnt {
+                    position += 1;
+                    continue;
+                }
+            } else if allele1 != bf.ref_base {
+                if bf.d >= allele1_cnt {
+                    position += 1;
+                    continue;
+                }
+            } else if allele2 != bf.ref_base {
+                if bf.d >= allele2_cnt {
+                    position += 1;
+                    continue;
+                }
             }
 
             if position == specific_pos - 1 {
@@ -381,6 +439,8 @@ impl SNPFrag {
                 if variant_allele.len() > 0 {
                     // variant allele
                     let mut strand_bias = false;
+                    let freads = bf.forward_cnt as i32;
+                    let breads = bf.backward_cnt as i32;
                     for allele_base in variant_allele.iter() {
                         let mut fcnt = 0;
                         let mut bcnt = 0;
@@ -416,7 +476,13 @@ impl SNPFrag {
                             }
                         }
                         let total_cnt = fcnt + bcnt;
-                        if fcnt as f32 / total_cnt as f32 > strand_bias_threshold || bcnt as f32 / total_cnt as f32 > strand_bias_threshold {
+                        if fcnt as f32 / total_cnt as f32 > strand_bias_threshold && 0.5_f32.powf((breads - bcnt) as f32) < 0.002 {
+                            println!("strand bias, fread:{}, fcnt:{}, bread:{}, bcnt:{}, total_cnt:{}", freads, fcnt, breads, bcnt, total_cnt);
+                            // strand bias
+                            strand_bias = true;
+                            continue;
+                        } else if bcnt as f32 / total_cnt as f32 > strand_bias_threshold && 0.5_f32.powf((freads - fcnt) as f32) < 0.002 {
+                            println!("strand bias, fread:{}, fcnt:{}, bread:{}, bcnt:{}, total_cnt:{}", freads, fcnt, breads, bcnt, total_cnt);
                             // strand bias
                             strand_bias = true;
                             continue;
@@ -727,7 +793,7 @@ impl SNPFrag {
             }
 
             for bq in identical_baseqs.iter() {
-                let bq = if *bq < 40 { *bq } else { 40 };
+                let bq = if *bq < 33 { *bq } else { 33 };
                 let error_rate = 0.1_f64.powf((bq as f64) / 10.0);
                 loglikelihood[0] += error_rate.log10();
                 loglikelihood[2] += (1.0 - error_rate).log10();
@@ -735,7 +801,7 @@ impl SNPFrag {
 
             for bq_vec in different_baseqs.iter() {
                 for bq in bq_vec.iter() {
-                    let bq = if *bq < 40 { *bq } else { 40 };
+                    let bq = if *bq < 33 { *bq } else { 33 };
                     let error_rate = 0.1_f64.powf((bq as f64) / 10.0);
                     loglikelihood[0] += (1.0 - error_rate).log10();
                     loglikelihood[2] += error_rate.log10();
@@ -1031,6 +1097,13 @@ impl SNPFrag {
             position += 1;
         }
 
+        let specific_pos = 56378807;
+        for i in 0..self.candidate_snps.len() {
+            if self.candidate_snps[i].pos == specific_pos - 1 {
+                println!("have {:?}", self.candidate_snps[i]);
+            }
+        }
+
         // filter dense SNPs
         // for i in 0..self.candidate_snps.len() {
         //     for j in i..self.candidate_snps.len() {
@@ -1128,9 +1201,10 @@ impl SNPFrag {
         }
         self.ase_hete_snps = tmp_ase_hete;
 
-        let specific_pos = 9413048;
+        let specific_pos = 56378807;
         for s in self.candidate_snps.iter() {
             if s.pos == specific_pos - 1 {
+                println!("Pass dense filtering");
                 println!("cand:{:?}\n", s);
             }
         }
@@ -1396,8 +1470,9 @@ impl SNPFrag {
             }
             fragment.num_hete_links = hete_links;
             fragment.num_ase_links = ase_links;
-            if fragment.read_id == "SRR18130587.2326699".to_string() {
+            if fragment.read_id == "SRR18130587.1915297".to_string() {
                 println!("hete links: {}, ase_links: {}", hete_links, ase_links);
+                println!("fragment: {:?}", fragment);
             }
 
             // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
@@ -1406,6 +1481,10 @@ impl SNPFrag {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
+                    // let specific_pos = 56378807;
+                    // if self.candidate_snps[fe.snp_idx].pos == specific_pos - 1 {
+                    //     println!("cover fragment: {:?}", self.candidate_snps[fe.snp_idx].snp_cover_fragments);
+                    // }
                 }
                 self.fragments.push(fragment);
             }
@@ -2568,10 +2647,6 @@ impl SNPFrag {
         let mut largest_prob = f64::NEG_INFINITY;
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
-        println!("ase snps: {:?}", self.ase_snps);
-        for i in self.ase_snps.iter() {
-            println!("ase snp: {:?}", self.candidate_snps[*i]);
-        }
         if self.ase_snps.len() <= max_enum_snps {
             // enumerate the haplotype, then optimize the assignment
             let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
@@ -2742,7 +2817,7 @@ impl SNPFrag {
                 }
             }
 
-            let specific_pos = 9413048;
+            let specific_pos = 56378807;
             if snp.pos == specific_pos - 1 {
                 println!("add phase score:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -2845,7 +2920,7 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
-            if self.fragments[k].read_id == "SRR18130587.2326699".to_string() {
+            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
                 println!("{:?}", self.fragments[k]);
             }
             for fe in self.fragments[k].list.iter() {
@@ -2928,7 +3003,8 @@ impl SNPFrag {
                     delta_hete.push(self.candidate_snps[fe.snp_idx].haplotype);
                 }
             }
-            if self.fragments[k].read_id == "SRR18130587.2326699".to_string() {
+            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                println!("S1");
                 println!("sigma_k:{:?}", self.fragments[k].haplotag);
                 println!("delta_hete:{:?}\nps_hete:{:?}\nprobs_hete:{:?}", delta_hete, ps_hete, probs_hete);
                 println!("delta_ase:{:?}\nps_ase:{:?}\nprobs_ase:{:?}", delta_ase, ps_ase, probs_ase);
@@ -2964,16 +3040,26 @@ impl SNPFrag {
 
                 if (q_hete - qn_hete).abs() > read_assignment_cutoff && (q_ase - qn_ase).abs() > read_assignment_cutoff {
                     // consider both ase and hete snps
+                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                        println!("S2");
+                        println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
+                    }
                     if q_hete >= qn_hete && q_ase >= qn_ase {
                         // both ase and hete snps support the same haplotype
                         if sigma_k == 1 {
                             self.fragments[k].assignment = 1;
                             self.fragments[k].assignment_score = q_hete.max(q_ase);
                             read_assignments.insert(self.fragments[k].read_id.clone(), 1);
+                            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                                println!("S2.1");
+                            }
                         } else {
                             self.fragments[k].assignment = 2;
                             self.fragments[k].assignment_score = q_hete.max(q_ase);
                             read_assignments.insert(self.fragments[k].read_id.clone(), 2);
+                            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                                println!("S2.2");
+                            }
                         }
                     } else if q_hete < qn_hete && q_ase < qn_ase {
                         // both ase and hete snps support the opposite haplotype
@@ -3076,6 +3162,10 @@ impl SNPFrag {
                     }
                 } else if (q_hete - qn_hete).abs() > read_assignment_cutoff {
                     // only consider hete snps
+                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                        println!("S3");
+                        println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
+                    }
                     if q_hete > qn_hete {
                         if sigma_k == 1 {
                             self.fragments[k].assignment = 1;
@@ -3101,6 +3191,10 @@ impl SNPFrag {
                     }
                 } else if (q_ase - qn_ase).abs() > read_assignment_cutoff {
                     // only consider ase snps
+                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                        println!("S4");
+                        println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
+                    }
                     if q_ase > qn_ase {
                         if sigma_k == 1 {
                             self.fragments[k].assignment = 1;
@@ -3126,7 +3220,10 @@ impl SNPFrag {
                     }
                 } else {
                     // unknown which haplotype the read belongs to, cluster the read into unknown group
-                    println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
+                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                        println!("S5");
+                        println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
+                    }
                     self.fragments[k].assignment = 0;
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
@@ -3458,7 +3555,10 @@ impl SNPFrag {
             let mut probs: Vec<f64> = Vec::new();
             let mut num_hap1 = 0;
             let mut num_hap2 = 0;
-            let specific_pos = 9413048;
+            let specific_pos = 56378807;
+            if self.candidate_snps[*i].pos == specific_pos - 1 {
+                println!("rescue_ase_snps_v2");
+            }
             if self.candidate_snps[*i].pos == specific_pos - 1 {
                 for k in self.candidate_snps[*i].snp_cover_fragments.iter() {
                     println!("cover: {:?}", self.fragments[*k]);
@@ -3483,10 +3583,10 @@ impl SNPFrag {
                     }
                 }
             }
-            let specific_pos = 9413048;
             if self.candidate_snps[*i].pos == specific_pos - 1 {
                 println!("rescue_ase_snps_v2:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\n", ps, probs, sigma);
+                println!("num_hap1:{}, num_hap2:{}", num_hap1, num_hap2);
             }
             if num_hap1 < ase_allele_cnt_cutoff || num_hap2 < ase_allele_cnt_cutoff {
                 // each haplotype should have at least 3 reads
@@ -4245,7 +4345,7 @@ impl SNPFrag {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let specific_pos = 9413048;
+            let specific_pos = 56378807;
             if snp.pos == specific_pos - 1 {
                 println!("phased output: {:?}", snp);
             }
@@ -5079,7 +5179,7 @@ pub fn multithread_phase_haplotag(
                     }
                 }
             } else {
-                if snpfrag.hete_snps.len() > 0 {
+                if snpfrag.hete_snps.len() >= 0 {
                     unsafe {
                         snpfrag.init_haplotypes();
                     }
