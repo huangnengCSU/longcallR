@@ -192,7 +192,7 @@ struct Args {
     ase_allele_frac_cutoff: f32,
 
     /// Allele-specific expression allele count cutoff
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = 2)]
     ase_allele_cnt_cutoff: u32,
 
     /// Allele-specific expression phased read count cutoff
@@ -382,21 +382,21 @@ fn main() {
                 window_size = arg.window_size;
                 diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
-                min_depth = arg.min_depth;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_depth = 6;
                 min_phase_score = 8.0;
                 ase_ps_cutoff = 15.0;
                 ase_ps_count_cutoff = 6;
-                ase_allele_cnt_cutoff = 0;
+                ase_allele_cnt_cutoff = 2;
                 min_linkers = 1;
                 min_allele_cnt = 0;
-                min_allele_freq = 0.25;
+                min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_homozygous_freq = 0.75;
-                min_qual_for_candidate = 60;
+                min_qual_for_candidate = 15;
                 min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
@@ -422,9 +422,9 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_phase_score = 8.0;
-                ase_ps_cutoff = 15.0;
-                ase_ps_count_cutoff = 6;
-                ase_allele_cnt_cutoff = 0;
+                ase_ps_cutoff = 20.0;
+                ase_ps_count_cutoff = 8;
+                // ase_allele_cnt_cutoff = 0;
                 min_linkers = 1;
                 min_allele_cnt = 0;
                 min_allele_freq = 0.25;
