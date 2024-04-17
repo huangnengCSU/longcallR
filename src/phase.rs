@@ -216,6 +216,13 @@ impl SNPFrag {
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
             let bf = &pileup[bfidx];
+
+            let specific_pos = 510925;
+
+            if position == specific_pos - 1 {
+                println!("{:?}", bf);
+            }
+
             if bf.i {
                 continue;
             }
@@ -226,8 +233,17 @@ impl SNPFrag {
                 continue;
             }
 
+            if position == specific_pos - 1 {
+                println!("annotation pass");
+            }
+
             // 1.filtering with depth
             let depth = bf.get_depth_exclude_intron_deletion();
+
+            if position == specific_pos - 1 {
+                println!("depth: {}", depth);
+            }
+
             if depth < min_coverage {
                 position += 1;
                 continue;
@@ -237,13 +253,13 @@ impl SNPFrag {
                 continue;
             }
 
+            if position == specific_pos - 1 {
+                println!("depth pass");
+            }
+
+
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles();
 
-            let specific_pos = 56378807;
-
-            if position == specific_pos - 1 {
-                println!("{:?}", bf);
-            }
 
             // filtering average distance to read end is significant different for allele1 and allele2
             // filtering average base quality is significant different for allele1 and allele2
@@ -354,7 +370,7 @@ impl SNPFrag {
                             allele2_bq_cnt += 1;
                         }
                     }
-                    if allele1_bq_cnt < 2 && allele2_bq_cnt < 2 {
+                    if allele1_cnt > 0 && allele1_bq_cnt < 2 && allele2_cnt > 0 && allele2_bq_cnt < 2 {
                         position += 1;
                         continue;
                     }
@@ -365,7 +381,7 @@ impl SNPFrag {
                             allele1_bq_cnt += 1;
                         }
                     }
-                    if allele1_bq_cnt < 2 {
+                    if allele1_cnt > 0 && allele1_bq_cnt < 2 {
                         position += 1;
                         continue;
                     }
@@ -376,11 +392,15 @@ impl SNPFrag {
                             allele2_bq_cnt += 1;
                         }
                     }
-                    if allele2_bq_cnt < 2 {
+                    if allele2_cnt > 0 && allele2_bq_cnt < 2 {
                         position += 1;
                         continue;
                     }
                 }
+            }
+
+            if position == specific_pos - 1 {
+                println!("baseq pass");
             }
 
             // filtering with depth, considering intron reads
@@ -1097,7 +1117,7 @@ impl SNPFrag {
             position += 1;
         }
 
-        let specific_pos = 56378807;
+        let specific_pos = 510925;
         for i in 0..self.candidate_snps.len() {
             if self.candidate_snps[i].pos == specific_pos - 1 {
                 println!("have {:?}", self.candidate_snps[i]);
@@ -1201,7 +1221,7 @@ impl SNPFrag {
         }
         self.ase_hete_snps = tmp_ase_hete;
 
-        let specific_pos = 56378807;
+        let specific_pos = 510925;
         for s in self.candidate_snps.iter() {
             if s.pos == specific_pos - 1 {
                 println!("Pass dense filtering");
@@ -1470,7 +1490,7 @@ impl SNPFrag {
             }
             fragment.num_hete_links = hete_links;
             fragment.num_ase_links = ase_links;
-            if fragment.read_id == "SRR18130587.1915297".to_string() {
+            if fragment.read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                 println!("hete links: {}, ase_links: {}", hete_links, ase_links);
                 println!("fragment: {:?}", fragment);
             }
@@ -1481,7 +1501,7 @@ impl SNPFrag {
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
-                    // let specific_pos = 56378807;
+                    // let specific_pos = 510925;
                     // if self.candidate_snps[fe.snp_idx].pos == specific_pos - 1 {
                     //     println!("cover fragment: {:?}", self.candidate_snps[fe.snp_idx].snp_cover_fragments);
                     // }
@@ -2817,7 +2837,7 @@ impl SNPFrag {
                 }
             }
 
-            let specific_pos = 56378807;
+            let specific_pos = 510925;
             if snp.pos == specific_pos - 1 {
                 println!("add phase score:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -2920,7 +2940,7 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
-            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+            if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                 println!("{:?}", self.fragments[k]);
             }
             for fe in self.fragments[k].list.iter() {
@@ -2945,7 +2965,7 @@ impl SNPFrag {
                     qn = SNPFrag::cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
                 }
 
-                if (q - qn).abs() > read_assignment_cutoff {
+                if (q - qn).abs() >= read_assignment_cutoff {
                     if q > qn {
                         if sigma_k == 1 {
                             self.fragments[k].assignment = 1;
@@ -2971,6 +2991,7 @@ impl SNPFrag {
                     }
                 } else {
                     // unknown which haplotype the read belongs to, cluster the read into unknown group
+                    // panic!("Error: unexpected condition.");
                     self.fragments[k].assignment = 0;
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
@@ -3003,11 +3024,12 @@ impl SNPFrag {
                     delta_hete.push(self.candidate_snps[fe.snp_idx].haplotype);
                 }
             }
-            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+            if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                 println!("S1");
                 println!("sigma_k:{:?}", self.fragments[k].haplotag);
                 println!("delta_hete:{:?}\nps_hete:{:?}\nprobs_hete:{:?}", delta_hete, ps_hete, probs_hete);
                 println!("delta_ase:{:?}\nps_ase:{:?}\nprobs_ase:{:?}", delta_ase, ps_ase, probs_ase);
+                println!("ase snps: {:?}", self.ase_snps);
             }
             if sigma_k == 0 {
                 // unasigned haplotag, cluster the read into unknown group
@@ -3038,9 +3060,9 @@ impl SNPFrag {
                     );
                 }
 
-                if (q_hete - qn_hete).abs() > read_assignment_cutoff && (q_ase - qn_ase).abs() > read_assignment_cutoff {
+                if (q_hete - qn_hete).abs() >= read_assignment_cutoff && (q_ase - qn_ase).abs() >= read_assignment_cutoff {
                     // consider both ase and hete snps
-                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                    if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                         println!("S2");
                         println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
                     }
@@ -3050,14 +3072,14 @@ impl SNPFrag {
                             self.fragments[k].assignment = 1;
                             self.fragments[k].assignment_score = q_hete.max(q_ase);
                             read_assignments.insert(self.fragments[k].read_id.clone(), 1);
-                            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                            if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                                 println!("S2.1");
                             }
                         } else {
                             self.fragments[k].assignment = 2;
                             self.fragments[k].assignment_score = q_hete.max(q_ase);
                             read_assignments.insert(self.fragments[k].read_id.clone(), 2);
-                            if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                            if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                                 println!("S2.2");
                             }
                         }
@@ -3155,14 +3177,15 @@ impl SNPFrag {
                             }
                         }
                     } else {
+                        // panic!("Error: unexpected condition.");
                         // unknown which haplotype the read belongs to, cluster the read into unknown group
                         self.fragments[k].assignment = 0;
                         self.fragments[k].assignment_score = 0.0;
                         read_assignments.insert(self.fragments[k].read_id.clone(), 0);
                     }
-                } else if (q_hete - qn_hete).abs() > read_assignment_cutoff {
+                } else if (q_hete - qn_hete).abs() >= read_assignment_cutoff {
                     // only consider hete snps
-                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                    if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                         println!("S3");
                         println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
                     }
@@ -3189,9 +3212,9 @@ impl SNPFrag {
                             read_assignments.insert(self.fragments[k].read_id.clone(), 1);
                         }
                     }
-                } else if (q_ase - qn_ase).abs() > read_assignment_cutoff {
+                } else if (q_ase - qn_ase).abs() >= read_assignment_cutoff {
                     // only consider ase snps
-                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                    if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                         println!("S4");
                         println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
                     }
@@ -3220,10 +3243,11 @@ impl SNPFrag {
                     }
                 } else {
                     // unknown which haplotype the read belongs to, cluster the read into unknown group
-                    if self.fragments[k].read_id == "SRR18130587.1915297".to_string() {
+                    if self.fragments[k].read_id == "m84036_230422_223801_s1/42010068/ccs/6216_8325".to_string() {
                         println!("S5");
                         println!("q_hete:{}, qn_hete:{}, q_ase:{}, qn_ase:{}", q_hete, qn_hete, q_ase, qn_ase);
                     }
+                    // panic!("Error: unexpected condition.");
                     self.fragments[k].assignment = 0;
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
@@ -3555,7 +3579,7 @@ impl SNPFrag {
             let mut probs: Vec<f64> = Vec::new();
             let mut num_hap1 = 0;
             let mut num_hap2 = 0;
-            let specific_pos = 56378807;
+            let specific_pos = 510925;
             if self.candidate_snps[*i].pos == specific_pos - 1 {
                 println!("rescue_ase_snps_v2");
             }
@@ -4345,7 +4369,7 @@ impl SNPFrag {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let specific_pos = 56378807;
+            let specific_pos = 510925;
             if snp.pos == specific_pos - 1 {
                 println!("phased output: {:?}", snp);
             }
