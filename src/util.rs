@@ -190,11 +190,15 @@ impl BaseFreq {
         self.a + self.c + self.g + self.t
     }
 
-    pub fn get_two_major_alleles(&self) -> (char, u32, char, u32) {
+    pub fn get_two_major_alleles(&self, ref_base: char) -> (char, u32, char, u32) {
         let mut x: Vec<(char, u32)> = [('A', self.a), ('C', self.c), ('G', self.g), ('T', self.t)].iter().cloned().collect();
         // sort by count: u32
         x.sort_by(|a, b| b.1.cmp(&a.1));
-        (x[0].0, x[0].1, x[1].0, x[1].1)
+        if x[1].1 == 0 && x[0].0 != ref_base && x[1].0 != ref_base {
+            return (x[0].0, x[0].1, ref_base, x[1].1);
+        } else {
+            return (x[0].0, x[0].1, x[1].0, x[1].1);
+        }
     }
 
     pub fn get_none_ref_count(&self) -> u32 {
@@ -208,21 +212,6 @@ impl BaseFreq {
             }
         }
     }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct VCFRecord {
-    pub chromosome: Vec<u8>,
-    pub position: u64,
-    pub id: Vec<u8>,
-    pub reference: Vec<u8>,
-    pub alternative: Vec<Vec<u8>>,
-    pub qual: i32,
-    pub filter: Vec<u8>,
-    pub info: Vec<u8>,
-    pub format: Vec<u8>,
-    pub genotype: String,
-    /* private fields */
 }
 
 

@@ -4,11 +4,18 @@ use clap::{ArgAction, Parser, ValueEnum};
 use rand::seq::SliceRandom;
 use rust_htslib::bam::Read;
 
-use crate::phase::multithread_phase_haplotag;
 use crate::util::*;
+use crate::work::multithread_phase_haplotag;
 
 mod phase;
 mod util;
+mod snpfrags;
+mod som;
+mod exon;
+mod work;
+mod vcf;
+mod candidate;
+mod fragment;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Preset {
@@ -95,6 +102,14 @@ struct Args {
     #[arg(long, default_value_t = 0.20)]
     min_allele_freq: f32,
 
+    /// fraction threshold of heterozygous variant used for phasing, high fraction het var
+    #[arg(long, default_value_t = 0.25)]
+    hetvar_high_frac_cutoff: f32,
+
+    /// Minimum support number for each allele
+    #[arg(long, default_value_t = 2)]
+    min_allele_cnt: u32,
+
     /// Minimum allele frequency for candidate SNPs include intron
     #[arg(long, default_value_t = 0.0)]
     min_allele_freq_include_intron: f32,
@@ -111,13 +126,9 @@ struct Args {
     #[arg(long, default_value_t = 256)]
     min_qual_for_singlesnp_rnaedit: u32,
 
-    /// Minimum support number for each allele
-    #[arg(long, default_value_t = 0)]
-    min_allele_cnt: u32,
-
-    /// When set, ignore strand bias
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    no_strand_bias: bool,
+    /// Whether to use strand bias to filter SNPs
+    #[arg(long, default_value_t = false)]
+    use_strand_bias: bool,
 
     /// Variants strand bias threshold to filter SNPs, most of the variant allele appear on one strand
     #[arg(long, default_value_t = 0.9)]
@@ -277,11 +288,12 @@ fn main() {
     let mut min_baseq = arg.min_baseq;
     let mut diff_baseq = arg.diff_baseq;
     let mut min_allele_freq = arg.min_allele_freq;
+    let mut hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let mut min_qual_for_candidate = arg.min_qual_for_candidate;
     let mut min_qual_for_singlesnp_rnaedit = arg.min_qual_for_singlesnp_rnaedit;
     let mut min_allele_cnt = arg.min_allele_cnt;
-    let mut no_strand_bias = arg.no_strand_bias;
+    let mut use_strand_bias = arg.use_strand_bias;
     let mut strand_bias_threshold = arg.strand_bias_threshold;
     let mut cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
     let mut distance_to_splicing_site = arg.distance_to_splicing_site;
@@ -337,7 +349,7 @@ fn main() {
                 dense_win_size = 500;
                 min_dense_cnt = 5;
                 avg_dense_dist = 60.0;
-                no_strand_bias = false;
+                use_strand_bias = true;
             }
 
             Preset::drna => {
@@ -345,7 +357,6 @@ fn main() {
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
                 diff_baseq = arg.diff_baseq;
-                min_allele_cnt = arg.min_allele_cnt;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
@@ -369,7 +380,7 @@ fn main() {
                 dense_win_size = 500;
                 min_dense_cnt = 5;
                 avg_dense_dist = 60.0;
-                no_strand_bias = true;
+                use_strand_bias = false;
             }
 
             Preset::hifi => {
@@ -384,15 +395,16 @@ fn main() {
                 polya_tail_length = arg.polya_tail_length;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
-                read_assignment_cutoff = arg.read_assignment_cutoff;
+                // read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
                 min_phase_score = 8.0;
+                read_assignment_cutoff = 0.0;
                 ase_ps_cutoff = 15.0;
                 ase_ps_count_cutoff = 6;
                 ase_allele_cnt_cutoff = 2;
                 min_linkers = 1;
-                min_allele_cnt = 0;
+                min_allele_cnt = 2;
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_homozygous_freq = 0.75;
@@ -403,7 +415,7 @@ fn main() {
                 dense_win_size = 300;
                 min_dense_cnt = 5;
                 avg_dense_dist = 40.0;
-                no_strand_bias = false;
+                use_strand_bias = true;
             }
 
             Preset::isoseq => {
@@ -428,7 +440,7 @@ fn main() {
                 ase_ps_count_cutoff = 4;
                 ase_allele_cnt_cutoff = 2;
                 min_linkers = 1;
-                min_allele_cnt = 0;
+                min_allele_cnt = 2;
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_homozygous_freq = 0.75;
@@ -439,7 +451,7 @@ fn main() {
                 dense_win_size = 300;
                 min_dense_cnt = 5;
                 avg_dense_dist = 40.0;
-                no_strand_bias = true;
+                use_strand_bias = false;
             }
 
             _ => {
@@ -528,11 +540,12 @@ fn main() {
         min_baseq,
         diff_baseq,
         min_allele_freq,
+        hetvar_high_frac_cutoff,
         min_allele_freq_include_intron,
         min_qual_for_candidate,
         min_qual_for_singlesnp_rnaedit,
         min_allele_cnt,
-        no_strand_bias,
+        use_strand_bias,
         strand_bias_threshold,
         cover_strand_bias_threshold,
         min_depth,
