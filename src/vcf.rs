@@ -21,7 +21,7 @@ impl SNPFrag {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let debug_pos = 1182052;
+            let debug_pos = 18366527;
             if snp.pos == debug_pos - 1 {
                 println!("phased output: {:?}", snp);
             }
