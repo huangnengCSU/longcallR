@@ -1145,7 +1145,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 2341049;
+            let debug_pos = 18604416;
             if snp.pos == debug_pos - 1 {
                 println!("add phase score:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1158,27 +1158,29 @@ impl SNPFrag {
                 if snp.pos == debug_pos - 1 {
                     println!("phase score:{}", phase_score);
                 }
-                let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
-                for k in 0..sigma.len() {
-                    if sigma[k] == 1 {
-                        // hap1
-                        if ps[k] == 1 {
-                            haplotype_allele_expression[0] += 1; // hap1 allele1, reference allele
-                        } else if ps[k] == -1 {
-                            haplotype_allele_expression[1] += 1; // hap1 allele2, alternative allele
-                        }
-                    } else if sigma[k] == -1 {
-                        // hap2
-                        if ps[k] == 1 {
-                            haplotype_allele_expression[2] += 1; // hap2 allele1, reference allele
-                        } else if ps[k] == -1 {
-                            haplotype_allele_expression[3] += 1; // hap2 allele2, alternative allele
+                if phase_score >= min_phase_score as f64 {
+                    let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
+                    for k in 0..sigma.len() {
+                        if sigma[k] == 1 {
+                            // hap1
+                            if ps[k] == 1 {
+                                haplotype_allele_expression[0] += 1; // hap1 allele1, reference allele
+                            } else if ps[k] == -1 {
+                                haplotype_allele_expression[1] += 1; // hap1 allele2, alternative allele
+                            }
+                        } else if sigma[k] == -1 {
+                            // hap2
+                            if ps[k] == 1 {
+                                haplotype_allele_expression[2] += 1; // hap2 allele1, reference allele
+                            } else if ps[k] == -1 {
+                                haplotype_allele_expression[3] += 1; // hap2 allele2, alternative allele
+                            }
                         }
                     }
+                    self.candidate_snps[*ti].germline = true;
+                    self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
+                    self.candidate_snps[*ti].phase_score = phase_score;
                 }
-                self.candidate_snps[*ti].germline = true;
-                self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
-                self.candidate_snps[*ti].phase_score = phase_score;
             }
 
             // TODO: het var with low phase score transfer to hom var
@@ -1277,7 +1279,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 2341049;
+            let debug_pos = 18604416;
             if snp.pos == debug_pos - 1 {
                 println!("eval_low_frac_het_var_phase:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1288,10 +1290,12 @@ impl SNPFrag {
             let mut phase_score = 0.0;
             if sigma.len() == 0 || hap1_reads_num < 2 || hap2_reads_num < 2 {
                 // each haplotype should have at least 2 reads
+                snp.single = true; // no surranding high_frac_het_snps
                 continue;
             } else {
                 phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                snp.single = false;
             }
 
             if phase_score1.max(phase_score2) >= min_phase_score as f64 {
@@ -1332,7 +1336,7 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
-            let debug_pos = 2341049;
+            let debug_pos = 18604416;
             if snp.pos == debug_pos - 1 {
                 println!("eval_rna_edit_var_phase:");
             }
@@ -1366,10 +1370,11 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 2341049;
+            let debug_pos = 18604416;
             if snp.pos == debug_pos - 1 {
                 println!("eval_rna_edit_var_phase:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
+                println!("hap1_reads_num:{}, hap2_reads_num:{}", hap1_reads_num, hap2_reads_num);
             }
 
             let mut phase_score1 = 0.0;
@@ -1377,10 +1382,16 @@ impl SNPFrag {
             let mut phase_score = 0.0;
             if sigma.len() == 0 || hap1_reads_num < 2 || hap2_reads_num < 2 {
                 // each haplotype should have at least 2 reads
+                snp.single = true; // no surranding high_frac_het_snps
                 continue;
             } else {
                 phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                snp.single = false;
+            }
+
+            if snp.pos == debug_pos - 1 {
+                println!("phase_score1:{}, phase_score2:{}", phase_score1, phase_score2);
             }
 
             if phase_score1.max(phase_score2) >= min_phase_score as f64 {
@@ -1409,6 +1420,9 @@ impl SNPFrag {
                 self.candidate_snps[*ti].haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
                 self.candidate_snps[*ti].phase_score = phase_score;
+                if self.candidate_snps[*ti].pos == debug_pos - 1 {
+                    println!("update: {:?}", self.candidate_snps[*ti]);
+                }
             }
         }
     }
@@ -1451,7 +1465,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 2341049;
+            let debug_pos = 18604416;
             if snp.pos == debug_pos - 1 {
                 println!("eval_hom_var_phase:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1506,7 +1520,7 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
-            if self.fragments[k].read_id == "SRR18130587.2988112".to_string() {
+            if self.fragments[k].read_id == "m84036_230422_223801_s1/20579348/ccs/6209_9648".to_string() {
                 println!("{:?}", self.fragments[k]);
             }
             for fe in self.fragments[k].list.iter() {
@@ -2141,7 +2155,7 @@ impl SNPFrag {
     //         let mut probs: Vec<f64> = Vec::new();
     //         let mut num_hap1 = 0;
     //         let mut num_hap2 = 0;
-    //         let debug_pos = 2341049;
+    //         let debug_pos = 18604416;
     //         if self.candidate_snps[*i].pos == debug_pos - 1 {
     //             println!("rescue_ase_snps_v2");
     //         }

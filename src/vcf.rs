@@ -17,11 +17,11 @@ pub struct VCFRecord {
 
 
 impl SNPFrag {
-    pub fn output_phased_vcf(&mut self, min_qual_for_candidate: u32) -> Vec<VCFRecord> {
+    pub fn output_phased_vcf(&mut self, min_phase_score: f32, min_qual_for_candidate: u32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let debug_pos = 18366527;
+            let debug_pos = 18604416;
             if snp.pos == debug_pos - 1 {
                 println!("phased output: {:?}", snp);
             }
@@ -43,7 +43,11 @@ impl SNPFrag {
                 }
                 rd.qual = snp.variant_quality as i32;
                 rd.filter = "RnaEdit".to_string().into_bytes();
-                rd.info = "RDS=.".to_string().into_bytes();
+                if snp.single {
+                    rd.info = format!("RDS={}", "single_snp").to_string().into_bytes();
+                } else {
+                    rd.info = "RDS=.".to_string().into_bytes();
+                }
                 let gt;
                 if snp.variant_type == 1 {
                     gt = "0/1"
@@ -122,7 +126,7 @@ impl SNPFrag {
                     rd.alternative = vec![vec![snp.alleles[1] as u8]];
                 }
                 rd.qual = snp.variant_quality as i32;
-                if snp.variant_quality < min_qual_for_candidate as f64 {
+                if snp.variant_quality < min_qual_for_candidate as f64 || snp.phase_score < min_phase_score as f64 {
                     rd.filter = "LowQual".to_string().into_bytes();
                 } else {
                     rd.filter = "PASS".to_string().into_bytes();

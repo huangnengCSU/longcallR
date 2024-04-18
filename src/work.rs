@@ -396,7 +396,7 @@ pub fn multithread_phase_haplotag(
                 //     min_qual_for_candidate,
                 //     min_qual_for_singlesnp_rnaedit,
                 // );
-                let vcf_records = snpfrag.output_phased_vcf(min_qual_for_candidate);
+                let vcf_records = snpfrag.output_phased_vcf(min_phase_score, min_qual_for_candidate);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {

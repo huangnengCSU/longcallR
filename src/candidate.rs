@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 use rust_lapper::{Interval, Lapper};
 
-use crate::snp::CandidateSNP;
 use crate::Platform;
+use crate::snp::CandidateSNP;
 use crate::snpfrags::SNPFrag;
 use crate::util::Profile;
 
@@ -45,7 +45,7 @@ impl SNPFrag {
         let mut exon_intervaltree = Lapper::new(exon_region_vec);
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
-            let debug_pos = 2341049;
+            let debug_pos = 18604416;
             let bf = &pileup[bfidx];
             if bf.i {
                 continue;
@@ -761,7 +761,7 @@ impl SNPFrag {
                     //     }
                     // } else { panic!("Error: unexpected condition"); }
                 } else if allele1 != bf.ref_base && allele2 == bf.ref_base {
-                    if allele1_freq >= hetvar_high_frac_cutoff {
+                    if allele1_freq >= hetvar_high_frac_cutoff && allele1_cnt >= 3 {
                         candidate_snp.high_frac_het = true;
                         candidate_snp.for_phasing = true;
                         self.candidate_snps.push(candidate_snp);
@@ -776,7 +776,7 @@ impl SNPFrag {
                         continue;
                     }
                 } else if allele2 != bf.ref_base && allele1 == bf.ref_base {
-                    if allele2_freq >= hetvar_high_frac_cutoff {
+                    if allele2_freq >= hetvar_high_frac_cutoff && allele2_cnt >= 3 {
                         candidate_snp.high_frac_het = true;
                         candidate_snp.for_phasing = true;
                         self.candidate_snps.push(candidate_snp);
@@ -813,6 +813,7 @@ impl SNPFrag {
         concat_idxes.extend(self.homo_snps.clone());
         concat_idxes.extend(self.high_frac_het_snps.clone());
         concat_idxes.extend(self.low_frac_het_snps.clone());
+        // concat_idxes.extend(self.edit_snps.clone());
         concat_idxes.sort();
         for i in 0..concat_idxes.len() {
             for j in i..concat_idxes.len() {
@@ -836,6 +837,30 @@ impl SNPFrag {
                 }
             }
         }
+
+        for i in 0..concat_idxes.len() {
+            for j in i..concat_idxes.len() {
+                if j == concat_idxes.len() - 1 {
+                    // distance from snp i to end snp is smaller than dense_win_size
+                    if self.candidate_snps[concat_idxes[j]].pos - self.candidate_snps[concat_idxes[i]].pos <= 5 as i64 && (j - i + 1) as u32 >= 3 {
+                        for tk in i..j {
+                            self.candidate_snps[concat_idxes[tk]].dense = true;
+                            self.candidate_snps[concat_idxes[tk]].for_phasing = false;
+                        }
+                    }
+                }
+                if self.candidate_snps[concat_idxes[j]].pos - self.candidate_snps[concat_idxes[i]].pos > 5 as i64 {
+                    if (j - 1 - i + 1) as u32 >= 3 {
+                        for tk in i..j {
+                            self.candidate_snps[concat_idxes[tk]].dense = true;
+                            self.candidate_snps[concat_idxes[tk]].for_phasing = false;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
 
         let mut tmp_idxes = Vec::new();
         for i in self.homo_snps.iter() {
@@ -864,7 +889,16 @@ impl SNPFrag {
         }
         self.high_frac_het_snps = tmp_idxes;
 
-        let debug_pos = 2341049;
+        // let mut tmp_idxes = Vec::new();
+        // for i in self.edit_snps.iter() {
+        //     if self.candidate_snps[*i].dense {
+        //         continue;
+        //     }
+        //     tmp_idxes.push(*i);
+        // }
+        // self.edit_snps = tmp_idxes;
+
+        let debug_pos = 18604416;
         for s in self.candidate_snps.iter() {
             if s.pos == debug_pos - 1 {
                 println!("candidate_snp2: {:?}\n", s);

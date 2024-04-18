@@ -434,7 +434,7 @@ fn main() {
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
                 min_baseq = 20;
-                min_phase_score = 8.0;
+                min_phase_score = 10.0;
                 read_assignment_cutoff = 0.0;
                 ase_ps_cutoff = 15.0;
                 ase_ps_count_cutoff = 4;
@@ -448,7 +448,7 @@ fn main() {
                 min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
-                dense_win_size = 300;
+                dense_win_size = 100;
                 min_dense_cnt = 5;
                 avg_dense_dist = 40.0;
                 use_strand_bias = false;
