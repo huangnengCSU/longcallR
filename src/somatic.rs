@@ -1,6 +1,6 @@
 use mathru::algebra::abstr::cast::ToPrimitive;
 
-use crate::phase::AlleleClass;
+use crate::snp::AlleleClass;
 
 pub fn calculate_prob_somatic(hap1_ref_baseqs: &Vec<u8>, hap1_alt_baseqs: &Vec<u8>, hap2_ref_baseqs: &Vec<u8>, hap2_alt_baseqs: &Vec<u8>, purity: f64) -> (AlleleClass, AlleleClass) {
     let mut hap1_allele_class;

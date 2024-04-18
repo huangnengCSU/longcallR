@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use rust_lapper::{Interval, Lapper};
 
-use crate::phase::CandidateSNP;
+use crate::snp::CandidateSNP;
 use crate::Platform;
 use crate::snpfrags::SNPFrag;
 use crate::util::Profile;

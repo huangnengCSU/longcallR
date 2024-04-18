@@ -6,8 +6,8 @@ use petgraph::Undirected;
 use rand::Rng;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
-use crate::phase::{CandidateSNP, Edge, Fragment};
-use crate::som::calculate_prob_somatic;
+use crate::snp::{CandidateSNP, Edge, Fragment};
+use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
 
 #[derive(Debug, Clone, Default)]

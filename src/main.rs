@@ -7,10 +7,10 @@ use rust_htslib::bam::Read;
 use crate::util::*;
 use crate::work::multithread_phase_haplotag;
 
-mod phase;
+mod snp;
 mod util;
 mod snpfrags;
-mod som;
+mod somatic;
 mod exon;
 mod work;
 mod vcf;

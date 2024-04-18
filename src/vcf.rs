@@ -32,10 +32,14 @@ impl SNPFrag {
                 rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
                 rd.id = vec!['.' as u8];
                 rd.reference = vec![snp.reference as u8];
-                if snp.alleles[0] != snp.reference {
-                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                } else if snp.alleles[1] != snp.reference {
-                    rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                if snp.variant_type == 1 || snp.variant_type == 2 {
+                    if snp.alleles[0] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    } else if snp.alleles[1] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    }
+                } else if snp.variant_type == 3 {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                 }
                 rd.qual = snp.variant_quality as i32;
                 rd.filter = "RnaEdit".to_string().into_bytes();
@@ -68,10 +72,14 @@ impl SNPFrag {
                 rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
                 rd.id = vec!['.' as u8];
                 rd.reference = vec![snp.reference as u8];
-                if snp.alleles[0] != snp.reference {
-                    rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                } else if snp.alleles[1] != snp.reference {
-                    rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                if snp.variant_type == 1 || snp.variant_type == 2 {
+                    if snp.alleles[0] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    } else if snp.alleles[1] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    }
+                } else if snp.variant_type == 3 {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                 }
                 rd.qual = snp.variant_quality as i32;
                 rd.filter = "dn".to_string().into_bytes();

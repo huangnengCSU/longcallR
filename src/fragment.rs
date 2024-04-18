@@ -2,7 +2,7 @@ use bio::bio_types::strand::ReqStrand::Forward;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
 use crate::exon::Exon;
-use crate::phase::{FragElem, Fragment};
+use crate::snp::{FragElem, Fragment};
 use crate::snpfrags::SNPFrag;
 use crate::util::Region;
 
