@@ -45,7 +45,7 @@ impl SNPFrag {
         let mut exon_intervaltree = Lapper::new(exon_region_vec);
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
-            let debug_pos = 34762137;
+            let debug_pos = 1182052;
             let bf = &pileup[bfidx];
             if bf.i {
                 continue;
@@ -864,7 +864,7 @@ impl SNPFrag {
         }
         self.high_frac_het_snps = tmp_idxes;
 
-        let debug_pos = 34762137;
+        let debug_pos = 1182052;
         for s in self.candidate_snps.iter() {
             if s.pos == debug_pos - 1 {
                 println!("candidate_snp2: {:?}\n", s);
