@@ -194,8 +194,14 @@ impl BaseFreq {
         let mut x: Vec<(char, u32)> = [('A', self.a), ('C', self.c), ('G', self.g), ('T', self.t)].iter().cloned().collect();
         // sort by count: u32
         x.sort_by(|a, b| b.1.cmp(&a.1));
-        if x[1].1 == 0 && x[0].0 != ref_base && x[1].0 != ref_base {
-            return (x[0].0, x[0].1, ref_base, x[1].1);
+        if x[0].0 != ref_base && x[1].0 != ref_base {
+            if x[2].0 == ref_base && x[1].1 == x[2].1 {
+                return (x[0].0, x[0].1, x[2].0, x[2].1);
+            } else if x[3].0 == ref_base && x[1].1 == x[3].1 {
+                return (x[0].0, x[0].1, x[3].0, x[3].1);
+            } else {
+                return (x[0].0, x[0].1, x[1].0, x[1].1);
+            }
         } else {
             return (x[0].0, x[0].1, x[1].0, x[1].1);
         }
