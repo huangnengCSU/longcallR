@@ -45,7 +45,7 @@ impl SNPFrag {
         let mut exon_intervaltree = Lapper::new(exon_region_vec);
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             let bf = &pileup[bfidx];
             if bf.i {
                 continue;
@@ -61,6 +61,9 @@ impl SNPFrag {
                 continue;
             }
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles(bf.ref_base);
+            if position == debug_pos - 1 {
+                println!("allele1: {}, allele1_cnt: {}, allele2: {}, allele2_cnt: {}", allele1, allele1_cnt, allele2, allele2_cnt);
+            }
             if allele1 != bf.ref_base {
                 if bf.d >= allele1_cnt {
                     position += 1;
@@ -86,35 +89,19 @@ impl SNPFrag {
             let mut allele1_quals: Vec<u8> = Vec::new();
             let mut allele2_quals: Vec<u8> = Vec::new();
             match allele1 {
-                'a' => {
+                'a' | 'A' => {
                     allele1_dists = bf.distance_to_end.a.clone();
                     allele1_quals = bf.baseq.a.clone();
                 }
-                'A' => {
-                    allele1_dists = bf.distance_to_end.a.clone();
-                    allele1_quals = bf.baseq.a.clone();
-                }
-                'c' => {
+                'c' | 'C' => {
                     allele1_dists = bf.distance_to_end.c.clone();
                     allele1_quals = bf.baseq.c.clone();
                 }
-                'C' => {
-                    allele1_dists = bf.distance_to_end.c.clone();
-                    allele1_quals = bf.baseq.c.clone();
-                }
-                'g' => {
+                'g' | 'G' => {
                     allele1_dists = bf.distance_to_end.g.clone();
                     allele1_quals = bf.baseq.g.clone();
                 }
-                'G' => {
-                    allele1_dists = bf.distance_to_end.g.clone();
-                    allele1_quals = bf.baseq.g.clone();
-                }
-                't' => {
-                    allele1_dists = bf.distance_to_end.t.clone();
-                    allele1_quals = bf.baseq.t.clone();
-                }
-                'T' => {
+                't' | 'T' => {
                     allele1_dists = bf.distance_to_end.t.clone();
                     allele1_quals = bf.baseq.t.clone();
                 }
@@ -123,35 +110,19 @@ impl SNPFrag {
                 }
             }
             match allele2 {
-                'a' => {
+                'a' | 'A' => {
                     allele2_dists = bf.distance_to_end.a.clone();
                     allele2_quals = bf.baseq.a.clone();
                 }
-                'A' => {
-                    allele2_dists = bf.distance_to_end.a.clone();
-                    allele2_quals = bf.baseq.a.clone();
-                }
-                'c' => {
+                'c' | 'C' => {
                     allele2_dists = bf.distance_to_end.c.clone();
                     allele2_quals = bf.baseq.c.clone();
                 }
-                'C' => {
-                    allele2_dists = bf.distance_to_end.c.clone();
-                    allele2_quals = bf.baseq.c.clone();
-                }
-                'g' => {
+                'g' | 'G' => {
                     allele2_dists = bf.distance_to_end.g.clone();
                     allele2_quals = bf.baseq.g.clone();
                 }
-                'G' => {
-                    allele2_dists = bf.distance_to_end.g.clone();
-                    allele2_quals = bf.baseq.g.clone();
-                }
-                't' => {
-                    allele2_dists = bf.distance_to_end.t.clone();
-                    allele2_quals = bf.baseq.t.clone();
-                }
-                'T' => {
+                't' | 'T' => {
                     allele2_dists = bf.distance_to_end.t.clone();
                     allele2_quals = bf.baseq.t.clone();
                 }
@@ -211,28 +182,16 @@ impl SNPFrag {
                         let mut fcnt = 0;
                         let mut bcnt = 0;
                         match allele_base {
-                            'a' => {
+                            'a' | 'A' => {
                                 [fcnt, bcnt] = bf.base_strands.a;
                             }
-                            'A' => {
-                                [fcnt, bcnt] = bf.base_strands.a;
-                            }
-                            'c' => {
+                            'c' | 'C' => {
                                 [fcnt, bcnt] = bf.base_strands.c;
                             }
-                            'C' => {
-                                [fcnt, bcnt] = bf.base_strands.c;
-                            }
-                            'g' => {
+                            'g' | 'G' => {
                                 [fcnt, bcnt] = bf.base_strands.g;
                             }
-                            'G' => {
-                                [fcnt, bcnt] = bf.base_strands.g;
-                            }
-                            't' => {
-                                [fcnt, bcnt] = bf.base_strands.t;
-                            }
-                            'T' => {
+                            't' | 'T' => {
                                 [fcnt, bcnt] = bf.base_strands.t;
                             }
                             _ => {
@@ -553,7 +512,7 @@ impl SNPFrag {
             }
 
             for bq in identical_baseqs.iter() {
-                let bq = if *bq < 33 { *bq } else { 33 };
+                let bq = if *bq < 40 { *bq } else { 40 };
                 let error_rate = 0.1_f64.powf((bq as f64) / 10.0);
                 loglikelihood[0] += error_rate.log10();
                 loglikelihood[2] += (1.0 - error_rate).log10();
@@ -561,7 +520,7 @@ impl SNPFrag {
 
             for bq_vec in different_baseqs.iter() {
                 for bq in bq_vec.iter() {
-                    let bq = if *bq < 33 { *bq } else { 33 };
+                    let bq = if *bq < 40 { *bq } else { 40 };
                     let error_rate = 0.1_f64.powf((bq as f64) / 10.0);
                     loglikelihood[0] += (1.0 - error_rate).log10();
                     loglikelihood[2] += error_rate.log10();
@@ -667,13 +626,29 @@ impl SNPFrag {
             }
 
             // candidate rna editing site
-            if (bf.ref_base == 'A' && ((allele1 == 'G' && allele1_cnt > 0) || (allele2 == 'G' && allele2_cnt > 0))) || (bf.ref_base == 'T' && ((allele1 == 'C' && allele1_cnt > 0) || (allele2 == 'C' && allele2_cnt > 0))) {
-                if candidate_snp.variant_type != 2 {
-                    candidate_snp.rna_editing = true;
-                    self.candidate_snps.push(candidate_snp);
-                    self.edit_snps.push(self.candidate_snps.len() - 1);
-                    position += 1;
-                    continue;
+            let forward_transcript_cnt = bf.transcript_strands[0];
+            let reverse_transcript_cnt = bf.transcript_strands[1];
+            if bf.ref_base == 'A' && (forward_transcript_cnt > reverse_transcript_cnt || forward_transcript_cnt > 2) {
+                if (allele1 == 'G' && allele1_cnt > 0) || (allele2 == 'G' && allele2_cnt > 0) {
+                    // potential forward A to G editing
+                    if candidate_snp.variant_type != 2 {
+                        candidate_snp.rna_editing = true;
+                        self.candidate_snps.push(candidate_snp);
+                        self.edit_snps.push(self.candidate_snps.len() - 1);
+                        position += 1;
+                        continue;
+                    }
+                }
+            } else if bf.ref_base == 'T' && (reverse_transcript_cnt > forward_transcript_cnt || reverse_transcript_cnt > 2) {
+                if (allele1 == 'C' && allele1_cnt > 0) || (allele2 == 'C' && allele2_cnt > 0) {
+                    // potential reverse A to G editing
+                    if candidate_snp.variant_type != 2 {
+                        candidate_snp.rna_editing = true;
+                        self.candidate_snps.push(candidate_snp);
+                        self.edit_snps.push(self.candidate_snps.len() - 1);
+                        position += 1;
+                        continue;
+                    }
                 }
             }
 
@@ -795,10 +770,10 @@ impl SNPFrag {
 
             if candidate_snp.variant_type == 0 {
                 if allele1 != bf.ref_base {
-                    assert!(allele1_freq < somatic_allele_frac_cutoff || allele1_cnt < somatic_allele_cnt_cutoff, "candidate: {:?}", candidate_snp);
+                    assert!(allele1_freq < somatic_allele_frac_cutoff || allele1_cnt < somatic_allele_cnt_cutoff || allele1_freq >= min_allele_freq, "candidate: {:?}", candidate_snp);
                 }
                 if allele2 != bf.ref_base {
-                    assert!(allele2_freq < somatic_allele_frac_cutoff || allele2_cnt < somatic_allele_cnt_cutoff, "candidate: {:?}", candidate_snp);
+                    assert!(allele2_freq < somatic_allele_frac_cutoff || allele2_cnt < somatic_allele_cnt_cutoff || allele2_freq >= min_allele_freq, "candidate: {:?}", candidate_snp);
                 }
                 position += 1;
                 continue;
@@ -898,7 +873,7 @@ impl SNPFrag {
         // }
         // self.edit_snps = tmp_idxes;
 
-        let debug_pos = 18604416;
+        let debug_pos = 35071319;
         for s in self.candidate_snps.iter() {
             if s.pos == debug_pos - 1 {
                 println!("candidate_snp2: {:?}\n", s);

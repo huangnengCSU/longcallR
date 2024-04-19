@@ -398,7 +398,7 @@ fn main() {
                 // read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
-                min_phase_score = 15.0;
+                min_phase_score = 14.0;
                 read_assignment_cutoff = 0.0;
                 ase_ps_cutoff = 15.0;
                 ase_ps_count_cutoff = 6;
@@ -433,8 +433,8 @@ fn main() {
                 // read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
-                min_baseq = 20;
-                min_phase_score = 10.0;
+                // min_baseq = 20;
+                min_phase_score = 9.0;
                 read_assignment_cutoff = 0.0;
                 ase_ps_cutoff = 15.0;
                 ase_ps_count_cutoff = 4;
@@ -444,7 +444,7 @@ fn main() {
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_homozygous_freq = 0.75;
-                min_qual_for_candidate = 15;
+                min_qual_for_candidate = 10;
                 min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;

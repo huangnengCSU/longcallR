@@ -1145,7 +1145,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             if snp.pos == debug_pos - 1 {
                 println!("add phase score:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1179,6 +1179,8 @@ impl SNPFrag {
                     }
                     self.candidate_snps[*ti].germline = true;
                     self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
+                    self.candidate_snps[*ti].phase_score = phase_score;
+                } else {
                     self.candidate_snps[*ti].phase_score = phase_score;
                 }
             }
@@ -1279,7 +1281,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             if snp.pos == debug_pos - 1 {
                 println!("eval_low_frac_het_var_phase:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1336,7 +1338,7 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             if snp.pos == debug_pos - 1 {
                 println!("eval_rna_edit_var_phase:");
             }
@@ -1370,7 +1372,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             if snp.pos == debug_pos - 1 {
                 println!("eval_rna_edit_var_phase:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1465,7 +1467,7 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             if snp.pos == debug_pos - 1 {
                 println!("eval_hom_var_phase:");
                 println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
@@ -1520,7 +1522,7 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
-            if self.fragments[k].read_id == "m84036_230422_223801_s1/20579348/ccs/6209_9648".to_string() {
+            if self.fragments[k].read_id == "m84036_230422_223801_s1/221187357/ccs/15023_19137".to_string() {
                 println!("{:?}", self.fragments[k]);
             }
             for fe in self.fragments[k].list.iter() {
@@ -2155,7 +2157,7 @@ impl SNPFrag {
     //         let mut probs: Vec<f64> = Vec::new();
     //         let mut num_hap1 = 0;
     //         let mut num_hap2 = 0;
-    //         let debug_pos = 18604416;
+    //         let debug_pos = 35071319;
     //         if self.candidate_snps[*i].pos == debug_pos - 1 {
     //             println!("rescue_ase_snps_v2");
     //         }

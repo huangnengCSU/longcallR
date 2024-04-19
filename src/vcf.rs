@@ -21,7 +21,7 @@ impl SNPFrag {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let debug_pos = 18604416;
+            let debug_pos = 35071319;
             if snp.pos == debug_pos - 1 {
                 println!("phased output: {:?}", snp);
             }
@@ -126,7 +126,9 @@ impl SNPFrag {
                     rd.alternative = vec![vec![snp.alleles[1] as u8]];
                 }
                 rd.qual = snp.variant_quality as i32;
-                if snp.variant_quality < min_qual_for_candidate as f64 || snp.phase_score < min_phase_score as f64 {
+                if snp.variant_quality < min_qual_for_candidate as f64 {
+                    rd.filter = "LowQual".to_string().into_bytes();
+                } else if snp.phase_score < min_phase_score as f64 {
                     rd.filter = "LowQual".to_string().into_bytes();
                 } else {
                     rd.filter = "PASS".to_string().into_bytes();
@@ -147,7 +149,8 @@ impl SNPFrag {
                     }
                 } else {
                     // TODO: som var?
-                    continue;
+                    // continue;
+                    gt = "0/1"
                 }
                 let mut af = 0.0;
                 if snp.alleles[0] == snp.reference {

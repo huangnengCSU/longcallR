@@ -10,6 +10,7 @@ use fishers_exact::fishers_exact;
 use mathru::statistics::test::{ChiSquare, Test};
 use rayon::prelude::*;
 use rust_htslib::{bam, bam::{ext::BamRecordExtensions, Read}};
+use rust_htslib::bam::record::Aux;
 use rust_lapper::{Interval, Lapper};
 use seq_io::fasta::{Reader, Record};
 
@@ -114,6 +115,8 @@ pub struct BaseFreq {
     // number of backward reads covering this position, excluding intron
     pub baseq: BaseQual,
     pub base_strands: BaseStrands,
+    pub transcript_strands: [i32; 2],
+    // [forward, backward]
     pub distance_to_end: DistanceToEnd,
 }
 
@@ -494,6 +497,13 @@ impl Profile {
             let seq = record.seq();
             let base_qual = record.qual();
             let strand = if record.strand() == Forward { 0 } else { 1 };
+            let mut ts = Aux::Char(b'*');
+            match record.aux(b"ts") {
+                Ok(value) => {
+                    ts = value;
+                }
+                Err(_) => {}
+            }
             let start_pos = record.pos() as usize;  // 0-based
             let cigar = record.cigar();
             let leading_softclips = cigar.leading_softclips();
@@ -572,6 +582,20 @@ impl Profile {
                                     dist = pos_in_read as i64 - leading_softclips;    // positive value
                                 } else {
                                     dist = pos_in_read as i64 - (seq.len() as i64 - trailing_softclips);    // negative value
+                                }
+
+                                if strand == 0 {
+                                    if ts == Aux::Char(b'+') {
+                                        self.freq_vec[pos_in_freq_vec as usize].transcript_strands[0] += 1; // read +, ts +, transcript +
+                                    } else if ts == Aux::Char(b'-') {
+                                        self.freq_vec[pos_in_freq_vec as usize].transcript_strands[1] += 1; // read +, ts -, transcript -
+                                    }
+                                } else if strand == 1 {
+                                    if ts == Aux::Char(b'+') {
+                                        self.freq_vec[pos_in_freq_vec as usize].transcript_strands[1] += 1; // read -, ts +, transcript -
+                                    } else if ts == Aux::Char(b'-') {
+                                        self.freq_vec[pos_in_freq_vec as usize].transcript_strands[0] += 1; // read -, ts -, transcript +
+                                    }
                                 }
 
                                 match base {
