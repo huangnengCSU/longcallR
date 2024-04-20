@@ -154,7 +154,8 @@ impl SNPFrag {
                 } else if snp.alleles[1] == snp.reference {
                     af = snp.allele_freqs[0];
                 } else {
-                    panic!("Error: unexpected allele. ref: {}, alt1: {}, alt2: {}, {}:{}", snp.reference, snp.alleles[0], snp.alleles[1], String::from_utf8_lossy(&snp.chromosome), snp.pos);
+                    println!("Error: unexpected allele. ref: {}, alt1: {}, alt2: {}, {}:{}", snp.reference, snp.alleles[0], snp.alleles[1], String::from_utf8_lossy(&snp.chromosome), snp.pos);
+                    continue;
                 }
                 if snp.phase_set != 0 {
                     rd.genotype = format!(

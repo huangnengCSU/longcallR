@@ -1389,7 +1389,13 @@ impl SNPFrag {
                 }
                 self.candidate_snps[*ti].germline = true;
                 self.candidate_snps[*ti].rna_editing = false;
-                self.candidate_snps[*ti].variant_type = 1;
+                if self.candidate_snps[*ti].alleles[0] != self.candidate_snps[*ti].reference && self.candidate_snps[*ti].alleles[1] != self.candidate_snps[*ti].reference {
+                    // tri-allelic site
+                    self.candidate_snps[*ti].variant_type = 3;
+                    self.candidate_snps[*ti].hom_var = true;
+                } else {
+                    self.candidate_snps[*ti].variant_type = 1;
+                }
                 self.candidate_snps[*ti].haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
                 self.candidate_snps[*ti].phase_score = phase_score;
@@ -1468,8 +1474,11 @@ impl SNPFrag {
                     }
                 }
                 self.candidate_snps[*ti].germline = true;
-                self.candidate_snps[*ti].hom_var = false;
-                self.candidate_snps[*ti].variant_type = 1;
+                if self.candidate_snps[*ti].variant_type != 3 {
+                    // tri-allelic site will not be changed to het_var
+                    self.candidate_snps[*ti].hom_var = false;
+                    self.candidate_snps[*ti].variant_type = 1;
+                }
                 self.candidate_snps[*ti].haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
                 self.candidate_snps[*ti].phase_score = phase_score;
