@@ -186,11 +186,6 @@ impl SNPFrag {
             }
             fragment.num_hete_links = hete_links;
 
-            if fragment.read_id == "SRR18130587.4057475".to_string() {
-                println!("hete_links: {}", hete_links);
-                println!("fragment: {:?}", fragment);
-            }
-
             // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {

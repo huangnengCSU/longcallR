@@ -45,7 +45,6 @@ impl SNPFrag {
         let mut exon_intervaltree = Lapper::new(exon_region_vec);
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
-            let debug_pos = 35071319;
             let bf = &pileup[bfidx];
             if bf.i {
                 continue;
@@ -61,9 +60,6 @@ impl SNPFrag {
                 continue;
             }
             let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles(bf.ref_base);
-            if position == debug_pos - 1 {
-                println!("allele1: {}, allele1_cnt: {}, allele2: {}, allele2_cnt: {}", allele1, allele1_cnt, allele2, allele2_cnt);
-            }
             if allele1 != bf.ref_base {
                 if bf.d >= allele1_cnt {
                     position += 1;
@@ -202,10 +198,10 @@ impl SNPFrag {
                         }
                         let total_cnt = fcnt + bcnt;
                         if fcnt as f32 / total_cnt as f32 > strand_bias_threshold && 0.5_f32.powf((breads - bcnt) as f32) < 0.002 {
-                            println!("strand bias, fread:{}, fcnt:{}, bread:{}, bcnt:{}, total_cnt:{}", freads, fcnt, breads, bcnt, total_cnt);
+                            // println!("strand bias, fread:{}, fcnt:{}, bread:{}, bcnt:{}, total_cnt:{}", freads, fcnt, breads, bcnt, total_cnt);
                             strand_bias = true;
                         } else if bcnt as f32 / total_cnt as f32 > strand_bias_threshold && 0.5_f32.powf((freads - fcnt) as f32) < 0.002 {
-                            println!("strand bias, fread:{}, fcnt:{}, bread:{}, bcnt:{}, total_cnt:{}", freads, fcnt, breads, bcnt, total_cnt);
+                            // println!("strand bias, fread:{}, fcnt:{}, bread:{}, bcnt:{}, total_cnt:{}", freads, fcnt, breads, bcnt, total_cnt);
                             strand_bias = true;
                         }
                     }
@@ -476,10 +472,6 @@ impl SNPFrag {
                 _ => {}
             }
 
-            if position == debug_pos - 1 {
-                println!("pass filter");
-            }
-
             // genotype likelihood
             let mut loglikelihood = [0.0, 0.0, 0.0];
             let mut logprob = [0.0, 0.0, 0.0];
@@ -580,9 +572,6 @@ impl SNPFrag {
             phred_genotype_prob.sort_by(cmp_f64);
             let genotype_quality = phred_genotype_prob[1] - phred_genotype_prob[0];
 
-            if position == debug_pos - 1 {
-                println!("variant quality: {:?}, genotype quality: {:?}", variant_quality, genotype_prob);
-            }
 
             let allele1_freq = (allele1_cnt as f32) / (depth as f32);
             let allele2_freq = (allele2_cnt as f32) / (depth as f32);
@@ -678,9 +667,6 @@ impl SNPFrag {
                 }
                 candidate_snp.hom_var = true;
                 candidate_snp.germline = true;
-                if candidate_snp.pos == (debug_pos - 1) as i64 {
-                    println!("candidate_snp1: {:?}", candidate_snp);
-                }
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
                 position += 1;
@@ -780,7 +766,6 @@ impl SNPFrag {
             }
 
             position += 1;
-            println!("Strange candidate: {:?}", candidate_snp);
         }
 
         // filter dense region, hom_var + high_frac_het + low_frac_het
@@ -872,12 +857,5 @@ impl SNPFrag {
         //     tmp_idxes.push(*i);
         // }
         // self.edit_snps = tmp_idxes;
-
-        let debug_pos = 35071319;
-        for s in self.candidate_snps.iter() {
-            if s.pos == debug_pos - 1 {
-                println!("candidate_snp2: {:?}\n", s);
-            }
-        }
     }
 }

@@ -1145,19 +1145,10 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 35071319;
-            if snp.pos == debug_pos - 1 {
-                println!("add phase score:");
-                println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
-            }
-
             let mut phase_score = 0.0;
             if sigma.len() > 0 || hap1_reads_num >= 2 || hap2_reads_num >= 2 {
                 // each haplotype should have at least 2 reads
                 phase_score = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(delta_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                if snp.pos == debug_pos - 1 {
-                    println!("phase score:{}", phase_score);
-                }
                 if phase_score >= min_phase_score as f64 {
                     let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
                     for k in 0..sigma.len() {
@@ -1281,11 +1272,6 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 35071319;
-            if snp.pos == debug_pos - 1 {
-                println!("eval_low_frac_het_var_phase:");
-                println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
-            }
 
             let mut phase_score1 = 0.0;
             let mut phase_score2 = 0.0;
@@ -1338,10 +1324,6 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
-            let debug_pos = 35071319;
-            if snp.pos == debug_pos - 1 {
-                println!("eval_rna_edit_var_phase:");
-            }
             let mut sigma: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
@@ -1372,13 +1354,6 @@ impl SNPFrag {
                 }
             }
 
-            let debug_pos = 35071319;
-            if snp.pos == debug_pos - 1 {
-                println!("eval_rna_edit_var_phase:");
-                println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
-                println!("hap1_reads_num:{}, hap2_reads_num:{}", hap1_reads_num, hap2_reads_num);
-            }
-
             let mut phase_score1 = 0.0;
             let mut phase_score2 = 0.0;
             let mut phase_score = 0.0;
@@ -1390,10 +1365,6 @@ impl SNPFrag {
                 phase_score1 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 phase_score2 = -10.0_f64 * (1.0 - SNPFrag::cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 snp.single = false;
-            }
-
-            if snp.pos == debug_pos - 1 {
-                println!("phase_score1:{}, phase_score2:{}", phase_score1, phase_score2);
             }
 
             if phase_score1.max(phase_score2) >= min_phase_score as f64 {
@@ -1422,9 +1393,6 @@ impl SNPFrag {
                 self.candidate_snps[*ti].haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
                 self.candidate_snps[*ti].phase_score = phase_score;
-                if self.candidate_snps[*ti].pos == debug_pos - 1 {
-                    println!("update: {:?}", self.candidate_snps[*ti]);
-                }
             }
         }
     }
@@ -1465,12 +1433,6 @@ impl SNPFrag {
                         baseqs.push(fe.baseq);
                     }
                 }
-            }
-
-            let debug_pos = 35071319;
-            if snp.pos == debug_pos - 1 {
-                println!("eval_hom_var_phase:");
-                println!("ps:{:?}\nprobs:{:?}\nsigma:{:?}\nassigns:{:?}\n", ps, probs, sigma, assigns);
             }
 
             let mut phase_score1 = 0.0;
@@ -1522,9 +1484,6 @@ impl SNPFrag {
             let mut delta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
-            if self.fragments[k].read_id == "m84036_230422_223801_s1/221187357/ccs/15023_19137".to_string() {
-                println!("{:?}", self.fragments[k]);
-            }
             for fe in self.fragments[k].list.iter() {
                 if fe.phase_site == false { continue; }
                 assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");

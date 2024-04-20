@@ -21,10 +21,6 @@ impl SNPFrag {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            let debug_pos = 35071319;
-            if snp.pos == debug_pos - 1 {
-                println!("phased output: {:?}", snp);
-            }
 
             if snp.rna_editing {
                 let mut rd: VCFRecord = VCFRecord::default();
