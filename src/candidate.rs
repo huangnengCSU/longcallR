@@ -683,44 +683,6 @@ impl SNPFrag {
                     self.homo_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
                     continue;
-                    // if allele1_freq >= min_allele_freq && allele2_freq >= min_allele_freq {
-                    //     candidate_snp.variant_type = 3; // triallelic SNP
-                    //     candidate_snp.hom_var = true;
-                    //     self.candidate_snps.push(candidate_snp);
-                    //     self.homo_snps.push(self.candidate_snps.len() - 1);
-                    //     position += 1;
-                    //     continue;
-                    // } else if allele1_freq >= min_allele_freq {
-                    //     if allele1_freq >= hetvar_high_frac_cutoff {
-                    //         candidate_snp.high_frac_het = true;
-                    //         candidate_snp.for_phasing = true;
-                    //         self.candidate_snps.push(candidate_snp);
-                    //         self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
-                    //         position += 1;
-                    //         continue;
-                    //     } else {
-                    //         candidate_snp.low_frac_het = true;
-                    //         self.candidate_snps.push(candidate_snp);
-                    //         self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
-                    //         position += 1;
-                    //         continue;
-                    //     }
-                    // } else if allele2_freq >= min_allele_freq {
-                    //     if allele2_freq >= hetvar_high_frac_cutoff {
-                    //         candidate_snp.high_frac_het = true;
-                    //         candidate_snp.for_phasing = true;
-                    //         self.candidate_snps.push(candidate_snp);
-                    //         self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
-                    //         position += 1;
-                    //         continue;
-                    //     } else {
-                    //         candidate_snp.low_frac_het = true;
-                    //         self.candidate_snps.push(candidate_snp);
-                    //         self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
-                    //         position += 1;
-                    //         continue;
-                    //     }
-                    // } else { panic!("Error: unexpected condition"); }
                 } else if allele1 != bf.ref_base && allele2 == bf.ref_base {
                     if allele1_freq >= hetvar_high_frac_cutoff && allele1_cnt >= 3 {
                         candidate_snp.high_frac_het = true;
