@@ -5,14 +5,14 @@ use rand::seq::SliceRandom;
 use rust_htslib::bam::Read;
 
 use crate::util::*;
-use crate::work::multithread_phase_haplotag;
+use crate::thread::multithread_phase_haplotag;
 
 mod snp;
 mod util;
 mod snpfrags;
 mod somatic;
 mod exon;
-mod work;
+mod thread;
 mod vcf;
 mod candidate;
 mod fragment;
@@ -95,8 +95,8 @@ struct Args {
     min_baseq: u8,
 
     /// threshold for differental average base quality of two alleles
-    #[arg(long, default_value_t = 10)]
-    diff_baseq: u8,
+    // #[arg(long, default_value_t = 10)]
+    // diff_baseq: u8,
 
     /// Minimum allele frequency for candidate SNPs
     #[arg(long, default_value_t = 0.20)]
@@ -107,16 +107,16 @@ struct Args {
     hetvar_high_frac_cutoff: f32,
 
     /// Minimum support number for each allele
-    #[arg(long, default_value_t = 2)]
-    min_allele_cnt: u32,
+    // #[arg(long, default_value_t = 2)]
+    // min_allele_cnt: u32,
 
     /// Minimum allele frequency for candidate SNPs include intron
     #[arg(long, default_value_t = 0.0)]
     min_allele_freq_include_intron: f32,
 
     /// Minimum allele frequency for homozygous SNPs
-    #[arg(long, default_value_t = 0.75)]
-    min_homozygous_freq: f32,
+    // #[arg(long, default_value_t = 0.75)]
+    // min_homozygous_freq: f32,
 
     /// Minimum variant quality for candidate SNPs
     #[arg(long, default_value_t = 200)]
@@ -151,8 +151,8 @@ struct Args {
     distance_to_read_end: u32,
 
     /// threshold for differental average distance to read end of two alleles
-    #[arg(long, default_value_t = 200)]
-    diff_distance_to_read_end: i64,
+    // #[arg(long, default_value_t = 200)]
+    // diff_distance_to_read_end: i64,
 
     /// PolyA tail length threshold
     #[arg(long, default_value_t = 5)]
@@ -167,8 +167,8 @@ struct Args {
     min_dense_cnt: u32,
 
     /// Average dense distance
-    #[arg(long, default_value_t = 60.0)]
-    avg_dense_dist: f32,
+    // #[arg(long, default_value_t = 60.0)]
+    // avg_dense_dist: f32,
 
     /// Minimum linked heterozygous snps for phasing
     #[arg(long, default_value_t = 2)]
@@ -199,20 +199,20 @@ struct Args {
     imbalance_allele_expression_cutoff: f32,
 
     /// Allele-specific expression allele fraction cutoff
-    #[arg(long, default_value_t = 0.10)]
-    ase_allele_frac_cutoff: f32,
+    // #[arg(long, default_value_t = 0.10)]
+    // ase_allele_frac_cutoff: f32,
 
     /// Allele-specific expression allele count cutoff
-    #[arg(long, default_value_t = 2)]
-    ase_allele_cnt_cutoff: u32,
+    // #[arg(long, default_value_t = 2)]
+    // ase_allele_cnt_cutoff: u32,
 
     /// Allele-specific expression phased read count cutoff
-    #[arg(long, default_value_t = 10)]
-    ase_ps_read_cutoff: u32,
+    // #[arg(long, default_value_t = 10)]
+    // ase_ps_read_cutoff: u32,
 
     /// Allele-specific expression phase score cutoff
-    #[arg(long, default_value_t = 20.0)]
-    ase_ps_cutoff: f32,
+    // #[arg(long, default_value_t = 20.0)]
+    // ase_ps_cutoff: f32,
 
     /// Somatic mutation allele fraction cutoff
     #[arg(long, default_value_t = 0.01)]
@@ -251,8 +251,8 @@ struct Args {
     output_read_assignment: bool,
 
     /// debug SNP
-    #[clap(long, action = ArgAction::SetTrue)]
-    debug_snp: bool,
+    // #[clap(long, action = ArgAction::SetTrue)]
+    // debug_snp: bool,
 
     /// get blocks
     #[clap(long, action = ArgAction::SetTrue)]
@@ -286,24 +286,20 @@ fn main() {
 
     let mut min_mapq = arg.min_mapq;
     let mut min_baseq = arg.min_baseq;
-    let mut diff_baseq = arg.diff_baseq;
     let mut min_allele_freq = arg.min_allele_freq;
     let mut hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let mut min_qual_for_candidate = arg.min_qual_for_candidate;
     let mut min_qual_for_singlesnp_rnaedit = arg.min_qual_for_singlesnp_rnaedit;
-    let mut min_allele_cnt = arg.min_allele_cnt;
     let mut use_strand_bias = arg.use_strand_bias;
     let mut strand_bias_threshold = arg.strand_bias_threshold;
     let mut cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
     let mut distance_to_splicing_site = arg.distance_to_splicing_site;
     let mut window_size = arg.window_size;
     let mut distance_to_read_end = arg.distance_to_read_end;
-    let mut diff_distance_to_read_end = arg.diff_distance_to_read_end;
     let mut polya_tail_length = arg.polya_tail_length;
     let mut dense_win_size = arg.dense_win_size;
     let mut min_dense_cnt = arg.min_dense_cnt;
-    let mut avg_dense_dist = arg.avg_dense_dist;
     let mut min_linkers = arg.min_linkers;
     let mut min_phase_score = arg.min_phase_score;
     let mut min_depth = arg.min_depth;
@@ -311,11 +307,6 @@ fn main() {
     let mut min_read_length = arg.min_read_length;
     let mut read_assignment_cutoff = arg.read_assignment_cutoff;
     let mut imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
-    let mut min_homozygous_freq = arg.min_homozygous_freq;
-    let mut ase_allele_frac_cutoff = arg.ase_allele_frac_cutoff;
-    let mut ase_allele_cnt_cutoff = arg.ase_allele_cnt_cutoff;
-    let mut ase_ps_count_cutoff = arg.ase_ps_read_cutoff;
-    let mut ase_ps_cutoff = arg.ase_ps_cutoff;
     let mut somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
     let mut somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
 
@@ -325,11 +316,9 @@ fn main() {
                 println!("Preset: Oxford Nanopore cDNA sequencing, both strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
-                diff_baseq = arg.diff_baseq;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
-                diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
                 min_phase_score = arg.min_phase_score;
                 min_depth = arg.min_depth;
@@ -338,17 +327,14 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_linkers = 2;
-                min_allele_cnt = 3;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
-                min_homozygous_freq = 0.75;
                 min_qual_for_candidate = 100;
                 min_qual_for_singlesnp_rnaedit = 100;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
-                avg_dense_dist = 60.0;
                 use_strand_bias = true;
             }
 
@@ -356,11 +342,9 @@ fn main() {
                 println!("Preset: Oxford Nanopore direct RNA sequencing, transcript strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
-                diff_baseq = arg.diff_baseq;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
-                diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
                 min_phase_score = arg.min_phase_score;
                 min_depth = arg.min_depth;
@@ -369,17 +353,14 @@ fn main() {
                 read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_linkers = 2;
-                min_allele_cnt = 3;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
-                min_homozygous_freq = 0.75;
                 min_qual_for_candidate = 100;
                 min_qual_for_singlesnp_rnaedit = 100;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
-                avg_dense_dist = 60.0;
                 use_strand_bias = false;
             }
 
@@ -387,11 +368,9 @@ fn main() {
                 println!("Preset: PacBio HiFi cDNA sequencing, both strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
-                diff_baseq = arg.diff_baseq;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
-                diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
@@ -400,57 +379,42 @@ fn main() {
                 min_depth = 6;
                 min_phase_score = 14.0;
                 read_assignment_cutoff = 0.0;
-                ase_ps_cutoff = 15.0;
-                ase_ps_count_cutoff = 6;
-                ase_allele_cnt_cutoff = 2;
                 min_linkers = 1;
-                min_allele_cnt = 2;
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
-                min_homozygous_freq = 0.75;
                 min_qual_for_candidate = 15;
                 min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
                 min_dense_cnt = 5;
-                avg_dense_dist = 40.0;
                 use_strand_bias = true;
             }
 
             Preset::isoseq => {
                 println!("Preset: PacBio IsoSeq cDNA sequencing, transcript strand");
                 min_mapq = arg.min_mapq;
-                // min_baseq = arg.min_baseq;
-                diff_baseq = arg.diff_baseq;
+                min_baseq = arg.min_baseq;
                 strand_bias_threshold = arg.strand_bias_threshold;
                 cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
                 window_size = arg.window_size;
-                diff_distance_to_read_end = arg.diff_distance_to_read_end;
                 polya_tail_length = arg.polya_tail_length;
                 max_depth = arg.max_depth;
                 min_read_length = arg.min_read_length;
                 // read_assignment_cutoff = arg.read_assignment_cutoff;
                 imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
-                // min_baseq = 20;
                 min_phase_score = 9.0;
                 read_assignment_cutoff = 0.0;
-                ase_ps_cutoff = 15.0;
-                ase_ps_count_cutoff = 4;
-                ase_allele_cnt_cutoff = 2;
                 min_linkers = 1;
-                min_allele_cnt = 2;
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
-                min_homozygous_freq = 0.75;
                 min_qual_for_candidate = 10;
                 min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
                 min_dense_cnt = 5;
-                avg_dense_dist = 40.0;
                 use_strand_bias = false;
             }
 
@@ -538,13 +502,11 @@ fn main() {
         max_iters,
         min_mapq,
         min_baseq,
-        diff_baseq,
         min_allele_freq,
         hetvar_high_frac_cutoff,
         min_allele_freq_include_intron,
         min_qual_for_candidate,
         min_qual_for_singlesnp_rnaedit,
-        min_allele_cnt,
         use_strand_bias,
         strand_bias_threshold,
         cover_strand_bias_threshold,
@@ -554,28 +516,20 @@ fn main() {
         distance_to_splicing_site,
         window_size,
         distance_to_read_end,
-        diff_distance_to_read_end,
         polya_tail_length,
         dense_win_size,
         min_dense_cnt,
-        avg_dense_dist,
-        min_homozygous_freq,
         min_linkers,
         min_phase_score,
         max_enum_snps,
         random_flip_fraction,
         read_assignment_cutoff,
         imbalance_allele_expression_cutoff,
-        phasing_output,
         no_bam_output,
         haplotype_bam_output,
         output_read_assignment,
         haplotype_specific_exon,
         min_sup_haplotype_exon,
-        ase_allele_frac_cutoff,
-        ase_allele_cnt_cutoff,
-        ase_ps_count_cutoff,
-        ase_ps_cutoff,
         somatic_allele_frac_cutoff,
         somatic_allele_cnt_cutoff,
     );
