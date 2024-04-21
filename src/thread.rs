@@ -27,13 +27,11 @@ pub fn multithread_phase_haplotag(
     max_iters: i32,
     min_mapq: u8,
     min_baseq: u8,
-    diff_baseq: u8,
     min_allele_freq: f32,
     hetvar_high_frac_cutoff: f32,
     min_allele_freq_include_intron: f32,
     min_qual_for_candidate: u32,
     min_qual_for_singlesnp_rnaedit: u32,
-    min_allele_cnt: u32,
     use_strand_bias: bool,
     strand_bias_threshold: f32,
     cover_strand_bias_threshold: f32,
@@ -43,28 +41,20 @@ pub fn multithread_phase_haplotag(
     distance_to_splicing_site: u32,
     window_size: u32,
     distance_to_read_end: u32,
-    diff_distance_to_read_end: i64,
     polya_tail_len: u32,
     dense_win_size: u32,
     min_dense_cnt: u32,
-    avg_dense_dist: f32,
-    min_homozygous_freq: f32,
     min_linkers: u32,
     min_phase_score: f32,
     max_enum_snps: usize,
     random_flip_fraction: f32,
     read_assignment_cutoff: f64,
     imbalance_allele_expression_cutoff: f32,
-    output_phasing: bool,
     no_bam_output: bool,
     haplotype_bam_output: bool,
     output_read_assignment: bool,
     haplotype_specific_exon: bool,
     min_sup_haplotype_exon: u32,
-    ase_allele_frac_cutoff: f32,
-    ase_allele_cnt_cutoff: u32,
-    ase_ps_count_cutoff: u32,
-    ase_ps_cutoff: f32,
     somatic_allele_frac_cutoff: f32,
     somatic_allele_cnt_cutoff: u32,
 ) {
@@ -160,7 +150,7 @@ pub fn multithread_phase_haplotag(
                     }
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-                    snpfrag.assign_het_var_haplotype(min_homozygous_freq, min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
+                    snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     snpfrag.eval_rna_edit_var_phase(min_phase_score);
                     snpfrag.eval_hom_var_phase(min_phase_score);
@@ -180,7 +170,7 @@ pub fn multithread_phase_haplotag(
                     //         merge_reads_assignments.insert(k.clone(), v.clone());
                     //     }
                     // }
-                    let phase_sets = snpfrag.assign_phase_set(min_qual_for_candidate, min_phase_score, ase_ps_cutoff);
+                    let phase_sets = snpfrag.assign_phase_set();
 
                     let mut haplotype_exons: Vec<(Exon, i32, i32)> = Vec::new();
                     {
