@@ -19,13 +19,13 @@ mod fragment;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Preset {
-    hifi,
+    hifi_isoseq,
     // PacBio HiFi, both strand
-    isoseq,
+    hifi_masseq,
     // PacBio IsoSeq, transcript strand
-    ont,
+    ont_cdna,
     // Oxford Nanopore, both strand
-    drna, // direct RNA, transcript strand
+    ont_drna, // direct RNA, transcript strand
 }
 
 #[derive(clap::ValueEnum, Debug, Clone)]
@@ -312,7 +312,7 @@ fn main() {
 
     if preset.is_some() {
         match preset.unwrap() {
-            Preset::ont => {
+            Preset::ont_cdna => {
                 println!("Preset: Oxford Nanopore cDNA sequencing, both strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
@@ -338,7 +338,7 @@ fn main() {
                 use_strand_bias = true;
             }
 
-            Preset::drna => {
+            Preset::ont_drna => {
                 println!("Preset: Oxford Nanopore direct RNA sequencing, transcript strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
@@ -364,8 +364,8 @@ fn main() {
                 use_strand_bias = false;
             }
 
-            Preset::hifi => {
-                println!("Preset: PacBio HiFi cDNA sequencing, both strand");
+            Preset::hifi_isoseq => {
+                println!("Preset: PacBio Iso-Seq sequencing, both strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
                 strand_bias_threshold = arg.strand_bias_threshold;
@@ -391,8 +391,8 @@ fn main() {
                 use_strand_bias = true;
             }
 
-            Preset::isoseq => {
-                println!("Preset: PacBio IsoSeq cDNA sequencing, transcript strand");
+            Preset::hifi_masseq => {
+                println!("Preset: PacBio MAS-Seq sequencing, transcript strand");
                 min_mapq = arg.min_mapq;
                 min_baseq = arg.min_baseq;
                 strand_bias_threshold = arg.strand_bias_threshold;
