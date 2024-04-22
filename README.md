@@ -53,7 +53,7 @@ General usage
 ## Results
 
 The following table shows the result of several datasets. [WTC-11 Iso-Seq](https://zenodo.org/records/5920920), [WTC-11 ONT](https://www.encodeproject.org/experiments/ENCSR539ZXJ/), [HG002 MAS-Seq](https://downloads.pacbcloud.com/public/dataset/Kinnex-full-length-RNA/) and [HG004 MAS-Seq](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data_RNAseq/AshkenazimTrio/HG004_NA24143_mother/PacBio_Pacbio-MASseq/) are public available. The ground truth of WTC-11 were described in Mark D. Robinson et.al [paper](https://link.springer.com/article/10.1186/s13059-023-02923-y). The ground truth of HG002 and HG004 were from GIAB [NISTv4.2.1](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/release/). All truth variants used for benchmarking have at least 10X coverage in the input. The results in sub-table (all sites) are obtained by [hap.py](https://github.com/Illumina/hap.py.git). The sub-table (non-A-to-G sites) is achieved by removing all A-G and T-C substitutions from the results of hap.py. The sub-table (evaluation without genotype error) is for separating genotype errors from SNP discovery errors.
-![alt text](image.png)
+![alt text](img/longcallR_result.png)
 
 ## Demo
 
