@@ -736,7 +736,7 @@ impl SNPFrag {
         if genotype_only {
             // filter dense region, variant_type == 1 || variant_type == 2 || variant_type == 3
             for i in 0..self.candidate_snps.len() {
-                if self.candidate_snps[i].variant_type == 1 || self.candidate_snps[i].variant_type == 2 || self.candidate_snps[i].variant_type == 3 {
+                if self.candidate_snps[i].cand_somatic == false && (self.candidate_snps[i].variant_type == 1 || self.candidate_snps[i].variant_type == 2 || self.candidate_snps[i].variant_type == 3) {
                     concat_idxes.push(i);
                 }
             }

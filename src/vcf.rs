@@ -256,7 +256,7 @@ impl SNPFrag {
             // if snp.somatic || snp.rna_editing {
             //     continue;
             // }
-            if snp.somatic {
+            if snp.cand_somatic {
                 continue;
             }
             if snp.dense == true {
