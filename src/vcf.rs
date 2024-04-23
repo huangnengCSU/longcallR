@@ -283,11 +283,7 @@ impl SNPFrag {
                         rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
                         rd.genotype = format!(
                             "{}:{}:{}:{:.2},{:.2}",
-                            "1/2",
-                            snp.genotype_quality as i32,
-                            snp.depth,
-                            snp.allele_freqs[0],
-                            snp.allele_freqs[1]
+                            "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]
                         );
                     }
                 } else if snp.variant_type == 2 {
@@ -295,6 +291,12 @@ impl SNPFrag {
                     rd.genotype = format!(
                         "{}:{}:{}:{:.2}",
                         "1/1", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0]
+                    );
+                } else if snp.variant_type == 3 {
+                    rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                    rd.genotype = format!(
+                        "{}:{}:{}:{:.2},{:.2}",
+                        "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]
                     );
                 }
                 rd.qual = snp.variant_quality as i32;
@@ -305,7 +307,27 @@ impl SNPFrag {
                 continue;
             }
 
-            if snp.variant_type == 2 {
+            if snp.variant_type == 3 {
+                let mut rd: VCFRecord = VCFRecord::default();
+                rd.chromosome = snp.chromosome.clone();
+                rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
+                rd.reference = vec![snp.reference as u8];
+                rd.id = vec!['.' as u8];
+                rd.alternative = vec![vec![snp.alleles[0] as u8], vec![snp.alleles[1] as u8]];
+                rd.qual = snp.variant_quality as i32;
+                rd.genotype = format!(
+                    "{}:{}:{}:{:.2},{:.2}",
+                    "1/2", snp.genotype_quality as i32, snp.depth, snp.allele_freqs[0], snp.allele_freqs[1]
+                );
+                if snp.variant_quality < min_qual as f64 {
+                    rd.filter = "LowQual".to_string().into_bytes();
+                } else {
+                    rd.filter = "PASS".to_string().into_bytes();
+                }
+                rd.info = "RDS=.".to_string().into_bytes();
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                records.push(rd);
+            } else if snp.variant_type == 2 {
                 let mut rd: VCFRecord = VCFRecord::default();
                 rd.chromosome = snp.chromosome.clone();
                 rd.position = snp.pos as u64 + 1; // position in vcf format is 1-based
