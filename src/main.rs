@@ -94,7 +94,7 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     min_baseq: u8,
 
-    /// threshold for differental average base quality of two alleles
+    // /// threshold for differental average base quality of two alleles
     // #[arg(long, default_value_t = 10)]
     // diff_baseq: u8,
 
@@ -106,7 +106,7 @@ struct Args {
     #[arg(long, default_value_t = 0.25)]
     hetvar_high_frac_cutoff: f32,
 
-    /// Minimum support number for each allele
+    // /// Minimum support number for each allele
     // #[arg(long, default_value_t = 2)]
     // min_allele_cnt: u32,
 
@@ -114,7 +114,7 @@ struct Args {
     #[arg(long, default_value_t = 0.0)]
     min_allele_freq_include_intron: f32,
 
-    /// Minimum allele frequency for homozygous SNPs
+    // /// Minimum allele frequency for homozygous SNPs
     // #[arg(long, default_value_t = 0.75)]
     // min_homozygous_freq: f32,
 
@@ -122,9 +122,9 @@ struct Args {
     #[arg(long, default_value_t = 200)]
     min_qual_for_candidate: u32,
 
-    /// Minimum variant quality for single snp and rna editing (higher than min_qual_for_candidate)
-    #[arg(long, default_value_t = 256)]
-    min_qual_for_singlesnp_rnaedit: u32,
+    // /// Minimum variant quality for single snp and rna editing (higher than min_qual_for_candidate)
+    // #[arg(long, default_value_t = 256)]
+    // min_qual_for_singlesnp_rnaedit: u32,
 
     /// Whether to use strand bias to filter SNPs
     #[arg(long, default_value_t = false)]
@@ -150,7 +150,7 @@ struct Args {
     #[arg(long, default_value_t = 20)]
     distance_to_read_end: u32,
 
-    /// threshold for differental average distance to read end of two alleles
+    // /// threshold for differental average distance to read end of two alleles
     // #[arg(long, default_value_t = 200)]
     // diff_distance_to_read_end: i64,
 
@@ -166,7 +166,7 @@ struct Args {
     #[arg(long, default_value_t = 5)]
     min_dense_cnt: u32,
 
-    /// Average dense distance
+    // /// Average dense distance
     // #[arg(long, default_value_t = 60.0)]
     // avg_dense_dist: f32,
 
@@ -198,19 +198,19 @@ struct Args {
     #[arg(long, default_value_t = 2.0)]
     imbalance_allele_expression_cutoff: f32,
 
-    /// Allele-specific expression allele fraction cutoff
+    // /// Allele-specific expression allele fraction cutoff
     // #[arg(long, default_value_t = 0.10)]
     // ase_allele_frac_cutoff: f32,
 
-    /// Allele-specific expression allele count cutoff
+    // /// Allele-specific expression allele count cutoff
     // #[arg(long, default_value_t = 2)]
     // ase_allele_cnt_cutoff: u32,
 
-    /// Allele-specific expression phased read count cutoff
+    // /// Allele-specific expression phased read count cutoff
     // #[arg(long, default_value_t = 10)]
     // ase_ps_read_cutoff: u32,
 
-    /// Allele-specific expression phase score cutoff
+    // /// Allele-specific expression phase score cutoff
     // #[arg(long, default_value_t = 20.0)]
     // ase_ps_cutoff: f32,
 
@@ -250,7 +250,7 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     output_read_assignment: bool,
 
-    /// debug SNP
+    // /// debug SNP
     // #[clap(long, action = ArgAction::SetTrue)]
     // debug_snp: bool,
 
@@ -290,7 +290,6 @@ fn main() {
     let mut hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let mut min_qual_for_candidate = arg.min_qual_for_candidate;
-    let mut min_qual_for_singlesnp_rnaedit = arg.min_qual_for_singlesnp_rnaedit;
     let mut use_strand_bias = arg.use_strand_bias;
     let mut strand_bias_threshold = arg.strand_bias_threshold;
     let mut cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
@@ -330,7 +329,6 @@ fn main() {
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_qual_for_candidate = 100;
-                min_qual_for_singlesnp_rnaedit = 100;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
@@ -356,7 +354,6 @@ fn main() {
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_qual_for_candidate = 100;
-                min_qual_for_singlesnp_rnaedit = 100;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
@@ -383,7 +380,6 @@ fn main() {
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_qual_for_candidate = 15;
-                min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
@@ -410,7 +406,6 @@ fn main() {
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_qual_for_candidate = 10;
-                min_qual_for_singlesnp_rnaedit = 80;
                 distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
@@ -467,7 +462,6 @@ fn main() {
     }
 
     let mut regions = Vec::new();
-    let mut gene_regions = HashMap::new();
     let mut exon_regions = HashMap::new();
     if input_region.is_some() {
         let region = Region::new(input_region.unwrap());
@@ -485,8 +479,9 @@ fn main() {
     }
 
     if anno_path.is_some() {
-        (gene_regions, exon_regions) = parse_annotation(anno_path.unwrap());
-        regions = intersect_gene_regions(&regions, &gene_regions, threads);
+        let (gene_regions_anno, exon_regions_anno) = parse_annotation(anno_path.unwrap());
+        regions = intersect_gene_regions(&regions, &gene_regions_anno, threads);
+        exon_regions = exon_regions_anno;
     }
 
     multithread_phase_haplotag(
@@ -506,7 +501,6 @@ fn main() {
         hetvar_high_frac_cutoff,
         min_allele_freq_include_intron,
         min_qual_for_candidate,
-        min_qual_for_singlesnp_rnaedit,
         use_strand_bias,
         strand_bias_threshold,
         cover_strand_bias_threshold,

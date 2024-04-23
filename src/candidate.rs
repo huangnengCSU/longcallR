@@ -37,6 +37,7 @@ impl SNPFrag {
         min_dense_cnt: u32,
         somatic_allele_frac_cutoff: f32,
         somatic_allele_cnt_cutoff: u32,
+        genotype_only: bool,
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
@@ -730,13 +731,25 @@ impl SNPFrag {
             position += 1;
         }
 
-        // filter dense region, hom_var + high_frac_het + low_frac_het
+
         let mut concat_idxes = Vec::new();
-        concat_idxes.extend(self.homo_snps.clone());
-        concat_idxes.extend(self.high_frac_het_snps.clone());
-        concat_idxes.extend(self.low_frac_het_snps.clone());
-        // concat_idxes.extend(self.edit_snps.clone());
-        concat_idxes.sort();
+        if genotype_only {
+            // filter dense region, variant_type == 1 || variant_type == 2 || variant_type == 3
+            for i in 0..self.candidate_snps.len() {
+                if self.candidate_snps[i].variant_type == 1 || self.candidate_snps[i].variant_type == 2 || self.candidate_snps[i].variant_type == 3 {
+                    concat_idxes.push(i);
+                }
+            }
+            concat_idxes.sort();
+        } else {
+            // filter dense region, hom_var + high_frac_het + low_frac_het
+            concat_idxes.extend(self.homo_snps.clone());
+            concat_idxes.extend(self.high_frac_het_snps.clone());
+            concat_idxes.extend(self.low_frac_het_snps.clone());
+            // concat_idxes.extend(self.edit_snps.clone());
+            concat_idxes.sort();
+        }
+
         for i in 0..concat_idxes.len() {
             for j in i..concat_idxes.len() {
                 if j == concat_idxes.len() - 1 {

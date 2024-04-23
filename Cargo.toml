@@ -1,5 +1,5 @@
 [package]
-name = "htslib_rs"
+name = "longcallR"
 version = "0.1.0"
 edition = "2021"
 

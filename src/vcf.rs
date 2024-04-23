@@ -253,7 +253,10 @@ impl SNPFrag {
         // assert_eq!(self.haplotype.len(), self.snps.len());
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            if snp.somatic || snp.rna_editing {
+            // if snp.somatic || snp.rna_editing {
+            //     continue;
+            // }
+            if snp.somatic {
                 continue;
             }
             if snp.dense == true {
