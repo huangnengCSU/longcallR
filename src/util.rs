@@ -349,7 +349,7 @@ pub fn parse_annotation(anno_path: String) -> (HashMap<String, VecDeque<Region>>
                 // first gene region in stack
                 gene_regions.get_mut(&seqname).unwrap().push_back(Region { chr: seqname.clone(), start: start, end: end + 1, gene_id: Option::from(gene_id.clone()) });
             }
-        } else if feature == "exon" {
+        } else if feature == "CDS" {
             let mut exon_gene_id = String::new();
             for subpart in parts[8].trim_end().split(";").collect::<Vec<&str>>() {
                 if subpart.starts_with("gene_id") {
