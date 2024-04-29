@@ -714,7 +714,11 @@ impl SNPFrag {
                         position += 1;
                         continue;
                     }
-                } else { panic!("Error: unexpected condition"); }
+                } else {
+                    println!("Error: unexpected condition, {:?}", candidate_snp);
+                    position += 1;
+                    continue;
+                }
             }
 
             if candidate_snp.variant_type == 0 {

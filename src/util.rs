@@ -640,7 +640,7 @@ impl Profile {
                                         self.freq_vec[pos_in_freq_vec as usize].distance_to_end.t.push(dist);
                                     }
                                     _ => {
-                                        panic!("Invalid nucleotide base: {}", base);
+                                        println!("Invalid nucleotide base: {}", base);
                                     }
                                 }
                                 if strand == 0 {

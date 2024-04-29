@@ -140,7 +140,8 @@ impl SNPFrag {
                     } else if snp.haplotype == 1 {
                         gt = "1|0"
                     } else {
-                        panic!("Error: unknown haplotype: {:?}", snp);
+                        println!("Error: unknown haplotype: {:?}", snp);
+                        continue;
                     }
                 } else {
                     // TODO: som var?
@@ -220,7 +221,8 @@ impl SNPFrag {
                     } else if snp.variant_type == 3 {
                         gt = "1/2"
                     } else {
-                        panic!("Error: unknown haplotype: {:?}", snp);
+                        println!("Error: unknown haplotype: {:?}", snp);
+                        continue;
                     }
                 } else {
                     // TODO: som var?
@@ -239,7 +241,8 @@ impl SNPFrag {
                 continue;
             }
             if snp.variant_type != 0 && snp.variant_type != 1 && snp.variant_type != 2 && snp.variant_type != 3 {
-                panic!("Unknown variant type: {} {}:{}", snp.variant_type, String::from_utf8_lossy(&snp.chromosome), snp.pos);
+                println!("Unknown variant type: {} {}:{}", snp.variant_type, String::from_utf8_lossy(&snp.chromosome), snp.pos);
+                continue;
             }
         }
         return records;
