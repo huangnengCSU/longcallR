@@ -2,7 +2,7 @@ use bio::bio_types::strand::ReqStrand::Forward;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
 use crate::exon::Exon;
-use crate::snp::{FragElem, Fragment};
+use crate::snp::{FragElem, Fragment, LD_Pair};
 use crate::snpfrags::SNPFrag;
 use crate::util::Region;
 
@@ -176,6 +176,35 @@ impl SNPFrag {
             exon_start = -1;
             exon_end = -1;
 
+            // accomplish the pair wise LD_pair
+            for i in 0..fragment.list.len() {
+                for j in i + 1..fragment.list.len() {
+                    let mut pair_start_idx: usize;
+                    let mut pair_end_idx: usize;
+                    let mut pair_start_base: u8;
+                    let mut pair_end_base: u8;
+                    if fragment.list[i].pos < fragment.list[j].pos {
+                        pair_start_idx = fragment.list[i].snp_idx;
+                        pair_end_idx = fragment.list[j].snp_idx;
+                        pair_start_base = fragment.list[i].base as u8;
+                        pair_end_base = fragment.list[j].base as u8;
+                    } else {
+                        pair_start_idx = fragment.list[j].snp_idx;
+                        pair_end_idx = fragment.list[i].snp_idx;
+                        pair_start_base = fragment.list[j].base as u8;
+                        pair_end_base = fragment.list[i].base as u8;
+                    }
+                    let idx_key = &[pair_start_idx, pair_end_idx];  // snp index of start node, snp index of end node
+                    if self.allele_pairs.contains_key(idx_key) {
+                        let base_key = &[pair_start_base, pair_end_base];   // allele of start node, allele of end node
+                        self.allele_pairs.get_mut(idx_key).unwrap().ld_pairs.entry(base_key.clone()).and_modify(|e| *e += 1).or_insert(1);
+                    } else {
+                        let mut ld_pair = LD_Pair::default();
+                        ld_pair.ld_pairs.insert([pair_start_base, pair_end_base], 1);
+                        self.allele_pairs.insert(idx_key.clone(), ld_pair);
+                    }
+                }
+            }
             // hete snps >= 1
             let mut hete_links = 0;
             for fe in fragment.list.iter() {

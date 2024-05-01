@@ -6,7 +6,7 @@ use petgraph::Undirected;
 use rand::Rng;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
-use crate::snp::{CandidateSNP, Edge, Fragment};
+use crate::snp::{CandidateSNP, Fragment, LD_Pair};
 use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
 
@@ -29,8 +29,10 @@ pub struct SNPFrag {
     // multiple fragments
     pub phased: bool,
     // haplotype is phased or not
-    pub edges: HashMap<[usize; 2], Edge>,
-    // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
+    // pub edges: HashMap<[usize; 2], Edge>,
+    // // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
+    pub allele_pairs: HashMap<[usize; 2], LD_Pair>,
+    // allele pair at two snp sites, key is [snp_idx of start_node, snp_idx of end_node], start < end
     pub min_linkers: u32,
     // the number of links for snps can be phased
 }

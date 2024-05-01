@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::hash::Hash;
 
 use probability::distribution::Distribution;
@@ -83,6 +84,14 @@ pub struct Edge {
     // index of fragments(SNPFrag.fragments) cover this edge.
     pub w: f64,
     // weight of edge,  w_{ij}=\sum_{k}x_{ki}x_{kj}log\frac{1-\epsilon_{kij}}{\epsilon_{kij}}
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LD_Pair {
+    // pub snp_idxes: [usize; 2],
+    // // index of candidate SNPs (SNPFrag.snps), start node and end node
+    pub ld_pairs: HashMap<[u8; 2], u32>,
+    // support number of pair of alleles at two snp sites
 }
 
 #[derive(Debug, Clone, Default)]
