@@ -183,7 +183,7 @@ impl SNPFrag {
                     let mut pair_end_idx: usize;
                     let mut pair_start_base: u8;
                     let mut pair_end_base: u8;
-                    if fragment.list[i].pos < fragment.list[j].pos {
+                    if fragment.list[i].snp_idx < fragment.list[j].snp_idx {
                         pair_start_idx = fragment.list[i].snp_idx;
                         pair_end_idx = fragment.list[j].snp_idx;
                         pair_start_base = fragment.list[i].base as u8;

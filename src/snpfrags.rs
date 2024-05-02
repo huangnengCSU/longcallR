@@ -1179,9 +1179,11 @@ impl SNPFrag {
                 let snp1 = &self.candidate_snps[idx1];
                 let snp2 = &self.candidate_snps[idx2];
                 if idx1 < idx2 {
+                    if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
                     let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
                     r2_vec.push(r2);
                 } else if idx2 < idx1 {
+                    if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
                     let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
                     r2_vec.push(r2);
                 }
