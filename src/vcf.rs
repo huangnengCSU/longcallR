@@ -136,17 +136,24 @@ impl SNPFrag {
                 let gt;
                 if snp.germline {
                     if snp.haplotype == -1 {
-                        gt = "0|1"
+                        gt = "0|1";
                     } else if snp.haplotype == 1 {
-                        gt = "1|0"
+                        gt = "1|0";
                     } else {
-                        println!("Error: unknown haplotype: {:?}", snp);
-                        continue;
+                        // println!("Error: unknown haplotype: {:?}", snp);
+                        // continue;
+                        if snp.phase_score < min_phase_score as f64 {
+                            println!("Error: unknown haplotype: {:?}", snp);
+                            continue;
+                        } else {
+                            // high LD sites
+                            gt = "0/1";
+                        }
                     }
                 } else {
                     // TODO: som var?
                     // continue;
-                    gt = "0/1"
+                    gt = "0/1";
                 }
                 let mut af = 0.0;
                 if snp.alleles[0] == snp.reference {

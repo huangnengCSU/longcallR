@@ -1171,7 +1171,7 @@ impl SNPFrag {
             }
         }
         for i in 0..ld_idxes.len() {
-            let mut r2_vec = Vec::new();
+            let mut r2_map = HashMap::new();
             for j in 0..ld_idxes.len() {
                 if i == j { continue; }
                 let idx1 = ld_idxes[i];
@@ -1181,14 +1181,45 @@ impl SNPFrag {
                 if idx1 < idx2 {
                     if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
                     let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
-                    r2_vec.push(r2);
+                    r2_map.insert([idx1, idx2], r2);
                 } else if idx2 < idx1 {
                     if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
-                    let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
-                    r2_vec.push(r2);
+                    let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+                    r2_map.insert([idx2, idx1], r2);
                 }
             }
-            println!("single snp: {}, r2: {:?}", self.candidate_snps[ld_idxes[i]].pos, r2_vec);
+            let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
+            if r2_map_high.len() >= 1 {
+                // high LD
+                // println!("single snp:{}", self.candidate_snps[ld_idxes[i]].pos);
+                // for (idxes, r2) in r2_map.iter() {
+                    // println!("\t{}, {}, r2={}", self.candidate_snps[idxes[0]].pos, self.candidate_snps[idxes[1]].pos, r2);
+                // }
+                for (idxes, r2) in r2_map_high.iter() {
+                    let idx1 = idxes[0];
+                    let idx2 = idxes[1];
+                    self.candidate_snps[idx1].germline = true;
+                    self.candidate_snps[idx2].germline = true;
+                    self.candidate_snps[idx1].rna_editing = false;
+                    self.candidate_snps[idx2].rna_editing = false;
+                    self.candidate_snps[idx1].phase_score = min_phase_score as f64; // high LD, set phase score to min_phase_score
+                    self.candidate_snps[idx2].phase_score = min_phase_score as f64; // high LD, set phase score to min_phase_score
+                    if self.candidate_snps[idx1].alleles[0] != self.candidate_snps[idx1].reference && self.candidate_snps[idx1].alleles[1] != self.candidate_snps[idx1].reference {
+                        // tri-allelic site
+                        self.candidate_snps[idx1].variant_type = 3;
+                        self.candidate_snps[idx1].hom_var = true;
+                    } else {
+                        self.candidate_snps[idx1].variant_type = 1;
+                    }
+                    if self.candidate_snps[idx2].alleles[0] != self.candidate_snps[idx2].reference && self.candidate_snps[idx2].alleles[1] != self.candidate_snps[idx2].reference {
+                        // tri-allelic site
+                        self.candidate_snps[idx2].variant_type = 3;
+                        self.candidate_snps[idx2].hom_var = true;
+                    } else {
+                        self.candidate_snps[idx2].variant_type = 1;
+                    }
+                }
+            }
         }
     }
     pub fn eval_som_var_phase(&mut self) {}

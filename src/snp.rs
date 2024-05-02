@@ -117,6 +117,9 @@ impl LD_Pair {
             sum += x22;
         }
 
+        // set minimum covered reads
+        if ((x11 < 4.0 || x22 < 4.0) && (x21 < 4.0 || x12 < 4.0)) || (sum < 6.0) { return 0.0; }
+
         if sum == 0.0 { return 0.0; }
         x11 = x11 / sum;
         x12 = x12 / sum;
