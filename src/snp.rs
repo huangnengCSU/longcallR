@@ -116,6 +116,8 @@ impl LD_Pair {
             x22 = self.ld_pairs[&[A2, B2]] as f32;
             sum += x22;
         }
+
+        if sum == 0.0 { return 0.0; }
         x11 = x11 / sum;
         x12 = x12 / sum;
         x21 = x21 / sum;
@@ -134,7 +136,9 @@ impl LD_Pair {
         //     d_max = p1 * q2.min(p2 * q1);
         // }
         // let d_prime = d / d_max;
-        let r2 = d * d / (p1 * p2 * q1 * q2);   // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
+        let p = p1 * p2 * q1 * q2;
+        if p == 0.0 { return 0.0; }
+        let r2 = d * d / p;   // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
         return r2;
     }
 }
