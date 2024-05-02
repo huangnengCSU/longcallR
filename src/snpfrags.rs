@@ -1162,6 +1162,32 @@ impl SNPFrag {
                 self.candidate_snps[*ti].phase_score = phase_score;
             }
         }
+        // resolve single snps
+        let mut ld_idxes: Vec<usize> = Vec::new();
+        for ti in self.edit_snps.iter() {
+            let snp = &self.candidate_snps[*ti];
+            if snp.single {
+                ld_idxes.push(*ti);
+            }
+        }
+        for i in 0..ld_idxes.len() {
+            let mut r2_vec = Vec::new();
+            for j in 0..ld_idxes.len() {
+                if i == j { continue; }
+                let idx1 = ld_idxes[i];
+                let idx2 = ld_idxes[j];
+                let snp1 = &self.candidate_snps[idx1];
+                let snp2 = &self.candidate_snps[idx2];
+                if idx1 < idx2 {
+                    let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+                    r2_vec.push(r2);
+                } else if idx2 < idx1 {
+                    let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+                    r2_vec.push(r2);
+                }
+            }
+            println!("single snp: {}, r2: {:?}", self.candidate_snps[ld_idxes[i]].pos, r2_vec);
+        }
     }
     pub fn eval_som_var_phase(&mut self) {}
     pub fn eval_hom_var_phase(&mut self, min_phase_score: f32) {

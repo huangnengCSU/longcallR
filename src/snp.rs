@@ -94,6 +94,51 @@ pub struct LD_Pair {
     // support number of pair of alleles at two snp sites
 }
 
+impl LD_Pair {
+    pub fn calculate_LD_R2(&self, A1: u8, B1: u8, A2: u8, B2: u8) -> f32 {
+        // calculate r2 for two snps
+        // A1, B1: alleles of snp1, A2, B2: alleles of snp2, https://en.wikipedia.org/wiki/Linkage_disequilibrium
+        let (mut x11, mut x12, mut x21, mut x22, mut sum) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        let (mut p1, mut p2, mut q1, mut q2) = (0.0, 0.0, 0.0, 0.0);
+        if self.ld_pairs.contains_key(&[A1, B1]) {
+            x11 = self.ld_pairs[&[A1, B1]] as f32;
+            sum += x11;
+        }
+        if self.ld_pairs.contains_key(&[A1, B2]) {
+            x12 = self.ld_pairs[&[A1, B2]] as f32;
+            sum += x12;
+        }
+        if self.ld_pairs.contains_key(&[A2, B1]) {
+            x21 = self.ld_pairs[&[A2, B1]] as f32;
+            sum += x21;
+        }
+        if self.ld_pairs.contains_key(&[A2, B2]) {
+            x22 = self.ld_pairs[&[A2, B2]] as f32;
+            sum += x22;
+        }
+        x11 = x11 / sum;
+        x12 = x12 / sum;
+        x21 = x21 / sum;
+        x22 = x22 / sum;
+
+        p1 = x11 + x12;
+        p2 = x21 + x22;
+        q1 = x11 + x21;
+        q2 = x12 + x22;
+
+        let mut d = x11 - p1 * q1;
+        // let mut d_max = 0.0;
+        // if d < 0.0 {
+        //     d_max = p1 * q1.min(p2 * q2);
+        // } else {
+        //     d_max = p1 * q2.min(p2 * q1);
+        // }
+        // let d_prime = d / d_max;
+        let r2 = d * d / (p1 * p2 * q1 * q2);   // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
+        return r2;
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FragElem {
     pub snp_idx: usize,
