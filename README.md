@@ -64,6 +64,8 @@ The following table shows the results of several datasets. [WTC-11 Iso-Seq](http
 
 ## TODO
 - [ ] Preset for Nanopore direct cDNA-Seq.
+- [ ] Solve time-consuming in extremely high-coverage regions.
+- [ ] Identify somatic sites roughly.
 
 ## License
 MIT License
