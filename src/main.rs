@@ -264,7 +264,6 @@ fn main() {
     let bam_path = arg.bam_path.as_str();
     let out_bam = (arg.output.clone() + ".phased.bam").clone();
     let out_vcf = (arg.output.clone() + ".vcf").clone();
-    // let output_file = arg.output.as_str();
     let ref_path = arg.ref_path.as_str();
     let anno_path = arg.annotation;
     let input_region = arg.region;
@@ -283,96 +282,88 @@ fn main() {
     let output_read_assignment = arg.output_read_assignment; // default=false
     let haplotype_specific_exon = arg.haplotype_specific_exon; // default=false
     let min_sup_haplotype_exon = arg.min_sup_haplotype_exon;
+    let min_mapq = arg.min_mapq;
+    let min_baseq = arg.min_baseq;
+    let hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
+    let strand_bias_threshold = arg.strand_bias_threshold;
+    let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
+    let distance_to_splicing_site = arg.distance_to_splicing_site;
+    let window_size = arg.window_size;
+    let polya_tail_length = arg.polya_tail_length;
+    let max_depth = arg.max_depth;
+    let min_read_length = arg.min_read_length;
+    let imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+    let somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
+    let somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
 
-    let mut min_mapq = arg.min_mapq;
-    let mut min_baseq = arg.min_baseq;
     let mut min_allele_freq = arg.min_allele_freq;
-    let mut hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
     let mut min_qual_for_candidate = arg.min_qual_for_candidate;
     let mut use_strand_bias = arg.use_strand_bias;
-    let mut strand_bias_threshold = arg.strand_bias_threshold;
-    let mut cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
-    let mut distance_to_splicing_site = arg.distance_to_splicing_site;
-    let mut window_size = arg.window_size;
     let mut distance_to_read_end = arg.distance_to_read_end;
-    let mut polya_tail_length = arg.polya_tail_length;
     let mut dense_win_size = arg.dense_win_size;
     let mut min_dense_cnt = arg.min_dense_cnt;
     let mut min_linkers = arg.min_linkers;
     let mut min_phase_score = arg.min_phase_score;
     let mut min_depth = arg.min_depth;
-    let mut max_depth = arg.max_depth;
-    let mut min_read_length = arg.min_read_length;
     let mut read_assignment_cutoff = arg.read_assignment_cutoff;
-    let mut imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
-    let mut somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
-    let mut somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
+
 
     if preset.is_some() {
         match preset.unwrap() {
             Preset::ont_cdna => {
-                println!("Preset: Oxford Nanopore cDNA sequencing, both strand");
-                min_mapq = arg.min_mapq;
-                min_baseq = arg.min_baseq;
-                strand_bias_threshold = arg.strand_bias_threshold;
-                cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
-                window_size = arg.window_size;
-                polya_tail_length = arg.polya_tail_length;
-                min_phase_score = arg.min_phase_score;
-                min_depth = arg.min_depth;
-                max_depth = arg.max_depth;
-                min_read_length = arg.min_read_length;
-                read_assignment_cutoff = arg.read_assignment_cutoff;
-                imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_depth = 10;
+                min_phase_score = 8.0;
+                read_assignment_cutoff = 0.15;
                 min_linkers = 2;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_qual_for_candidate = 100;
-                distance_to_splicing_site = 20;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
                 use_strand_bias = true;
+                println!("Preset: ont-cdna");
+                println!("min_depth: {}", min_depth);
+                println!("min_phase_score: {}", min_phase_score);
+                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
+                println!("min_linkers: {}", min_linkers);
+                println!("min_allele_freq: {}", min_allele_freq);
+                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
+                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
+                println!("distance_to_read_end: {}", distance_to_read_end);
+                println!("dense_win_size: {}", dense_win_size);
+                println!("min_dense_cnt: {}", min_dense_cnt);
+                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             Preset::ont_drna => {
-                println!("Preset: Oxford Nanopore direct RNA sequencing, transcript strand");
-                min_mapq = arg.min_mapq;
-                min_baseq = arg.min_baseq;
-                strand_bias_threshold = arg.strand_bias_threshold;
-                cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
-                window_size = arg.window_size;
-                polya_tail_length = arg.polya_tail_length;
-                min_phase_score = arg.min_phase_score;
-                min_depth = arg.min_depth;
-                max_depth = arg.max_depth;
-                min_read_length = arg.min_read_length;
-                read_assignment_cutoff = arg.read_assignment_cutoff;
-                imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
+                min_depth = 10;
+                min_phase_score = 8.0;
+                read_assignment_cutoff = 0.15;
                 min_linkers = 2;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
                 min_qual_for_candidate = 100;
-                distance_to_splicing_site = 20;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
                 use_strand_bias = false;
+                println!("Preset: ont-drna");
+                println!("min_depth: {}", min_depth);
+                println!("min_phase_score: {}", min_phase_score);
+                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
+                println!("min_linkers: {}", min_linkers);
+                println!("min_allele_freq: {}", min_allele_freq);
+                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
+                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
+                println!("distance_to_read_end: {}", distance_to_read_end);
+                println!("dense_win_size: {}", dense_win_size);
+                println!("min_dense_cnt: {}", min_dense_cnt);
+                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             Preset::hifi_isoseq => {
-                println!("Preset: PacBio Iso-Seq sequencing, both strand");
-                min_mapq = arg.min_mapq;
-                min_baseq = arg.min_baseq;
-                strand_bias_threshold = arg.strand_bias_threshold;
-                cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
-                window_size = arg.window_size;
-                polya_tail_length = arg.polya_tail_length;
-                max_depth = arg.max_depth;
-                min_read_length = arg.min_read_length;
-                // read_assignment_cutoff = arg.read_assignment_cutoff;
-                imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
                 min_phase_score = 14.0;
                 read_assignment_cutoff = 0.0;
@@ -380,25 +371,25 @@ fn main() {
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_qual_for_candidate = 15;
-                distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
                 min_dense_cnt = 5;
                 use_strand_bias = true;
+                println!("Preset: hifi-isoseq");
+                println!("min_depth: {}", min_depth);
+                println!("min_phase_score: {}", min_phase_score);
+                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
+                println!("min_linkers: {}", min_linkers);
+                println!("min_allele_freq: {}", min_allele_freq);
+                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
+                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
+                println!("distance_to_read_end: {}", distance_to_read_end);
+                println!("dense_win_size: {}", dense_win_size);
+                println!("min_dense_cnt: {}", min_dense_cnt);
+                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             Preset::hifi_masseq => {
-                println!("Preset: PacBio MAS-Seq sequencing, transcript strand");
-                min_mapq = arg.min_mapq;
-                min_baseq = arg.min_baseq;
-                strand_bias_threshold = arg.strand_bias_threshold;
-                cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
-                window_size = arg.window_size;
-                polya_tail_length = arg.polya_tail_length;
-                max_depth = arg.max_depth;
-                min_read_length = arg.min_read_length;
-                // read_assignment_cutoff = arg.read_assignment_cutoff;
-                imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
                 min_depth = 6;
                 min_phase_score = 9.0;
                 read_assignment_cutoff = 0.0;
@@ -406,11 +397,22 @@ fn main() {
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
                 min_qual_for_candidate = 10;
-                distance_to_splicing_site = 20;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
                 min_dense_cnt = 5;
                 use_strand_bias = false;
+                println!("Preset: hifi-masseq");
+                println!("min_depth: {}", min_depth);
+                println!("min_phase_score: {}", min_phase_score);
+                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
+                println!("min_linkers: {}", min_linkers);
+                println!("min_allele_freq: {}", min_allele_freq);
+                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
+                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
+                println!("distance_to_read_end: {}", distance_to_read_end);
+                println!("dense_win_size: {}", dense_win_size);
+                println!("min_dense_cnt: {}", min_dense_cnt);
+                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             _ => {
