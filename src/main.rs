@@ -324,17 +324,6 @@ fn main() {
                 min_dense_cnt = 5;
                 use_strand_bias = true;
                 println!("Preset: ont-cdna");
-                println!("min_depth: {}", min_depth);
-                println!("min_phase_score: {}", min_phase_score);
-                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
-                println!("min_linkers: {}", min_linkers);
-                println!("min_allele_freq: {}", min_allele_freq);
-                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
-                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
-                println!("distance_to_read_end: {}", distance_to_read_end);
-                println!("dense_win_size: {}", dense_win_size);
-                println!("min_dense_cnt: {}", min_dense_cnt);
-                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             Preset::ont_drna => {
@@ -350,17 +339,6 @@ fn main() {
                 min_dense_cnt = 5;
                 use_strand_bias = false;
                 println!("Preset: ont-drna");
-                println!("min_depth: {}", min_depth);
-                println!("min_phase_score: {}", min_phase_score);
-                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
-                println!("min_linkers: {}", min_linkers);
-                println!("min_allele_freq: {}", min_allele_freq);
-                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
-                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
-                println!("distance_to_read_end: {}", distance_to_read_end);
-                println!("dense_win_size: {}", dense_win_size);
-                println!("min_dense_cnt: {}", min_dense_cnt);
-                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             Preset::hifi_isoseq => {
@@ -376,17 +354,6 @@ fn main() {
                 min_dense_cnt = 5;
                 use_strand_bias = true;
                 println!("Preset: hifi-isoseq");
-                println!("min_depth: {}", min_depth);
-                println!("min_phase_score: {}", min_phase_score);
-                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
-                println!("min_linkers: {}", min_linkers);
-                println!("min_allele_freq: {}", min_allele_freq);
-                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
-                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
-                println!("distance_to_read_end: {}", distance_to_read_end);
-                println!("dense_win_size: {}", dense_win_size);
-                println!("min_dense_cnt: {}", min_dense_cnt);
-                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             Preset::hifi_masseq => {
@@ -402,17 +369,6 @@ fn main() {
                 min_dense_cnt = 5;
                 use_strand_bias = false;
                 println!("Preset: hifi-masseq");
-                println!("min_depth: {}", min_depth);
-                println!("min_phase_score: {}", min_phase_score);
-                println!("read_assignment_cutoff: {}", read_assignment_cutoff);
-                println!("min_linkers: {}", min_linkers);
-                println!("min_allele_freq: {}", min_allele_freq);
-                println!("min_allele_freq_include_intron: {}", min_allele_freq_include_intron);
-                println!("min_qual_for_candidate: {}", min_qual_for_candidate);
-                println!("distance_to_read_end: {}", distance_to_read_end);
-                println!("dense_win_size: {}", dense_win_size);
-                println!("min_dense_cnt: {}", min_dense_cnt);
-                println!("use_strand_bias: {}", use_strand_bias);
             }
 
             _ => {
