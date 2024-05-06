@@ -127,7 +127,7 @@ struct Args {
     // min_qual_for_singlesnp_rnaedit: u32,
 
     /// Whether to use strand bias to filter SNPs
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    #[arg(long, default_value_t = false)]
     use_strand_bias: bool,
 
     /// Variants strand bias threshold to filter SNPs, most of the variant allele appear on one strand
@@ -223,11 +223,11 @@ struct Args {
     somatic_allele_cnt_cutoff: u32,
 
     /// Without phasing, only using genotype probability
-    #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
+    #[clap(long, action = ArgAction::SetTrue)]
     genotype_only: bool,
 
     /// When set, output vcf file does not contain phase information.
-    #[clap(long, action = ArgAction::SetFalse, default_value = "true")]
+    #[clap(long, action = ArgAction::SetFalse)]
     no_phase_vcf: bool,
 
     /// When set, do not output phased bam file.
@@ -255,7 +255,7 @@ struct Args {
     // debug_snp: bool,
 
     /// get blocks
-    #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
+    #[clap(long, action = ArgAction::SetTrue)]
     debug_block: bool,
 }
 
