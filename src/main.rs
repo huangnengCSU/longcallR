@@ -315,10 +315,10 @@ fn main() {
                 min_depth = 10;
                 min_phase_score = 8.0;
                 read_assignment_cutoff = 0.15;
-                min_linkers = 2;
+                min_linkers = 1;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
-                min_qual_for_candidate = 100;
+                min_qual_for_candidate = 25;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
@@ -333,7 +333,7 @@ fn main() {
                 min_linkers = 2;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
-                min_qual_for_candidate = 100;
+                min_qual_for_candidate = 50;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
