@@ -16,6 +16,7 @@ mod thread;
 mod vcf;
 mod candidate;
 mod fragment;
+mod phase;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Preset {
