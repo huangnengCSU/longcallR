@@ -61,6 +61,8 @@ pub struct CandidateSNP {
     // homo var
     pub single: bool,
     // current snp has surrounding haplotype links or not, only works for heterozygous snps
+    pub non_selected: bool,
+    // current site is not selected by phasing, it maybe HomRef, Somatic, Rna_edit or HomVar.
     pub cand_somatic: bool,
     // candidate site for somatic mutation detection
     pub somatic: bool,
