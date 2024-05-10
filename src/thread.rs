@@ -141,7 +141,7 @@ pub fn multithread_phase_haplotag(
                     }
                 }
             } else {
-                if snpfrag.high_frac_het_snps.len() >= 0 {
+                if snpfrag.candidate_snps.len() >= 0 {
                     unsafe {
                         snpfrag.init_haplotypes();
                     }
@@ -150,13 +150,14 @@ pub fn multithread_phase_haplotag(
                     }
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-                    snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
-                    snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
-                    snpfrag.eval_rna_edit_var_phase(min_phase_score);
-                    snpfrag.eval_hom_var_phase(min_phase_score);
+                    snpfrag.assign_snp_haplotype(min_phase_score);
+                    // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
+                    // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
+                    // snpfrag.eval_rna_edit_var_phase(min_phase_score);
+                    // snpfrag.eval_hom_var_phase(min_phase_score);
                     // assign phased fragments to somatic mutations and detect condifent somatic mutations
                     // println!("somatic: {}", snpfrag.somatic_snps.len());
-                    snpfrag.detect_somatic_by_het(&bam_file.as_str(), &reg);
+                    // snpfrag.detect_somatic_by_het(&bam_file.as_str(), &reg);
                     // snpfrag.phase_ase_hete_snps(max_enum_snps, random_flip_fraction, max_iters);
                     // assign reads to haplotypes, filter reads having conflicted ase snps and heterozygous snps
                     // let read_assignments_ase = snpfrag.assign_reads_ase(read_assignment_cutoff);
@@ -164,7 +165,7 @@ pub fn multithread_phase_haplotag(
                     // snpfrag.rescue_ase_snps_v2(ase_allele_cnt_cutoff, ase_ps_count_cutoff, ase_ps_cutoff);
 
                     // merge read_assignments and read_assignments_ase, read_assignments_ase first, then read_assignments
-                    let mut merge_reads_assignments = read_assignments.clone();
+                    // let mut merge_reads_assignments = read_assignments.clone();
                     // for (k, v) in read_assignments.iter() {
                     //     if !read_assignments_ase.contains_key(k) {
                     //         merge_reads_assignments.insert(k.clone(), v.clone());
@@ -361,7 +362,7 @@ pub fn multithread_phase_haplotag(
                         // output assignment both for ase snps and heterozygous snps
                         if !no_bam_output {
                             let mut queue = read_haplotag_queue.lock().unwrap();
-                            for a in merge_reads_assignments.iter() {
+                            for a in read_assignments.iter() {
                                 queue.push_back((a.0.clone(), a.1.clone()));
                             }
                             let mut queue = read_phaseset_queue.lock().unwrap();
@@ -378,13 +379,13 @@ pub fn multithread_phase_haplotag(
                     }
                 }
 
-                let vcf_records = snpfrag.output_phased_vcf(min_phase_score, min_qual_for_candidate);
-                {
-                    let mut queue = vcf_records_queue.lock().unwrap();
-                    for rd in vcf_records.iter() {
-                        queue.push_back(rd.clone());
-                    }
-                }
+                // let vcf_records = snpfrag.output_phased_vcf(min_phase_score, min_qual_for_candidate);
+                // {
+                //     let mut queue = vcf_records_queue.lock().unwrap();
+                //     for rd in vcf_records.iter() {
+                //         queue.push_back(rd.clone());
+                //     }
+                // }
             }
         });
     });

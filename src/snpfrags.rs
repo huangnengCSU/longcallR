@@ -172,7 +172,7 @@ impl SNPFrag {
         // }
     }
 
-    pub fn assign_het_var_haplotype(
+    /*pub fn assign_het_var_haplotype(
         &mut self,
         min_phase_score: f32,
         somatic_allele_frac_cutoff: f32,
@@ -304,9 +304,9 @@ impl SNPFrag {
             //     }
             // }
         }
-    }
+    }*/
 
-    pub fn eval_low_frac_het_var_phase(&mut self, min_phase_score: f32,
+    /*pub fn eval_low_frac_het_var_phase(&mut self, min_phase_score: f32,
                                        somatic_allele_frac_cutoff: f32,
                                        somatic_allele_cnt_cutoff: u32) {
         for ti in self.low_frac_het_snps.iter() {
@@ -389,8 +389,8 @@ impl SNPFrag {
             // TODO: het var with low phase score transfer to som var
             // if phase_score < min_phase_score as f64 {}
         }
-    }
-    pub fn eval_rna_edit_var_phase(&mut self, min_phase_score: f32) {
+    }*/
+    /*pub fn eval_rna_edit_var_phase(&mut self, min_phase_score: f32) {
         for ti in self.edit_snps.iter() {
             let snp = &mut self.candidate_snps[*ti];
             if snp.snp_cover_fragments.len() == 0 {
@@ -534,9 +534,9 @@ impl SNPFrag {
                 }
             }
         }
-    }
-    pub fn eval_som_var_phase(&mut self) {}
-    pub fn eval_hom_var_phase(&mut self, min_phase_score: f32) {
+    }*/
+    /*pub fn eval_som_var_phase(&mut self) {}*/
+    /*pub fn eval_hom_var_phase(&mut self, min_phase_score: f32) {
         for ti in self.homo_snps.iter() {
             let snp = &mut self.candidate_snps[*ti];
             if snp.snp_cover_fragments.len() == 0 {
@@ -617,6 +617,140 @@ impl SNPFrag {
                 self.candidate_snps[*ti].phase_score = phase_score;
             }
         }
+    }*/
+
+    pub fn assign_snp_haplotype(&mut self, min_phase_score: f32) {
+        // calculate phase score for each snp
+        for ti in 0..self.candidate_snps.len() {
+            let snp = &mut self.candidate_snps[ti];
+            if !snp.for_phasing { continue; }
+            if snp.snp_cover_fragments.len() == 0 {
+                // no surranding haplotype links
+                snp.single = true;
+                continue;
+            }
+            let delta_i = snp.haplotype;
+            let alt_fraction_i = snp.alt_allele_fraction;
+            let mut sigma: Vec<i32> = Vec::new();
+            let mut ps: Vec<i32> = Vec::new();
+            let mut probs: Vec<f64> = Vec::new();
+            let mut assigns: Vec<i32> = Vec::new();
+            let mut baseqs = Vec::new();
+            let mut hap1_reads_num = 0;
+            let mut hap2_reads_num = 0;
+            if delta_i == 0 {
+                snp.non_selected = true;
+                continue;
+            }
+            for k in snp.snp_cover_fragments.iter() {
+                if self.fragments[*k].assignment == 0 { continue; }
+                if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
+                for fe in self.fragments[*k].list.iter() {
+                    if fe.snp_idx == ti {
+                        if fe.base != '-' {
+                            // ignore intron
+                            if self.fragments[*k].assignment == 1 {
+                                hap1_reads_num += 1;
+                            } else if self.fragments[*k].assignment == 2 {
+                                hap2_reads_num += 1;
+                            }
+                        }
+                        assert_ne!(fe.phase_site, false, "Error: phase for non-phase site.");
+                        assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                        ps.push(fe.p);
+                        probs.push(fe.prob);
+                        sigma.push(self.fragments[*k].haplotag);
+                        assigns.push(self.fragments[*k].assignment);
+                        baseqs.push(fe.baseq);
+                    }
+                }
+            }
+
+            let mut phase_score = 0.0;
+            if sigma.len() > 0 || hap1_reads_num >= 2 || hap2_reads_num >= 2 {
+                // each haplotype should have at least 2 reads
+                phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_log(delta_i, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                if phase_score >= min_phase_score as f64 {
+                    let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
+                    for k in 0..sigma.len() {
+                        if sigma[k] == 1 {
+                            // hap1
+                            if ps[k] == 1 {
+                                haplotype_allele_expression[0] += 1; // hap1 allele1, reference allele
+                            } else if ps[k] == -1 {
+                                haplotype_allele_expression[1] += 1; // hap1 allele2, alternative allele
+                            }
+                        } else if sigma[k] == -1 {
+                            // hap2
+                            if ps[k] == 1 {
+                                haplotype_allele_expression[2] += 1; // hap2 allele1, reference allele
+                            } else if ps[k] == -1 {
+                                haplotype_allele_expression[3] += 1; // hap2 allele2, alternative allele
+                            }
+                        }
+                    }
+                    snp.germline = true;
+                    snp.haplotype_expression = haplotype_allele_expression;
+                    snp.phase_score = phase_score;
+                } else {
+                    snp.phase_score = phase_score;
+                }
+            }
+
+            // TODO: het var with low phase score transfer to hom var
+            // if phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference && snp.filter == false {
+            //     // transfer from heterozygous to homozygous
+            //     snp.variant_type = 2;
+            //     snp.ase = false;
+            // }
+
+            // TODO: het var with low phase score transfer to som var
+            // if phase_score < min_phase_score as f64 {
+            //     // record HapQuals for somatic mutation detection
+            //     for k in 0..assigns.len() {
+            //         if assigns[k] == 1 {
+            //             if ps[k] == 1 {
+            //                 snp.hap_quals.hap1_ref_baseqs.push(baseqs[k]);
+            //             } else if ps[k] == -1 {
+            //                 snp.hap_quals.hap1_alt_baseqs.push(baseqs[k]);
+            //             }
+            //         } else if assigns[k] == 2 {
+            //             if ps[k] == 1 {
+            //                 snp.hap_quals.hap2_ref_baseqs.push(baseqs[k]);
+            //             } else if ps[k] == -1 {
+            //                 snp.hap_quals.hap2_alt_baseqs.push(baseqs[k]);
+            //             }
+            //         }
+            //     }
+            //     let ref_allele_cnt = snp.hap_quals.hap1_ref_baseqs.len() + snp.hap_quals.hap2_ref_baseqs.len();
+            //     let alt_allele_cnt = snp.hap_quals.hap1_alt_baseqs.len() + snp.hap_quals.hap2_alt_baseqs.len();
+            //     if ref_allele_cnt + alt_allele_cnt > 0 && alt_allele_cnt as u32 >= somatic_allele_cnt_cutoff && alt_allele_cnt as f32 / (ref_allele_cnt + alt_allele_cnt) as f32 >= somatic_allele_frac_cutoff {
+            //         // calculate somatic mutation probability
+            //         let (hap1_allele_class, hap2_allele_class) = calculate_prob_somatic(&snp.hap_quals.hap1_ref_baseqs, &snp.hap_quals.hap1_alt_baseqs, &snp.hap_quals.hap2_ref_baseqs, &snp.hap_quals.hap2_alt_baseqs, 0.3);
+            //         if hap1_allele_class.allcls == 0 && hap2_allele_class.allcls == 2 {
+            //             let somatic_score = -10.0_f64 * (1.0 - hap2_allele_class.prob).log10();
+            //             snp.cand_somatic = true;
+            //             snp.somatic = true;
+            //             snp.variant_type = 1;
+            //             snp.somatic_score = somatic_score;
+            //             snp.phase_score = 0.0;
+            //             // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
+            //             // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
+            //             // println!("hap1_ref_baseqs:{:?}\nhap1_alt_baseqs:{:?}\nhap2_ref_baseqs:{:?}\nhap2_alt_baseqs:{:?}", snp.hap_quals.hap1_ref_baseqs, snp.hap_quals.hap1_alt_baseqs, snp.hap_quals.hap2_ref_baseqs, snp.hap_quals.hap2_alt_baseqs);
+            //         } else if hap1_allele_class.allcls == 2 && hap2_allele_class.allcls == 0 {
+            //             let somatic_score = -10.0_f64 * (1.0 - hap1_allele_class.prob).log10();
+            //             snp.cand_somatic = true;
+            //             snp.somatic = true;
+            //             snp.variant_type = 1;
+            //             snp.somatic_score = somatic_score;
+            //             snp.phase_score = 0.0;
+            //             // println!("somatic snp:{}, score: {}", snp.pos, somatic_score);
+            //             // println!("{:?},{:?}", hap1_allele_class, hap2_allele_class);
+            //             // println!("hap1_ref_baseqs:{:?}\nhap1_alt_baseqs:{:?}\nhap2_ref_baseqs:{:?}\nhap2_alt_baseqs:{:?}", snp.hap_quals.hap1_ref_baseqs, snp.hap_quals.hap1_alt_baseqs, snp.hap_quals.hap2_ref_baseqs, snp.hap_quals.hap2_alt_baseqs);
+            //         }
+            //     }
+            // }
+        }
     }
 
     pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
@@ -624,6 +758,7 @@ impl SNPFrag {
         for k in 0..self.fragments.len() {
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
+            let mut altfrac: Vec<f32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for fe in self.fragments[k].list.iter() {
@@ -632,6 +767,7 @@ impl SNPFrag {
                 ps.push(fe.p);
                 probs.push(fe.prob);
                 delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                altfrac.push(self.candidate_snps[fe.snp_idx].alt_allele_fraction);
             }
             if sigma_k == 0 {
                 // unasigned haplotag, cluster the read into unknown group
@@ -642,8 +778,8 @@ impl SNPFrag {
                 let mut q = 0.0;
                 let mut qn = 0.0;
                 if delta.len() > 0 {
-                    q = cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
-                    qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                    q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
+                    qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
                 }
 
                 if (q - qn).abs() >= read_assignment_cutoff {
