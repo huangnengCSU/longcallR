@@ -586,6 +586,13 @@ impl SNPFrag {
             candidate_snp.variant_quality = variant_quality;
             candidate_snp.genotype_probability = genotype_prob.clone();
             candidate_snp.genotype_quality = genotype_quality;
+            if allele1 == bf.ref_base {
+                candidate_snp.alt_allele_fraction = allele2_freq;  // allele1 is reference, allele2 is alternative
+            } else if allele2 == bf.ref_base {
+                candidate_snp.alt_allele_fraction = allele1_freq;  // allele2 is reference, allele1 is alternative
+            } else {
+                candidate_snp.alt_allele_fraction = allele2_freq;  // multi-allelic event, implicitly change the reference base as allele1, allele2 is alternative
+            }
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
                 candidate_snp.variant_type = 2;
             } else if genotype_prob[1] > genotype_prob[0] && genotype_prob[1] > genotype_prob[2] {

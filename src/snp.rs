@@ -31,6 +31,7 @@ pub struct CandidateSNP {
     pub allele_freqs: [f32; 2],
     // major and minor allele frequencies
     pub reference: char,
+    pub alt_allele_fraction: f32,
     pub depth: u32,
     pub variant_type: i32,
     // 0: homo ref, 1: heterozygous SNP, 2: homozygous SNP, 3: triallelic SNP
