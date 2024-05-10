@@ -630,6 +630,7 @@ impl SNPFrag {
                     // potential forward A to G editing
                     if candidate_snp.variant_type != 2 {
                         candidate_snp.rna_editing = true;
+                        candidate_snp.for_phasing = true;
                         self.candidate_snps.push(candidate_snp);
                         self.edit_snps.push(self.candidate_snps.len() - 1);
                         position += 1;
@@ -641,6 +642,7 @@ impl SNPFrag {
                     // potential reverse A to G editing
                     if candidate_snp.variant_type != 2 {
                         candidate_snp.rna_editing = true;
+                        candidate_snp.for_phasing = true;
                         self.candidate_snps.push(candidate_snp);
                         self.edit_snps.push(self.candidate_snps.len() - 1);
                         position += 1;
@@ -653,6 +655,7 @@ impl SNPFrag {
             if allele1 == bf.ref_base && allele2 != bf.ref_base {
                 if allele2_cnt >= somatic_allele_cnt_cutoff && allele2_freq >= somatic_allele_frac_cutoff && allele2_freq < min_allele_freq {
                     candidate_snp.cand_somatic = true;
+                    candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
                     self.somatic_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
@@ -661,6 +664,7 @@ impl SNPFrag {
             } else if allele2 == bf.ref_base && allele1 != bf.ref_base {
                 if allele1_cnt >= somatic_allele_cnt_cutoff && allele1_freq >= somatic_allele_frac_cutoff && allele1_freq < min_allele_freq {
                     candidate_snp.cand_somatic = true;
+                    candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
                     self.somatic_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
@@ -675,6 +679,7 @@ impl SNPFrag {
                 }
                 candidate_snp.hom_var = true;
                 candidate_snp.germline = true;
+                candidate_snp.for_phasing = true;
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
                 position += 1;
@@ -687,6 +692,7 @@ impl SNPFrag {
                     candidate_snp.variant_type = 3; // triallelic SNP
                     candidate_snp.hom_var = true;
                     candidate_snp.germline = true;
+                    candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
                     self.homo_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
@@ -701,6 +707,7 @@ impl SNPFrag {
                         continue;
                     } else {
                         candidate_snp.low_frac_het = true;
+                        candidate_snp.for_phasing = true;
                         self.candidate_snps.push(candidate_snp);
                         self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
                         position += 1;
@@ -716,6 +723,7 @@ impl SNPFrag {
                         continue;
                     } else {
                         candidate_snp.low_frac_het = true;
+                        candidate_snp.for_phasing = true;
                         self.candidate_snps.push(candidate_snp);
                         self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
                         position += 1;
