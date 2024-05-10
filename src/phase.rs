@@ -4,9 +4,17 @@ use rand::Rng;
 
 use crate::snpfrags::SNPFrag;
 
-pub fn qki(sigma: i32, delta: i32, base_allele: i32, error_rate: f64) -> f64 {
+pub fn qki(sigma: i32, delta: i32, alt_fraction: f32, base_allele: i32, error_rate: f64) -> f64 {
     let mut x: i32;
-    if delta == 0 { x = 1; } else { x = sigma * delta; }
+    if delta == 0 {
+        if alt_fraction < 0.5 {
+            x = 1;
+        } else {
+            x = -1;
+        }
+    } else {
+        x = sigma * delta;
+    }
     if base_allele == x {
         return 1.0 - error_rate;
     } else {
@@ -14,7 +22,7 @@ pub fn qki(sigma: i32, delta: i32, base_allele: i32, error_rate: f64) -> f64 {
     }
 }
 
-pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, altfrac: &Vec<f32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
     // calculate P(sigma_k | delta)
     // sigma_k: the assignment of read k, 1 or -1.
     // delta: the haplotypes of the SNPs covered by read k, each haplotype is 1 or -1 or 0.
@@ -25,12 +33,12 @@ pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Ve
     let mut log_q3: f64 = 0.0;
 
     for i in 0..delta.len() {
-        log_q1 += qki(sigma_k, delta[i], ps[i], probs[i]).log10();
+        log_q1 += qki(sigma_k, delta[i], altfrac[i], ps[i], probs[i]).log10();
     }
 
     for i in 0..delta.len() {
-        log_q2 += qki(1, delta[i], ps[i], probs[i]).log10();
-        log_q3 += qki(-1, delta[i], ps[i], probs[i]).log10();
+        log_q2 += qki(1, delta[i], altfrac[i], ps[i], probs[i]).log10();
+        log_q3 += qki(-1, delta[i], altfrac[i], ps[i], probs[i]).log10();
     }
     let max_logq = log_q1.max(log_q2.max(log_q3));
     let q1 = 10.0_f64.powf(log_q1 - max_logq);
@@ -40,19 +48,19 @@ pub fn cal_sigma_delta(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Ve
     return q1 / (q2 + q3);
 }
 
-pub fn cal_sigma_delta_log(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+pub fn cal_sigma_delta_log(sigma_k: i32, delta: &Vec<i32>, altfrac: &Vec<f32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
     // same as call_sigma_delta, but use log to avoid underflow
     let mut log_q1: f64 = 0.0;
     let mut log_q2: f64 = 0.0;
     let mut log_q3: f64 = 0.0;
 
     for i in 0..delta.len() {
-        log_q1 += qki(sigma_k, delta[i], ps[i], probs[i]).log10();
+        log_q1 += qki(sigma_k, delta[i], altfrac[i], ps[i], probs[i]).log10();
     }
 
     for i in 0..delta.len() {
-        log_q2 += qki(1, delta[i], ps[i], probs[i]).log10();
-        log_q3 += qki(-1, delta[i], ps[i], probs[i]).log10();
+        log_q2 += qki(1, delta[i], altfrac[i], ps[i], probs[i]).log10();
+        log_q3 += qki(-1, delta[i], altfrac[i], ps[i], probs[i]).log10();
     }
     /*
     Given 0<=A<=1, 0<=B<=1 and A/(A+B) > B/(A+B), we have logA/(logA+logB) < logB/(logA+logB).
@@ -61,7 +69,7 @@ pub fn cal_sigma_delta_log(sigma_k: i32, delta: &Vec<i32>, ps: &Vec<i32>, probs:
     return 1.0 - log_q1 / (log_q2 + log_q3);
 }
 
-pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+pub fn cal_delta_sigma(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
     // calculate P(delta_i | sigma)
     // delta_i: the haplotype of SNP i, 1 or -1.
     // sigma: the assignments of the reads cover SNP i, each haplotype is 1 or -1.
@@ -74,13 +82,13 @@ pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Ve
     let mut log_q4: f64 = 0.0;
 
     for k in 0..sigma.len() {
-        log_q1 += qki(sigma[k], delta_i, ps[k], probs[k]).log10();
+        log_q1 += qki(sigma[k], delta_i, alt_fraction_i, ps[k], probs[k]).log10();
     }
 
     for k in 0..sigma.len() {
-        log_q2 += qki(sigma[k], 1, ps[k], probs[k]).log10();
-        log_q3 += qki(sigma[k], -1, ps[k], probs[k]).log10();
-        log_q4 += qki(sigma[k], 0, ps[k], probs[k]).log10();
+        log_q2 += qki(sigma[k], 1, alt_fraction_i, ps[k], probs[k]).log10();
+        log_q3 += qki(sigma[k], -1, alt_fraction_i, ps[k], probs[k]).log10();
+        log_q4 += qki(sigma[k], 0, alt_fraction_i, ps[k], probs[k]).log10();
     }
     let max_logq = log_q1.max(log_q2.max(log_q3.max(log_q4)));
     let q1 = 10.0_f64.powf(log_q1 - max_logq);
@@ -91,7 +99,7 @@ pub fn cal_delta_sigma(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Ve
     return q1 / (q2 + q3 + q4);
 }
 
-pub fn cal_delta_sigma_log(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+pub fn cal_delta_sigma_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
     // same as call_delta_sigma, but use log to avoid underflow
     let mut log_q1: f64 = 0.0;
     let mut log_q2: f64 = 0.0;
@@ -100,13 +108,13 @@ pub fn cal_delta_sigma_log(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs:
 
 
     for k in 0..sigma.len() {
-        log_q1 += qki(sigma[k], delta_i, ps[k], probs[k]).log10();
+        log_q1 += qki(sigma[k], delta_i, alt_fraction_i, ps[k], probs[k]).log10();
     }
 
     for k in 0..sigma.len() {
-        log_q2 += qki(sigma[k], 1, ps[k], probs[k]).log10();
-        log_q3 += qki(sigma[k], -1, ps[k], probs[k]).log10();
-        log_q4 += qki(sigma[k], 0, ps[k], probs[k]).log10();
+        log_q2 += qki(sigma[k], 1, alt_fraction_i, ps[k], probs[k]).log10();
+        log_q3 += qki(sigma[k], -1, alt_fraction_i, ps[k], probs[k]).log10();
+        log_q4 += qki(sigma[k], 0, alt_fraction_i, ps[k], probs[k]).log10();
     }
 
     /*
@@ -141,6 +149,7 @@ pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i
     let mut pre_logp = 0.0;
     for (k, h) in updated_haplotag.iter() {
         let mut delta: Vec<i32> = Vec::new();
+        let mut altfrac: Vec<f32> = Vec::new();
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
         if snpfrag.fragments[*k].haplotag == 0 {
@@ -154,12 +163,13 @@ pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i
             ps.push(fe.p);
             probs.push(fe.prob);
             delta.push(snpfrag.candidate_snps[fe.snp_idx].haplotype);
+            altfrac.push(snpfrag.candidate_snps[fe.snp_idx].alt_allele_fraction);
         }
         if delta.len() == 0 {
             continue;
         }
-        logp += cal_sigma_delta_log(*h, &delta, &ps, &probs);
-        pre_logp += cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &ps, &probs);
+        logp += cal_sigma_delta_log(*h, &delta, &altfrac, &ps, &probs);
+        pre_logp += cal_sigma_delta_log(snpfrag.fragments[*k].haplotag, &delta, &altfrac, &ps, &probs);
     }
 
     let mut flag = 0;
@@ -178,6 +188,7 @@ pub fn check_new_haplotype(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize,
     let mut logp = 0.0;
     let mut pre_logp = 0.0;
     for (i, h) in updated_haplotype.iter() {
+        let alt_fraction_i = snpfrag.candidate_snps[*i].alt_allele_fraction;
         let mut sigma: Vec<i32> = Vec::new();
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
@@ -201,8 +212,8 @@ pub fn check_new_haplotype(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize,
         if sigma.len() == 0 {
             continue;
         }
-        logp += cal_delta_sigma_log(*h, &sigma, &ps, &probs);
-        pre_logp += cal_delta_sigma_log(snpfrag.candidate_snps[*i].haplotype, &sigma, &ps, &probs);
+        logp += cal_delta_sigma_log(*h, alt_fraction_i, &sigma, &ps, &probs);
+        pre_logp += cal_delta_sigma_log(snpfrag.candidate_snps[*i].haplotype, alt_fraction_i, &sigma, &ps, &probs);
     }
     let mut flag = 0;
     if logp > pre_logp {
@@ -276,6 +287,7 @@ impl SNPFrag {
             for k in 0..self.fragments.len() {
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
+                let mut altfrac: Vec<f32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 if sigma_k == 0 {
@@ -287,11 +299,12 @@ impl SNPFrag {
                     ps.push(fe.p);
                     probs.push(fe.prob);
                     delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                    altfrac.push(self.candidate_snps[fe.snp_idx].alt_allele_fraction);
                     processed_snps.insert(fe.snp_idx);
                 }
 
-                let q = cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
-                let qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                let q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
+                let qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
                 // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
 
                 if q < qn {
@@ -320,6 +333,7 @@ impl SNPFrag {
             let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
             for i in self.high_frac_het_snps.iter() {
                 let delta_i = self.candidate_snps[*i].haplotype;
+                let alt_fraction_i = self.candidate_snps[*i].alt_allele_fraction;
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
@@ -339,9 +353,9 @@ impl SNPFrag {
                     }
                 }
 
-                let q1 = cal_delta_sigma_log(-1, &sigma, &ps, &probs);
-                let q2 = cal_delta_sigma_log(0, &sigma, &ps, &probs);
-                let q3 = cal_delta_sigma_log(1, &sigma, &ps, &probs);
+                let q1 = cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs);
+                let q2 = cal_delta_sigma_log(0, alt_fraction_i, &sigma, &ps, &probs);
+                let q3 = cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs);
 
                 if q1 >= q2 && q1 >= q3 {
                     tmp_haplotype.insert(*i, -1);
@@ -384,6 +398,7 @@ impl SNPFrag {
             for k in 0..self.fragments.len() {
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
+                let mut altfrac: Vec<f32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 if sigma_k == 0 {
@@ -395,12 +410,13 @@ impl SNPFrag {
                     ps.push(fe.p);
                     probs.push(fe.prob);
                     delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                    altfrac.push(self.candidate_snps[fe.snp_idx].alt_allele_fraction);
                 }
                 if delta.len() == 0 {
                     continue;
                 }
-                let q = cal_sigma_delta_log(sigma_k, &delta, &ps, &probs);
-                let qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &ps, &probs);
+                let q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
+                let qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
                 // println!("q:{}, qn:{}", q, qn);
                 assert!(q >= qn, "{} Error: read assignment is not local optimal. {}->{}\n{:?}\ndelta:{:?}\nps:{:?}\nprobs:{:?}\nsigma:{}\n{:?}\n{:?}", k, q, qn, self.region, delta, ps, probs, sigma_k, used_for_haplotype, used_for_haplotag);
             }
@@ -410,6 +426,7 @@ impl SNPFrag {
         if used_for_haplotype {
             for i in self.high_frac_het_snps.iter() {
                 let delta_i = self.candidate_snps[*i].haplotype;
+                let alt_fraction_i = self.candidate_snps[*i].alt_allele_fraction;
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
@@ -432,19 +449,19 @@ impl SNPFrag {
                     continue;
                 }
                 if delta_i == 0 {
-                    let q1 = cal_delta_sigma_log(0, &sigma, &ps, &probs);
-                    let q2 = cal_delta_sigma_log(1, &sigma, &ps, &probs);
-                    let q3 = cal_delta_sigma_log(-1, &sigma, &ps, &probs);
+                    let q1 = cal_delta_sigma_log(0, alt_fraction_i, &sigma, &ps, &probs);
+                    let q2 = cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs);
+                    let q3 = cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs);
                     assert!(q1 >= q2 && q1 >= q3, "{} Error: phase is not local optimal. {}->{},{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\n{:?}\n{:?}", i, q1, q2, q3, self.region, sigma, ps, probs, used_for_haplotype, used_for_haplotag)
                 } else if delta_i == 1 {
-                    let q1 = cal_delta_sigma_log(1, &sigma, &ps, &probs);
-                    let q2 = cal_delta_sigma_log(0, &sigma, &ps, &probs);
-                    let q3 = cal_delta_sigma_log(-1, &sigma, &ps, &probs);
+                    let q1 = cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs);
+                    let q2 = cal_delta_sigma_log(0, alt_fraction_i, &sigma, &ps, &probs);
+                    let q3 = cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs);
                     assert!(q1 >= q2 && q1 >= q3, "{} Error: phase is not local optimal. {}->{},{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\n{:?}\n{:?}", i, q1, q2, q3, self.region, sigma, ps, probs, used_for_haplotype, used_for_haplotag)
                 } else if delta_i == -1 {
-                    let q1 = cal_delta_sigma_log(-1, &sigma, &ps, &probs);
-                    let q2 = cal_delta_sigma_log(0, &sigma, &ps, &probs);
-                    let q3 = cal_delta_sigma_log(1, &sigma, &ps, &probs);
+                    let q1 = cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs);
+                    let q2 = cal_delta_sigma_log(0, alt_fraction_i, &sigma, &ps, &probs);
+                    let q3 = cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs);
                     assert!(q1 >= q2 && q1 >= q3, "{} Error: phase is not local optimal. {}->{},{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\n{:?}\n{:?}", i, q1, q2, q3, self.region, sigma, ps, probs, used_for_haplotype, used_for_haplotag)
                 }
             }
