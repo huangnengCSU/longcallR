@@ -379,13 +379,13 @@ pub fn multithread_phase_haplotag(
                     }
                 }
 
-                // let vcf_records = snpfrag.output_phased_vcf(min_phase_score, min_qual_for_candidate);
-                // {
-                //     let mut queue = vcf_records_queue.lock().unwrap();
-                //     for rd in vcf_records.iter() {
-                //         queue.push_back(rd.clone());
-                //     }
-                // }
+                let vcf_records = snpfrag.output_phased_vcf(min_phase_score, min_qual_for_candidate);
+                {
+                    let mut queue = vcf_records_queue.lock().unwrap();
+                    for rd in vcf_records.iter() {
+                        queue.push_back(rd.clone());
+                    }
+                }
             }
         });
     });
