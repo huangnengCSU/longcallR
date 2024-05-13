@@ -71,6 +71,15 @@ impl SNPFrag {
                 let mut af = 0.0;
                 if snp.variant_type == 0 {
                     continue;
+                    // if snp.alleles[0] != snp.reference {
+                    //     rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    //     af = snp.allele_freqs[0];
+                    // } else if snp.alleles[1] != snp.reference {
+                    //     rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    //     af = snp.allele_freqs[1];
+                    // }
+                    // gt = "0/1";
+                    // rd.filter = "NonSelect".to_string().into_bytes();
                 } else if snp.variant_type == 1 {
                     if snp.alleles[0] != snp.reference {
                         rd.alternative = vec![vec![snp.alleles[0] as u8]];
@@ -95,16 +104,9 @@ impl SNPFrag {
                     continue;
                 }
                 rd.qual = snp.variant_quality as i32;
-                rd.info = "RDS=.".to_string().into_bytes();
-                rd.genotype = format!(
-                    "{}:{}:{}:{:.2}:{:.2}",
-                    gt,
-                    snp.genotype_quality as i32,
-                    snp.depth,
-                    af,
-                    snp.phase_score,
-                );
-                rd.format = "GT:GQ:DP:AF:PQ".to_string().into_bytes();
+                rd.info = "RDS=noselect".to_string().into_bytes();
+                rd.genotype = format!("{}:{}:{}:{:.2}", gt, snp.genotype_quality as i32, snp.depth, af);
+                rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
                 records.push(rd);
             } else {
                 let mut rd: VCFRecord = VCFRecord::default();
@@ -114,41 +116,69 @@ impl SNPFrag {
                 rd.reference = vec![snp.reference as u8];
                 let mut gt = "0/0";
                 let mut af = 0.0;
-                if snp.variant_type == 0 {
-                    if snp.alleles[0] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                        af = snp.allele_freqs[0];
-                    } else if snp.alleles[1] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                        af = snp.allele_freqs[1];
+                if snp.phase_score >= min_phase_score as f64 {
+                    if snp.variant_type == 0 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "0/1";
+                        rd.filter = "PASS".to_string().into_bytes();
+                    } else if snp.variant_type == 1 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "0/1";
+                        rd.filter = "PASS".to_string().into_bytes();
+                    } else if snp.variant_type == 2 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "0/1";
+                        rd.filter = "PASS".to_string().into_bytes();
+                    } else {
+                        continue;
                     }
-                    gt = "0/1";
-                    rd.filter = "PASS".to_string().into_bytes();
-                } else if snp.variant_type == 1 {
-                    if snp.alleles[0] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                        af = snp.allele_freqs[0];
-                    } else if snp.alleles[1] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                        af = snp.allele_freqs[1];
-                    }
-                    gt = "0/1";
-                    rd.filter = "PASS".to_string().into_bytes();
-                } else if snp.variant_type == 2 {
-                    if snp.alleles[0] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                        af = snp.allele_freqs[0];
-                    } else if snp.alleles[1] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                        af = snp.allele_freqs[1];
-                    }
-                    gt = "0/1";
-                    rd.filter = "PASS".to_string().into_bytes();
                 } else {
-                    continue;
+                    if snp.variant_type == 0 {
+                        continue;
+                    } else if snp.variant_type == 1 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "0/1";
+                        rd.filter = "LowQual".to_string().into_bytes();
+                    } else if snp.variant_type == 2 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "1/1";
+                        rd.filter = "PASS".to_string().into_bytes();
+                    } else {
+                        continue;
+                    }
                 }
                 rd.qual = snp.variant_quality as i32;
-                rd.info = "RDS=.".to_string().into_bytes();
+                rd.info = "RDS=select".to_string().into_bytes();
                 rd.genotype = format!(
                     "{}:{}:{}:{:.2}:{:.2}",
                     gt,
