@@ -216,11 +216,11 @@ struct Args {
     // ase_ps_cutoff: f32,
 
     /// Somatic mutation allele fraction cutoff
-    #[arg(long, default_value_t = 0.01)]
+    #[arg(long, default_value_t = 0.05)]
     somatic_allele_frac_cutoff: f32,
 
     /// Somatic mutation allele count cutoff
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = 10)]
     somatic_allele_cnt_cutoff: u32,
 
     /// Without phasing, only using genotype probability
