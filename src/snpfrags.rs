@@ -667,7 +667,7 @@ impl SNPFrag {
             }
 
             let mut phase_score = 0.0;
-            if sigma.len() > 0 || hap1_reads_num >= 2 || hap2_reads_num >= 2 {
+            if sigma.len() > 0 && hap1_reads_num >= 2 && hap2_reads_num >= 2 {
                 // each haplotype should have at least 2 reads
                 phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_log(delta_i, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 if phase_score >= min_phase_score as f64 {
@@ -695,6 +695,8 @@ impl SNPFrag {
                 } else {
                     snp.phase_score = phase_score;
                 }
+            } else {
+                snp.phase_score = 0.19940219;
             }
 
             // TODO: het var with low phase score transfer to hom var
