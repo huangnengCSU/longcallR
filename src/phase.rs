@@ -303,6 +303,9 @@ impl SNPFrag {
                     processed_snps.insert(fe.snp_idx);
                 }
 
+                if delta.len() == 0 {
+                    continue;
+                }
                 let q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
                 let qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
                 // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
@@ -353,6 +356,9 @@ impl SNPFrag {
                     }
                 }
 
+                if sigma.len() == 0 {
+                    continue;
+                }
                 let q1 = cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs);
                 let q2 = cal_delta_sigma_log(0, alt_fraction_i, &sigma, &ps, &probs);
                 let q3 = cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs);
@@ -540,45 +546,17 @@ impl SNPFrag {
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
                 }
                 self.load_best_configuration(&best_haplotype, &best_haplotag);
-
-                // when initial setting has reached to local optimal, flip all the snps after a specific position to jump out local optimization
-                let mut unflipped_haplotype: Vec<i32> = Vec::new();
-                for i in 0..self.candidate_snps.len() {
-                    unflipped_haplotype.push(self.candidate_snps[i].haplotype);
-                }
-                for ti in 0..unflipped_haplotype.len() {
-                    let mut tmp_hap: Vec<i32> = Vec::new();
-                    for tj in 0..unflipped_haplotype.len() {
-                        if tj < ti {
-                            tmp_hap.push(unflipped_haplotype[tj]);
-                        } else {
-                            // TODO: only flip between 1 and -1, no jump out 0 state or jump to 0 state
-                            tmp_hap.push(unflipped_haplotype[tj] * (-1));
-                        }
-                    }
-                    // block flip
-                    {
-                        assert_eq!(tmp_hap.len(), self.candidate_snps.len());
-                        for i in 0..self.candidate_snps.len() {
-                            self.candidate_snps[i].haplotype = tmp_hap[i];
-                        }
-                    }
-                    let prob = self.cross_optimize();
-                    if prob > largest_prob {
-                        largest_prob = prob;
-                        self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
-                    }
-                    self.load_best_configuration(&best_haplotype, &best_haplotag);
-
-                    // when current block flip has reached to local optimal, flip a fraction of snps and reads to jump out local optimization
+                for _ in 0..5 {
                     {
                         let mut rng = rand::thread_rng();
                         for ti in 0..self.candidate_snps.len() {
                             let rg: f64 = rng.gen();
-                            if rg < (random_flip_fraction as f64) / 2.0 {
-                                self.candidate_snps[ti].haplotype = self.candidate_snps[ti].haplotype * (-1);
-                            } else if rg < (random_flip_fraction as f64) {
-                                self.candidate_snps[ti].haplotype = self.candidate_snps[ti].haplotype * 0;
+                            if rg < 0.33 {
+                                self.candidate_snps[ti].haplotype = -1;
+                            } else if rg < 0.66 {
+                                self.candidate_snps[ti].haplotype = 1;
+                            } else if rg < 1.0 {
+                                self.candidate_snps[ti].haplotype = 0;
                             }
                         }
                         for tk in 0..self.fragments.len() {
@@ -598,6 +576,96 @@ impl SNPFrag {
                     }
                     self.load_best_configuration(&best_haplotype, &best_haplotag);
                 }
+
+                for _ in 0..5 {
+                    {
+                        let mut rng = rand::thread_rng();
+                        for ti in 0..self.candidate_snps.len() {
+                            let rg: f64 = rng.gen();
+                            if rg < 0.10 {
+                                self.candidate_snps[ti].haplotype = -1;
+                            } else if rg < 0.20 {
+                                self.candidate_snps[ti].haplotype = 1;
+                            } else if rg < 0.30 {
+                                self.candidate_snps[ti].haplotype = 0;
+                            }
+                        }
+                        for tk in 0..self.fragments.len() {
+                            if self.fragments[tk].haplotag == 0 {
+                                continue;
+                            }
+                            let rg: f64 = rng.gen();
+                            if rg < random_flip_fraction as f64 {
+                                self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
+                            }
+                        }
+                    }
+                    let prob = self.cross_optimize();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                    }
+                    self.load_best_configuration(&best_haplotype, &best_haplotag);
+                }
+
+
+                // // when initial setting has reached to local optimal, flip all the snps after a specific position to jump out local optimization
+                // let mut unflipped_haplotype: Vec<i32> = Vec::new();
+                // for i in 0..self.candidate_snps.len() {
+                //     unflipped_haplotype.push(self.candidate_snps[i].haplotype);
+                // }
+                // for ti in 0..unflipped_haplotype.len() {
+                //     let mut tmp_hap: Vec<i32> = Vec::new();
+                //     for tj in 0..unflipped_haplotype.len() {
+                //         if tj < ti {
+                //             tmp_hap.push(unflipped_haplotype[tj]);
+                //         } else {
+                //             // TODO: only flip between 1 and -1, no jump out 0 state or jump to 0 state
+                //             tmp_hap.push(unflipped_haplotype[tj] * (-1));
+                //         }
+                //     }
+                //     // block flip
+                //     {
+                //         assert_eq!(tmp_hap.len(), self.candidate_snps.len());
+                //         for i in 0..self.candidate_snps.len() {
+                //             self.candidate_snps[i].haplotype = tmp_hap[i];
+                //         }
+                //     }
+                //     let prob = self.cross_optimize();
+                //     if prob > largest_prob {
+                //         largest_prob = prob;
+                //         self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                //     }
+                //     self.load_best_configuration(&best_haplotype, &best_haplotag);
+                //
+                //     // when current block flip has reached to local optimal, flip a fraction of snps and reads to jump out local optimization
+                //     {
+                //         let mut rng = rand::thread_rng();
+                //         for ti in 0..self.candidate_snps.len() {
+                //             let rg: f64 = rng.gen();
+                //             if rg < (random_flip_fraction as f64) / 2.0 {
+                //                 self.candidate_snps[ti].haplotype = self.candidate_snps[ti].haplotype * (-1);
+                //             } else if rg < (random_flip_fraction as f64) {
+                //                 self.candidate_snps[ti].haplotype = self.candidate_snps[ti].haplotype * 0;
+                //             }
+                //         }
+                //         for tk in 0..self.fragments.len() {
+                //             if self.fragments[tk].haplotag == 0 {
+                //                 continue;
+                //             }
+                //             let rg: f64 = rng.gen();
+                //             if rg < random_flip_fraction as f64 {
+                //                 self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
+                //             }
+                //         }
+                //     }
+                //     let prob = self.cross_optimize();
+                //     if prob > largest_prob {
+                //         largest_prob = prob;
+                //         self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                //     }
+                //     self.load_best_configuration(&best_haplotype, &best_haplotag);
+                // }
                 self.load_best_configuration(&best_haplotype, &best_haplotag);
                 max_iter -= 1;
             }
