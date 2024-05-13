@@ -602,21 +602,26 @@ impl SNPFrag {
             }
 
             if allele1 == bf.ref_base && allele2 != bf.ref_base {
-                if allele2_cnt < somatic_allele_cnt_cutoff && allele2_freq < somatic_allele_frac_cutoff {
+                if depth >= 200 && allele2_cnt < somatic_allele_cnt_cutoff {
+                    position += 1;
+                    continue;
+                } else if depth < 200 && allele2_freq < somatic_allele_frac_cutoff {
                     position += 1;
                     continue;
                 }
             } else if allele2 == bf.ref_base && allele1 != bf.ref_base {
-                if allele1_cnt < somatic_allele_cnt_cutoff && allele1_freq < somatic_allele_frac_cutoff {
+                if depth >= 200 && allele1_cnt < somatic_allele_cnt_cutoff {
+                    position += 1;
+                    continue;
+                } else if depth < 200 && allele1_freq < somatic_allele_frac_cutoff {
                     position += 1;
                     continue;
                 }
             } else if allele1 != bf.ref_base && allele2 != bf.ref_base {
-                if allele1_cnt < somatic_allele_cnt_cutoff &&
-                    allele1_freq < somatic_allele_frac_cutoff &&
-                    allele2_cnt < somatic_allele_cnt_cutoff &&
-                    allele2_freq < somatic_allele_frac_cutoff
-                {
+                if depth >= 200 && allele1_cnt < somatic_allele_cnt_cutoff && allele2_cnt < somatic_allele_cnt_cutoff {
+                    position += 1;
+                    continue;
+                } else if depth < 200 && allele1_freq < somatic_allele_frac_cutoff && allele2_freq < somatic_allele_frac_cutoff {
                     position += 1;
                     continue;
                 }
@@ -653,7 +658,7 @@ impl SNPFrag {
 
             // candidate somatic mutation
             if allele1 == bf.ref_base && allele2 != bf.ref_base {
-                if allele2_cnt >= somatic_allele_cnt_cutoff && allele2_freq >= somatic_allele_frac_cutoff && allele2_freq < min_allele_freq {
+                if allele2_freq < min_allele_freq {
                     candidate_snp.cand_somatic = true;
                     candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
@@ -662,7 +667,7 @@ impl SNPFrag {
                     continue;
                 }
             } else if allele2 == bf.ref_base && allele1 != bf.ref_base {
-                if allele1_cnt >= somatic_allele_cnt_cutoff && allele1_freq >= somatic_allele_frac_cutoff && allele1_freq < min_allele_freq {
+                if allele1_freq < min_allele_freq {
                     candidate_snp.cand_somatic = true;
                     candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
@@ -737,12 +742,12 @@ impl SNPFrag {
             }
 
             if candidate_snp.variant_type == 0 {
-                if allele1 != bf.ref_base {
-                    assert!(allele1_freq < somatic_allele_frac_cutoff || allele1_cnt < somatic_allele_cnt_cutoff || allele1_freq >= min_allele_freq, "candidate: {:?}", candidate_snp);
-                }
-                if allele2 != bf.ref_base {
-                    assert!(allele2_freq < somatic_allele_frac_cutoff || allele2_cnt < somatic_allele_cnt_cutoff || allele2_freq >= min_allele_freq, "candidate: {:?}", candidate_snp);
-                }
+                // if allele1 != bf.ref_base {
+                //     assert!(allele1_freq < somatic_allele_frac_cutoff || allele1_cnt < somatic_allele_cnt_cutoff || allele1_freq >= min_allele_freq, "candidate: {:?}", candidate_snp);
+                // }
+                // if allele2 != bf.ref_base {
+                //     assert!(allele2_freq < somatic_allele_frac_cutoff || allele2_cnt < somatic_allele_cnt_cutoff || allele2_freq >= min_allele_freq, "candidate: {:?}", candidate_snp);
+                // }
                 position += 1;
                 continue;
             }
