@@ -635,7 +635,7 @@ impl SNPFrag {
                     // potential forward A to G editing
                     if candidate_snp.variant_type != 2 {
                         candidate_snp.rna_editing = true;
-                        candidate_snp.for_phasing = true;
+                        candidate_snp.for_phasing = false;
                         self.candidate_snps.push(candidate_snp);
                         self.edit_snps.push(self.candidate_snps.len() - 1);
                         position += 1;
@@ -647,7 +647,7 @@ impl SNPFrag {
                     // potential reverse A to G editing
                     if candidate_snp.variant_type != 2 {
                         candidate_snp.rna_editing = true;
-                        candidate_snp.for_phasing = true;
+                        candidate_snp.for_phasing = false;
                         self.candidate_snps.push(candidate_snp);
                         self.edit_snps.push(self.candidate_snps.len() - 1);
                         position += 1;

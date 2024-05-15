@@ -69,6 +69,9 @@ impl SNPFrag {
                 rd.reference = vec![snp.reference as u8];
                 let mut gt = "0/0";
                 let mut af = 0.0;
+                if snp.rna_editing {
+                    continue;
+                }
                 if snp.variant_type == 0 {
                     continue;
                     // if snp.alleles[0] != snp.reference {
@@ -81,15 +84,16 @@ impl SNPFrag {
                     // gt = "0/1";
                     // rd.filter = "NonSelect".to_string().into_bytes();
                 } else if snp.variant_type == 1 {
-                    if snp.alleles[0] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                        af = snp.allele_freqs[0];
-                    } else if snp.alleles[1] != snp.reference {
-                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                        af = snp.allele_freqs[1];
-                    }
-                    gt = "0/1";
-                    rd.filter = "LowQual".to_string().into_bytes();
+                    continue;
+                    // if snp.alleles[0] != snp.reference {
+                    //     rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                    //     af = snp.allele_freqs[0];
+                    // } else if snp.alleles[1] != snp.reference {
+                    //     rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                    //     af = snp.allele_freqs[1];
+                    // }
+                    // gt = "0/1";
+                    // rd.filter = "LowQual".to_string().into_bytes();
                 } else if snp.variant_type == 2 {
                     if snp.alleles[0] != snp.reference {
                         rd.alternative = vec![vec![snp.alleles[0] as u8]];

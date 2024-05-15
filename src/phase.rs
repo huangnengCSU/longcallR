@@ -335,6 +335,7 @@ impl SNPFrag {
             // optimize delta
             let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
             for i in 0..self.candidate_snps.len() {
+                if self.candidate_snps[i].for_phasing == false { continue; }
                 let delta_i = self.candidate_snps[i].haplotype;
                 let alt_fraction_i = self.candidate_snps[i].alt_allele_fraction;
                 let mut sigma: Vec<i32> = Vec::new();
@@ -431,6 +432,7 @@ impl SNPFrag {
         // check delta
         if used_for_haplotype {
             for i in 0..self.candidate_snps.len() {
+                if self.candidate_snps[i].for_phasing == false { continue; }
                 let delta_i = self.candidate_snps[i].haplotype;
                 let alt_fraction_i = self.candidate_snps[i].alt_allele_fraction;
                 let mut sigma: Vec<i32> = Vec::new();

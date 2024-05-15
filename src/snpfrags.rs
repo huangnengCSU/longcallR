@@ -623,7 +623,10 @@ impl SNPFrag {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
             let snp = &mut self.candidate_snps[ti];
-            if !snp.for_phasing { continue; }
+            if !snp.for_phasing {
+                snp.non_selected = true;
+                continue;
+            }
             if snp.snp_cover_fragments.len() == 0 {
                 // no surranding haplotype links
                 snp.single = true;
@@ -766,6 +769,8 @@ impl SNPFrag {
             for fe in self.fragments[k].list.iter() {
                 if fe.phase_site == false { continue; }
                 assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                // assign reads with selected snps
+                if self.candidate_snps[fe.snp_idx].haplotype == 0 { continue; }
                 ps.push(fe.p);
                 probs.push(fe.prob);
                 delta.push(self.candidate_snps[fe.snp_idx].haplotype);
@@ -782,6 +787,11 @@ impl SNPFrag {
                 if delta.len() > 0 {
                     q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
                     qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
+                } else {
+                    self.fragments[k].assignment = 0;
+                    self.fragments[k].assignment_score = 0.0;
+                    read_assignments.insert(self.fragments[k].read_id.clone(), 0);
+                    continue;
                 }
 
                 if (q - qn).abs() >= read_assignment_cutoff {
