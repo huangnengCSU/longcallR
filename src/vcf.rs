@@ -70,6 +70,36 @@ impl SNPFrag {
                 let mut gt = "0/0";
                 let mut af = 0.0;
                 if snp.rna_editing {
+                    if snp.variant_type == 0 {
+                        continue;
+                    } else if snp.variant_type == 1 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "0/1";
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                    } else if snp.variant_type == 2 {
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        }
+                        gt = "1/1";
+                        rd.filter = "RnaEdit".to_string().into_bytes();
+                    } else {
+                        continue;
+                    }
+                    rd.qual = snp.variant_quality as i32;
+                    rd.info = "RDS=noselect".to_string().into_bytes();
+                    rd.genotype = format!("{}:{}:{}:{:.2}", gt, snp.genotype_quality as i32, snp.depth, af);
+                    rd.format = "GT:GQ:DP:AF".to_string().into_bytes();
+                    records.push(rd);
                     continue;
                 }
                 if snp.variant_type == 0 {
@@ -84,16 +114,16 @@ impl SNPFrag {
                     // gt = "0/1";
                     // rd.filter = "NonSelect".to_string().into_bytes();
                 } else if snp.variant_type == 1 {
-                    continue;
-                    // if snp.alleles[0] != snp.reference {
-                    //     rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                    //     af = snp.allele_freqs[0];
-                    // } else if snp.alleles[1] != snp.reference {
-                    //     rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                    //     af = snp.allele_freqs[1];
-                    // }
-                    // gt = "0/1";
-                    // rd.filter = "LowQual".to_string().into_bytes();
+                    // continue;
+                    if snp.alleles[0] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                        af = snp.allele_freqs[0];
+                    } else if snp.alleles[1] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                        af = snp.allele_freqs[1];
+                    }
+                    gt = "0/1";
+                    rd.filter = "LowQual".to_string().into_bytes();
                 } else if snp.variant_type == 2 {
                     if snp.alleles[0] != snp.reference {
                         rd.alternative = vec![vec![snp.alleles[0] as u8]];

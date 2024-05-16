@@ -390,7 +390,7 @@ impl SNPFrag {
             // if phase_score < min_phase_score as f64 {}
         }
     }*/
-    /*pub fn eval_rna_edit_var_phase(&mut self, min_phase_score: f32) {
+    pub fn eval_rna_edit_var_phase(&mut self, min_phase_score: f32) {
         for ti in self.edit_snps.iter() {
             let snp = &mut self.candidate_snps[*ti];
             if snp.snp_cover_fragments.len() == 0 {
@@ -398,6 +398,7 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
+            let alt_fraction_i = snp.alt_allele_fraction;
             let mut sigma: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
@@ -436,8 +437,8 @@ impl SNPFrag {
                 snp.single = true; // no surranding high_frac_het_snps
                 continue;
             } else {
-                phase_score1 = -10.0_f64 * (1.0 - cal_delta_sigma_log(1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                phase_score2 = -10.0_f64 * (1.0 - cal_delta_sigma_log(-1, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score1 = -10.0_f64 * (1.0 - cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score2 = -10.0_f64 * (1.0 - cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 snp.single = false;
             }
 
@@ -461,80 +462,81 @@ impl SNPFrag {
                         }
                     }
                 }
+                self.candidate_snps[*ti].non_selected = false;
                 self.candidate_snps[*ti].germline = true;
                 self.candidate_snps[*ti].rna_editing = false;
-                if self.candidate_snps[*ti].alleles[0] != self.candidate_snps[*ti].reference && self.candidate_snps[*ti].alleles[1] != self.candidate_snps[*ti].reference {
-                    // tri-allelic site
-                    self.candidate_snps[*ti].variant_type = 3;
-                    self.candidate_snps[*ti].hom_var = true;
-                } else {
-                    self.candidate_snps[*ti].variant_type = 1;
-                }
+                // if self.candidate_snps[*ti].alleles[0] != self.candidate_snps[*ti].reference && self.candidate_snps[*ti].alleles[1] != self.candidate_snps[*ti].reference {
+                //     // tri-allelic site
+                //     self.candidate_snps[*ti].variant_type = 3;
+                //     self.candidate_snps[*ti].hom_var = true;
+                // } else {
+                //     self.candidate_snps[*ti].variant_type = 1;
+                // }
                 self.candidate_snps[*ti].haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
                 self.candidate_snps[*ti].phase_score = phase_score;
             }
         }
         // resolve single snps
-        let mut ld_idxes: Vec<usize> = Vec::new();
-        for ti in self.edit_snps.iter() {
-            let snp = &self.candidate_snps[*ti];
-            if snp.single {
-                ld_idxes.push(*ti);
-            }
-        }
-        for i in 0..ld_idxes.len() {
-            let mut r2_map = HashMap::new();
-            for j in 0..ld_idxes.len() {
-                if i == j { continue; }
-                let idx1 = ld_idxes[i];
-                let idx2 = ld_idxes[j];
-                let snp1 = &self.candidate_snps[idx1];
-                let snp2 = &self.candidate_snps[idx2];
-                if idx1 < idx2 {
-                    if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
-                    let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
-                    r2_map.insert([idx1, idx2], r2);
-                } else if idx2 < idx1 {
-                    if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
-                    let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
-                    r2_map.insert([idx2, idx1], r2);
-                }
-            }
-            let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
-            if r2_map_high.len() >= 1 {
-                // high LD
-                // println!("single snp:{}", self.candidate_snps[ld_idxes[i]].pos);
-                // for (idxes, r2) in r2_map.iter() {
-                // println!("\t{}, {}, r2={}", self.candidate_snps[idxes[0]].pos, self.candidate_snps[idxes[1]].pos, r2);
-                // }
-                for (idxes, r2) in r2_map_high.iter() {
-                    let idx1 = idxes[0];
-                    let idx2 = idxes[1];
-                    self.candidate_snps[idx1].germline = true;
-                    self.candidate_snps[idx2].germline = true;
-                    self.candidate_snps[idx1].rna_editing = false;
-                    self.candidate_snps[idx2].rna_editing = false;
-                    self.candidate_snps[idx1].phase_score = min_phase_score as f64; // high LD, set phase score to min_phase_score
-                    self.candidate_snps[idx2].phase_score = min_phase_score as f64; // high LD, set phase score to min_phase_score
-                    if self.candidate_snps[idx1].alleles[0] != self.candidate_snps[idx1].reference && self.candidate_snps[idx1].alleles[1] != self.candidate_snps[idx1].reference {
-                        // tri-allelic site
-                        self.candidate_snps[idx1].variant_type = 3;
-                        self.candidate_snps[idx1].hom_var = true;
-                    } else {
-                        self.candidate_snps[idx1].variant_type = 1;
-                    }
-                    if self.candidate_snps[idx2].alleles[0] != self.candidate_snps[idx2].reference && self.candidate_snps[idx2].alleles[1] != self.candidate_snps[idx2].reference {
-                        // tri-allelic site
-                        self.candidate_snps[idx2].variant_type = 3;
-                        self.candidate_snps[idx2].hom_var = true;
-                    } else {
-                        self.candidate_snps[idx2].variant_type = 1;
-                    }
-                }
-            }
-        }
-    }*/
+        // let mut ld_idxes: Vec<usize> = Vec::new();
+        // for ti in self.edit_snps.iter() {
+        //     let snp = &self.candidate_snps[*ti];
+        //     if snp.single {
+        //         ld_idxes.push(*ti);
+        //     }
+        // }
+        // for i in 0..ld_idxes.len() {
+        //     let mut r2_map = HashMap::new();
+        //     for j in 0..ld_idxes.len() {
+        //         if i == j { continue; }
+        //         let idx1 = ld_idxes[i];
+        //         let idx2 = ld_idxes[j];
+        //         let snp1 = &self.candidate_snps[idx1];
+        //         let snp2 = &self.candidate_snps[idx2];
+        //         if idx1 < idx2 {
+        //             if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
+        //             let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+        //             r2_map.insert([idx1, idx2], r2);
+        //         } else if idx2 < idx1 {
+        //             if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
+        //             let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+        //             r2_map.insert([idx2, idx1], r2);
+        //         }
+        //     }
+        //     let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
+        //     if r2_map_high.len() >= 1 {
+        //         // high LD
+        //         // println!("single snp:{}", self.candidate_snps[ld_idxes[i]].pos);
+        //         // for (idxes, r2) in r2_map.iter() {
+        //         // println!("\t{}, {}, r2={}", self.candidate_snps[idxes[0]].pos, self.candidate_snps[idxes[1]].pos, r2);
+        //         // }
+        //         for (idxes, r2) in r2_map_high.iter() {
+        //             let idx1 = idxes[0];
+        //             let idx2 = idxes[1];
+        //             self.candidate_snps[idx1].germline = true;
+        //             self.candidate_snps[idx2].germline = true;
+        //             self.candidate_snps[idx1].rna_editing = false;
+        //             self.candidate_snps[idx2].rna_editing = false;
+        //             self.candidate_snps[idx1].phase_score = min_phase_score as f64; // high LD, set phase score to min_phase_score
+        //             self.candidate_snps[idx2].phase_score = min_phase_score as f64; // high LD, set phase score to min_phase_score
+        //             if self.candidate_snps[idx1].alleles[0] != self.candidate_snps[idx1].reference && self.candidate_snps[idx1].alleles[1] != self.candidate_snps[idx1].reference {
+        //                 // tri-allelic site
+        //                 self.candidate_snps[idx1].variant_type = 3;
+        //                 self.candidate_snps[idx1].hom_var = true;
+        //             } else {
+        //                 self.candidate_snps[idx1].variant_type = 1;
+        //             }
+        //             if self.candidate_snps[idx2].alleles[0] != self.candidate_snps[idx2].reference && self.candidate_snps[idx2].alleles[1] != self.candidate_snps[idx2].reference {
+        //                 // tri-allelic site
+        //                 self.candidate_snps[idx2].variant_type = 3;
+        //                 self.candidate_snps[idx2].hom_var = true;
+        //             } else {
+        //                 self.candidate_snps[idx2].variant_type = 1;
+        //             }
+        //         }
+        //     }
+        // }
+    }
     /*pub fn eval_som_var_phase(&mut self) {}*/
     /*pub fn eval_hom_var_phase(&mut self, min_phase_score: f32) {
         for ti in self.homo_snps.iter() {
