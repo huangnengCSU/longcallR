@@ -660,7 +660,7 @@ impl SNPFrag {
             if allele1 == bf.ref_base && allele2 != bf.ref_base {
                 if allele2_freq < min_allele_freq {
                     candidate_snp.cand_somatic = true;
-                    candidate_snp.for_phasing = true;
+                    candidate_snp.for_phasing = false;
                     self.candidate_snps.push(candidate_snp);
                     self.somatic_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
@@ -669,7 +669,7 @@ impl SNPFrag {
             } else if allele2 == bf.ref_base && allele1 != bf.ref_base {
                 if allele1_freq < min_allele_freq {
                     candidate_snp.cand_somatic = true;
-                    candidate_snp.for_phasing = true;
+                    candidate_snp.for_phasing = false;
                     self.candidate_snps.push(candidate_snp);
                     self.somatic_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
