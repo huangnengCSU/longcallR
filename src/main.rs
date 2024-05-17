@@ -119,9 +119,14 @@ struct Args {
     // #[arg(long, default_value_t = 0.75)]
     // min_homozygous_freq: f32,
 
-    /// Minimum variant quality for candidate SNPs
-    #[arg(long, default_value_t = 200)]
-    min_qual_for_candidate: u32,
+
+    // Minimum QUAL for candidate SNPs
+    #[arg(long, default_value_t = 20)]
+    min_qual: u32,
+
+    // /// Minimum variant quality for candidate SNPs
+    // #[arg(long, default_value_t = 200)]
+    // min_qual_for_candidate: u32,
 
     // /// Minimum variant quality for single snp and rna editing (higher than min_qual_for_candidate)
     // #[arg(long, default_value_t = 256)]
@@ -285,6 +290,7 @@ fn main() {
     let min_sup_haplotype_exon = arg.min_sup_haplotype_exon;
     let min_mapq = arg.min_mapq;
     let min_baseq = arg.min_baseq;
+    let min_qual = arg.min_qual;
     let hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
     let strand_bias_threshold = arg.strand_bias_threshold;
     let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
@@ -299,7 +305,6 @@ fn main() {
 
     let mut min_allele_freq = arg.min_allele_freq;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
-    let mut min_qual_for_candidate = arg.min_qual_for_candidate;
     let mut use_strand_bias = arg.use_strand_bias;
     let mut distance_to_read_end = arg.distance_to_read_end;
     let mut dense_win_size = arg.dense_win_size;
@@ -319,7 +324,6 @@ fn main() {
                 min_linkers = 1;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
-                min_qual_for_candidate = 25;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
@@ -334,7 +338,6 @@ fn main() {
                 min_linkers = 2;
                 min_allele_freq = 0.20;
                 min_allele_freq_include_intron = 0.05;
-                min_qual_for_candidate = 50;
                 distance_to_read_end = 20;
                 dense_win_size = 500;
                 min_dense_cnt = 5;
@@ -349,7 +352,6 @@ fn main() {
                 min_linkers = 1;
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
-                min_qual_for_candidate = 15;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
                 min_dense_cnt = 5;
@@ -364,7 +366,6 @@ fn main() {
                 min_linkers = 1;
                 min_allele_freq = 0.15;
                 min_allele_freq_include_intron = 0.0;
-                min_qual_for_candidate = 10;
                 distance_to_read_end = 40;
                 dense_win_size = 100;
                 min_dense_cnt = 5;
@@ -457,9 +458,9 @@ fn main() {
         min_mapq,
         min_baseq,
         min_allele_freq,
+        min_qual,
         hetvar_high_frac_cutoff,
         min_allele_freq_include_intron,
-        min_qual_for_candidate,
         use_strand_bias,
         strand_bias_threshold,
         cover_strand_bias_threshold,
