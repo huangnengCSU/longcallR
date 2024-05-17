@@ -16,7 +16,7 @@ pub struct VCFRecord {
 
 
 impl SNPFrag {
-    pub fn output_phased_vcf(&mut self, min_phase_score: f32, min_qual_for_candidate: u32) -> Vec<VCFRecord> {
+    pub fn output_phased_vcf(&mut self, min_phase_score: f32) -> Vec<VCFRecord> {
         let mut records: Vec<VCFRecord> = Vec::new();
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
