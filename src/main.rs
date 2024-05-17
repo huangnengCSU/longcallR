@@ -314,7 +314,7 @@ fn main() {
         match preset.unwrap() {
             Preset::ont_cdna => {
                 min_depth = 10;
-                min_phase_score = 8.0;
+                min_phase_score = 14.0;
                 read_assignment_cutoff = 0.15;
                 min_linkers = 1;
                 min_allele_freq = 0.20;
@@ -329,7 +329,7 @@ fn main() {
 
             Preset::ont_drna => {
                 min_depth = 10;
-                min_phase_score = 8.0;
+                min_phase_score = 14.0;
                 read_assignment_cutoff = 0.15;
                 min_linkers = 2;
                 min_allele_freq = 0.20;
@@ -359,7 +359,7 @@ fn main() {
 
             Preset::hifi_masseq => {
                 min_depth = 6;
-                min_phase_score = 9.0;
+                min_phase_score = 14.0;
                 read_assignment_cutoff = 0.0;
                 min_linkers = 1;
                 min_allele_freq = 0.15;
