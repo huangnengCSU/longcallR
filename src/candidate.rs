@@ -23,6 +23,7 @@ impl SNPFrag {
         platform: &Platform,
         exon_region_vec: Vec<Interval<usize, u8>>,
         min_allele_freq: f32,
+        min_qual: u32,
         hetvar_high_frac_cutoff: f32,
         min_allele_freq_include_intron: f32,
         min_coverage: u32,
@@ -625,6 +626,12 @@ impl SNPFrag {
                     position += 1;
                     continue;
                 }
+            }
+
+            // Low QUAL sites are filtered out
+            if variant_quality < min_qual as f64 {
+                position += 1;
+                continue;
             }
 
             // candidate rna editing site
