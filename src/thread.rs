@@ -28,9 +28,9 @@ pub fn multithread_phase_haplotag(
     min_mapq: u8,
     min_baseq: u8,
     min_allele_freq: f32,
+    min_qual: u32,
     hetvar_high_frac_cutoff: f32,
     min_allele_freq_include_intron: f32,
-    min_qual_for_candidate: u32,
     use_strand_bias: bool,
     strand_bias_threshold: f32,
     cover_strand_bias_threshold: f32,
@@ -113,6 +113,7 @@ pub fn multithread_phase_haplotag(
                 &platform,
                 exon_region_vec,
                 min_allele_freq,
+                min_qual,
                 hetvar_high_frac_cutoff,
                 min_allele_freq_include_intron,
                 min_depth,
@@ -133,7 +134,7 @@ pub fn multithread_phase_haplotag(
             snpfrag.get_fragments(&bam_file, &reg);
             if genotype_only {
                 // without phasing
-                let vcf_records = snpfrag.output_vcf(min_qual_for_candidate);
+                let vcf_records = snpfrag.output_vcf(min_qual);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
@@ -379,7 +380,7 @@ pub fn multithread_phase_haplotag(
                     }
                 }
 
-                let vcf_records = snpfrag.output_phased_vcf(min_phase_score, min_qual_for_candidate);
+                let vcf_records = snpfrag.output_phased_vcf(min_phase_score);
                 {
                     let mut queue = vcf_records_queue.lock().unwrap();
                     for rd in vcf_records.iter() {
