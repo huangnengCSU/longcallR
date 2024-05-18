@@ -566,7 +566,7 @@ impl SNPFrag {
                                 continue;
                             }
                             let rg: f64 = rng.gen();
-                            if rg < random_flip_fraction as f64 {
+                            if rg < 0.5 as f64 {
                                 self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
                             }
                         }
@@ -597,7 +597,7 @@ impl SNPFrag {
                                 continue;
                             }
                             let rg: f64 = rng.gen();
-                            if rg < random_flip_fraction as f64 {
+                            if rg < 0.2 as f64 {
                                 self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
                             }
                         }
