@@ -245,7 +245,7 @@ impl SNPFrag {
             let rg: f64 = rng.gen();
             if rg < 0.2 {
                 self.candidate_snps[i].haplotype = 0;  // non HetVar
-            } else if rg < 0.4 {
+            } else if rg < 0.6 {
                 self.candidate_snps[i].haplotype = 1; // HetVar hap1
             } else {
                 self.candidate_snps[i].haplotype = -1;  // HetVar hap2
