@@ -269,7 +269,7 @@ impl SNPFrag {
     }
 
 
-    pub fn cross_optimize(&mut self) -> f64 {
+    pub fn cross_optimize_sigma(&mut self) -> f64 {
         // Iteration:
         //     1. evaluate the assignment of each read based on the current SNP haplotype.
         //     2. evaluate the SNP haplotype based on the read assignment.
@@ -387,6 +387,138 @@ impl SNPFrag {
                 haplotag_increase = true;
             }
             self.check_local_optimal_configuration(true, false);
+            num_iters += 1;
+            if num_iters > 20 {
+                println!("Warning: iteration inside cross_optimize exceeds 20 times.");
+                break;
+            }
+        }
+        // sigma reaches the optimal solution first and then delta reaches the optimal solution. After this, equal probability flip of delta may destroy the optimum of sigma again.
+        // self.check_local_optimal_configuration(true, true);
+        let prob = cal_overall_probability(&self);
+        return prob;
+    }
+
+    pub fn cross_optimize_delta(&mut self) -> f64 {
+        // Iteration:
+        //     1. evaluate the SNP haplotype based on the read assignment.
+        //     2. evaluate the assignment of each read based on the current SNP haplotype.
+        // If P(sigma, delta) increase, repeat Iteration;
+        // Else break;
+
+        let mut phasing_increase: bool = true;
+        let mut haplotag_increase: bool = true;
+        let mut num_iters = 0;
+
+        while phasing_increase | haplotag_increase {
+            // optimize delta
+            let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
+            for i in 0..self.candidate_snps.len() {
+                if self.candidate_snps[i].for_phasing == false { continue; }
+                let delta_i = self.candidate_snps[i].haplotype;
+                let alt_fraction_i = self.candidate_snps[i].alt_allele_fraction;
+                let mut sigma: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for k in self.candidate_snps[i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].haplotag == 0 {
+                        continue;
+                    }
+                    // k is fragment index
+                    for fe in self.fragments[*k].list.iter() {
+                        if fe.snp_idx == i {
+                            if fe.phase_site == false { continue; }
+                            assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            sigma.push(self.fragments[*k].haplotag);
+                        }
+                    }
+                }
+
+                if sigma.len() == 0 {
+                    continue;
+                }
+                let q1 = cal_delta_sigma_log(-1, alt_fraction_i, &sigma, &ps, &probs);
+                let q2 = cal_delta_sigma_log(0, alt_fraction_i, &sigma, &ps, &probs);
+                let q3 = cal_delta_sigma_log(1, alt_fraction_i, &sigma, &ps, &probs);
+
+                if q1 >= q2 && q1 >= q3 {
+                    tmp_haplotype.insert(i, -1);
+                } else if q2 >= q1 && q2 >= q3 {
+                    tmp_haplotype.insert(i, 0);
+                } else if q3 >= q1 && q3 >= q2 {
+                    tmp_haplotype.insert(i, 1);
+                } else {
+                    panic!("Error: delta optimization failed. {}->{}->{}", q1, q2, q3);
+                }
+            }
+            let check_val = check_new_haplotype(&self, &tmp_haplotype);
+            assert!(check_val >= 0, "Error: check new haplotype: {:?}", self.candidate_snps);
+            for (idx, hap) in tmp_haplotype.iter() {
+                // when prob is equal, we still perform the flip to avoid bug of underflow
+                self.candidate_snps[*idx].haplotype = *hap;
+            }
+            if check_val == 0 {
+                phasing_increase = false;
+            } else {
+                phasing_increase = true;
+                haplotag_increase = true;
+            }
+            self.check_local_optimal_configuration(true, false);
+
+            // optimize sigma
+            let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
+            let mut processed_snps = HashSet::new(); // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
+            for k in 0..self.fragments.len() {
+                let sigma_k = self.fragments[k].haplotag;
+                let mut delta: Vec<i32> = Vec::new();
+                let mut altfrac: Vec<f32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                if sigma_k == 0 {
+                    continue;
+                }
+                for fe in self.fragments[k].list.iter() {
+                    if fe.phase_site == false { continue; }
+                    assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                    ps.push(fe.p);
+                    probs.push(fe.prob);
+                    delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+                    altfrac.push(self.candidate_snps[fe.snp_idx].alt_allele_fraction);
+                    processed_snps.insert(fe.snp_idx);
+                }
+
+                if delta.len() == 0 {
+                    continue;
+                }
+                let q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
+                let qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
+                // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
+
+                if q < qn {
+                    tmp_haplotag.insert(k, sigma_k * (-1));
+                } else {
+                    tmp_haplotag.insert(k, sigma_k);
+                }
+            }
+
+            // assert!(SNPFrag::cal_overall_probability(&self, &processed_snps, &self.haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
+            let check_val = check_new_haplotag(&self, &tmp_haplotag);
+            assert!(check_val >= 0, "Error: check new haplotag: {:?}", self.candidate_snps);
+            for (k, h) in tmp_haplotag.iter() {
+                // when prob is equal, we still perform the flip to avoid bug of underflow
+                self.fragments[*k].haplotag = *h;
+            }
+            if check_val == 0 {
+                haplotag_increase = false;
+            } else {
+                haplotag_increase = true;
+                phasing_increase = true;
+            }
+            self.check_local_optimal_configuration(false, true);
+
+
             num_iters += 1;
             if num_iters > 20 {
                 println!("Warning: iteration inside cross_optimize exceeds 20 times.");
@@ -524,7 +656,7 @@ impl SNPFrag {
                 unsafe {
                     self.init_assignment();
                 }
-                let prob = self.cross_optimize();
+                let prob = self.cross_optimize_sigma();
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
@@ -542,7 +674,7 @@ impl SNPFrag {
                 unsafe {
                     self.init_assignment();
                 }
-                let prob = self.cross_optimize();
+                let prob = self.cross_optimize_sigma();
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
@@ -579,6 +711,28 @@ impl SNPFrag {
                 //     self.load_best_configuration(&best_haplotype, &best_haplotag);
                 // }
 
+
+                for _ in 0..1 {
+                    {
+                        let mut rng = rand::thread_rng();
+                        for tk in 0..self.fragments.len() {
+                            if self.fragments[tk].haplotag == 0 {
+                                continue;
+                            }
+                            let rg: f64 = rng.gen();
+                            if rg < 0.2 as f64 {
+                                self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
+                            }
+                        }
+                    }
+                    let prob = self.cross_optimize_delta();
+                    if prob > largest_prob {
+                        largest_prob = prob;
+                        self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                    }
+                    self.load_best_configuration(&best_haplotype, &best_haplotag);
+                }
+
                 for _ in 0..1 {
                     {
                         let mut rng = rand::thread_rng();
@@ -592,17 +746,8 @@ impl SNPFrag {
                                 self.candidate_snps[ti].haplotype = 0;
                             }
                         }
-                        for tk in 0..self.fragments.len() {
-                            if self.fragments[tk].haplotag == 0 {
-                                continue;
-                            }
-                            let rg: f64 = rng.gen();
-                            if rg < 0.5 as f64 {
-                                self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
-                            }
-                        }
                     }
-                    let prob = self.cross_optimize();
+                    let prob = self.cross_optimize_sigma();
                     if prob > largest_prob {
                         largest_prob = prob;
                         self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
