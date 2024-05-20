@@ -121,7 +121,7 @@ struct Args {
 
 
     // Minimum QUAL for candidate SNPs
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, default_value_t = 15)]
     min_qual: u32,
 
     // /// Minimum variant quality for candidate SNPs
