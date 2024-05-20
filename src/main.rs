@@ -347,7 +347,7 @@ fn main() {
 
             Preset::hifi_isoseq => {
                 min_depth = 6;
-                min_phase_score = 14.0;
+                min_phase_score = 11.0;
                 read_assignment_cutoff = 0.0;
                 min_linkers = 1;
                 min_allele_freq = 0.15;
@@ -361,7 +361,7 @@ fn main() {
 
             Preset::hifi_masseq => {
                 min_depth = 6;
-                min_phase_score = 14.0;
+                min_phase_score = 11.0;
                 read_assignment_cutoff = 0.0;
                 min_linkers = 1;
                 min_allele_freq = 0.15;
