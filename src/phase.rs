@@ -732,7 +732,7 @@ impl SNPFrag {
             //     self.load_best_configuration(&best_haplotype, &best_haplotag);
             // }
 
-            for tidx in 0..max_iters {
+            for tidx in 0..self.candidate_snps.len() {
                 {
                     for ti in 0..self.candidate_snps.len() {
                         let mut rng = rand::thread_rng();
@@ -761,6 +761,26 @@ impl SNPFrag {
                             } else if rg >= 0.55 && rg < 0.65 {
                                 self.candidate_snps[ti].haplotype = 1;
                             }
+                        }
+                    }
+                }
+                let prob = self.cross_optimize_sigma();
+                if prob > largest_prob {
+                    largest_prob = prob;
+                    self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+                    // println!("tmp largest_prob: {}", largest_prob);
+                }
+                self.load_best_configuration(&best_haplotype, &best_haplotag);
+
+                {
+                    let mut rng = rand::thread_rng();
+                    for tk in 0..self.fragments.len() {
+                        if self.fragments[tk].haplotag == 0 {
+                            continue;
+                        }
+                        let rg: f64 = rng.gen();
+                        if rg < 0.1 as f64 {
+                            self.fragments[tk].haplotag = self.fragments[tk].haplotag * (-1);
                         }
                     }
                 }
