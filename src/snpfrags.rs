@@ -672,7 +672,7 @@ impl SNPFrag {
             }
 
             let mut phase_score = 0.0;
-            if sigma.len() > 0 && hap1_reads_num >= 2 && hap2_reads_num >= 2 {
+            if sigma.len() > 0 && hap1_reads_num >= 1 && hap2_reads_num >= 1 {
                 // each haplotype should have at least 2 reads
                 phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_log(delta_i, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 if phase_score >= min_phase_score as f64 {
@@ -705,10 +705,12 @@ impl SNPFrag {
             }
 
             // TODO: het var with low phase score transfer to hom var
-            // if phase_score < min_phase_score as f64 && snp.allele_freqs[0] > min_homozygous_freq && snp.alleles[0] != snp.reference && snp.filter == false {
+            // if phase_score < min_phase_score as f64 && snp.allele_freqs[0] >= 0.9 && snp.alleles[0] != snp.reference && snp.dense == false {
             //     // transfer from heterozygous to homozygous
             //     snp.variant_type = 2;
-            //     snp.ase = false;
+            //     snp.hom_var = true;
+            //     snp.germline = true;
+            //     snp.for_phasing = true;
             // }
 
             // TODO: het var with low phase score transfer to som var
