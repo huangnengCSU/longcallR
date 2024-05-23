@@ -132,14 +132,17 @@ pub fn cal_delta_sigma_prior_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<
     let mut log_q4: f64 = 0.0;
 
 
+    // let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
+    // let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
+    // let prior_hetvar_log: f64;
+    // if sigma.len() == 0 {
+    //     prior_hetvar_log = 0.001_f64.log10();
+    // } else {
+    //     prior_hetvar_log = 0.001_f64.log10() - (sigma.len() as f64) * 2.0_f64.log10();
+    // }
     let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
     let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
-    let prior_hetvar_log: f64;
-    if sigma.len() == 0 {
-        prior_hetvar_log = 0.001_f64.log10();
-    } else {
-        prior_hetvar_log = 0.001_f64.log10() - (sigma.len() as f64) * 2.0_f64.log10();
-    }
+    let prior_hetvar_log: f64 = 0.001_f64.log10();
 
 
     for k in 0..sigma.len() {
