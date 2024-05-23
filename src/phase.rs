@@ -124,7 +124,7 @@ pub fn cal_delta_sigma_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<i32>, 
     return 1.0 - log_q1 / (log_q2 + log_q3 + log_q4);
 }
 
-pub fn cal_delta_sigma_prior_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+pub fn cal_delta_sigma_prior_log(delta_i: i32, alt_fraction_i: f32, coverage_i: u32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
     // same as call_delta_sigma, but use log to avoid underflow
     let mut log_q1: f64 = 0.0;
     let mut log_q2: f64 = 0.0;
@@ -132,17 +132,17 @@ pub fn cal_delta_sigma_prior_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<
     let mut log_q4: f64 = 0.0;
 
 
-    // let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
-    // let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
-    // let prior_hetvar_log: f64;
-    // if sigma.len() == 0 {
-    //     prior_hetvar_log = 0.001_f64.log10();
-    // } else {
-    //     prior_hetvar_log = 0.001_f64.log10() - (sigma.len() as f64) * 2.0_f64.log10();
-    // }
     let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
     let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
-    let prior_hetvar_log: f64 = 0.001_f64.log10();
+    let prior_hetvar_log: f64;
+    if coverage_i == 0 {
+        prior_hetvar_log = 0.001_f64.log10();
+    } else {
+        prior_hetvar_log = 0.001_f64.log10() - (coverage_i as f64) * 2.0_f64.log10();
+    }
+    // let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
+    // let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
+    // let prior_hetvar_log: f64 = 0.001_f64.log10();
 
 
     for k in 0..sigma.len() {
@@ -178,6 +178,40 @@ pub fn cal_delta_sigma_prior_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<
     When comparing A/(A+B) and B/(A+B), we can approximately use 1-log(A)/(log(A)+log(B)) and 1-log(B)/(log(A)+log(B)) to avoid underflow.
     */
     return 1.0 - log_q1 / (log_q2 + log_q3 + log_q4);
+}
+
+pub fn cal_phase_score_log(delta_i: i32, alt_fraction_i: f32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+    // same as call_delta_sigma, but use log to avoid underflow
+    let mut log_q1: f64 = 0.0;
+    let mut log_q2: f64 = 0.0;
+    let mut log_q3: f64 = 0.0;
+
+    assert!(delta_i != 0, "Error: phase for unexpected allele.");
+    /*// theoretical calculation
+    for k in 0..sigma.len() {
+        log_q1 += qki(sigma[k], delta_i, alt_fraction_i, ps[k], probs[k]).log10();
+    }
+    for k in 0..sigma.len() {
+        log_q2 += qki(sigma[k], 1, alt_fraction_i, ps[k], probs[k]).log10();
+        log_q3 += qki(sigma[k], -1, alt_fraction_i, ps[k], probs[k]).log10();
+    }
+    let max_logq = log_q1.max(log_q2.max(log_q3));
+    log_q1 = log_q1 - max_logq;
+    log_q2 = log_q2 - max_logq;
+    log_q3 = log_q3 - max_logq;
+    let q1 = 10.0_f64.powf(log_q1);
+    let q2 = 10.0_f64.powf(log_q2);
+    let q3 = 10.0_f64.powf(log_q3);
+    return q1 / (q2 + q3);*/
+    // calculation in practice
+    for k in 0..sigma.len() {
+        log_q1 += qki(sigma[k], delta_i, alt_fraction_i, ps[k], probs[k]).log10();
+    }
+    for k in 0..sigma.len() {
+        log_q2 += qki(sigma[k], 1, alt_fraction_i, ps[k], probs[k]).log10();
+        log_q3 += qki(sigma[k], -1, alt_fraction_i, ps[k], probs[k]).log10();
+    }
+    return 1.0 - log_q1 / (log_q2 + log_q3);
 }
 
 pub fn cal_overall_probability(snpfrag: &SNPFrag) -> f64 {
@@ -245,6 +279,7 @@ pub fn check_new_haplotype(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize,
     let mut pre_logp = 0.0;
     for (i, h) in updated_haplotype.iter() {
         let alt_fraction_i = snpfrag.candidate_snps[*i].alt_allele_fraction;
+        let coverage_i = snpfrag.candidate_snps[*i].depth;
         let mut sigma: Vec<i32> = Vec::new();
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
@@ -268,8 +303,8 @@ pub fn check_new_haplotype(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize,
         if sigma.len() == 0 {
             continue;
         }
-        logp += cal_delta_sigma_prior_log(*h, alt_fraction_i, &sigma, &ps, &probs);
-        pre_logp += cal_delta_sigma_prior_log(snpfrag.candidate_snps[*i].haplotype, alt_fraction_i, &sigma, &ps, &probs);
+        logp += cal_delta_sigma_prior_log(*h, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+        pre_logp += cal_delta_sigma_prior_log(snpfrag.candidate_snps[*i].haplotype, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
     }
     let mut flag = 0;
     if logp > pre_logp {
@@ -394,6 +429,7 @@ impl SNPFrag {
                 if self.candidate_snps[i].for_phasing == false { continue; }
                 let delta_i = self.candidate_snps[i].haplotype;
                 let alt_fraction_i = self.candidate_snps[i].alt_allele_fraction;
+                let coverage_i = self.candidate_snps[i].depth;
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
@@ -416,9 +452,9 @@ impl SNPFrag {
                 if sigma.len() == 0 {
                     continue;
                 }
-                let q1 = cal_delta_sigma_prior_log(-1, alt_fraction_i, &sigma, &ps, &probs);
-                let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, &sigma, &ps, &probs);
-                let q3 = cal_delta_sigma_prior_log(1, alt_fraction_i, &sigma, &ps, &probs);
+                let q1 = cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                let q3 = cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
 
                 if q1 >= q2 && q1 >= q3 {
                     tmp_haplotype.insert(i, -1);
@@ -473,6 +509,7 @@ impl SNPFrag {
                 if self.candidate_snps[i].for_phasing == false { continue; }
                 let delta_i = self.candidate_snps[i].haplotype;
                 let alt_fraction_i = self.candidate_snps[i].alt_allele_fraction;
+                let coverage_i = self.candidate_snps[i].depth;
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
@@ -495,9 +532,9 @@ impl SNPFrag {
                 if sigma.len() == 0 {
                     continue;
                 }
-                let q1 = cal_delta_sigma_prior_log(-1, alt_fraction_i, &sigma, &ps, &probs);
-                let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, &sigma, &ps, &probs);
-                let q3 = cal_delta_sigma_prior_log(1, alt_fraction_i, &sigma, &ps, &probs);
+                let q1 = cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                let q3 = cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
 
                 if q1 >= q2 && q1 >= q3 {
                     tmp_haplotype.insert(i, -1);
@@ -623,6 +660,7 @@ impl SNPFrag {
                 if self.candidate_snps[i].for_phasing == false { continue; }
                 let delta_i = self.candidate_snps[i].haplotype;
                 let alt_fraction_i = self.candidate_snps[i].alt_allele_fraction;
+                let coverage_i = self.candidate_snps[i].depth;
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
@@ -645,19 +683,19 @@ impl SNPFrag {
                     continue;
                 }
                 if delta_i == 0 {
-                    let q1 = cal_delta_sigma_prior_log(0, alt_fraction_i, &sigma, &ps, &probs);
-                    let q2 = cal_delta_sigma_prior_log(1, alt_fraction_i, &sigma, &ps, &probs);
-                    let q3 = cal_delta_sigma_prior_log(-1, alt_fraction_i, &sigma, &ps, &probs);
+                    let q1 = cal_delta_sigma_prior_log(0, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                    let q2 = cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                    let q3 = cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
                     assert!(q1 >= q2 && q1 >= q3, "{} Error: phase is not local optimal. {}->{},{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\n{:?}\n{:?}", i, q1, q2, q3, self.region, sigma, ps, probs, used_for_haplotype, used_for_haplotag)
                 } else if delta_i == 1 {
-                    let q1 = cal_delta_sigma_prior_log(1, alt_fraction_i, &sigma, &ps, &probs);
-                    let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, &sigma, &ps, &probs);
-                    let q3 = cal_delta_sigma_prior_log(-1, alt_fraction_i, &sigma, &ps, &probs);
+                    let q1 = cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                    let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                    let q3 = cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
                     assert!(q1 >= q2 && q1 >= q3, "{} Error: phase is not local optimal. {}->{},{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\n{:?}\n{:?}", i, q1, q2, q3, self.region, sigma, ps, probs, used_for_haplotype, used_for_haplotag)
                 } else if delta_i == -1 {
-                    let q1 = cal_delta_sigma_prior_log(-1, alt_fraction_i, &sigma, &ps, &probs);
-                    let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, &sigma, &ps, &probs);
-                    let q3 = cal_delta_sigma_prior_log(1, alt_fraction_i, &sigma, &ps, &probs);
+                    let q1 = cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                    let q2 = cal_delta_sigma_prior_log(0, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
+                    let q3 = cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs);
                     assert!(q1 >= q2 && q1 >= q3, "{} Error: phase is not local optimal. {}->{},{}\n{:?}\nsigma:{:?}\nps:{:?}\nprobs:{:?}\n{:?}\n{:?}", i, q1, q2, q3, self.region, sigma, ps, probs, used_for_haplotype, used_for_haplotag)
                 }
             }
