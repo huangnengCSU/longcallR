@@ -5,7 +5,7 @@ use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
-use crate::phase::{cal_delta_sigma_prior_log, cal_sigma_delta_log};
+use crate::phase::{cal_phase_score_log, cal_sigma_delta_log};
 use crate::snp::{CandidateSNP, Fragment, LD_Pair};
 use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
@@ -437,8 +437,10 @@ impl SNPFrag {
                 snp.single = true; // no surranding high_frac_het_snps
                 continue;
             } else {
-                phase_score1 = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                phase_score2 = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(-1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                // phase_score1 = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                // phase_score2 = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score1 = -10.0_f64 * (1.0 - cal_phase_score_log(1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score2 = -10.0_f64 * (1.0 - cal_phase_score_log(-1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 snp.single = false;
             }
 
@@ -674,7 +676,8 @@ impl SNPFrag {
             let mut phase_score = 0.0;
             if sigma.len() > 0 && hap1_reads_num >= 1 && hap2_reads_num >= 1 {
                 // each haplotype should have at least 2 reads
-                phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(delta_i, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                // phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(delta_i, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score = -10.0_f64 * (1.0 - cal_phase_score_log(delta_i, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 if phase_score >= min_phase_score as f64 {
                     let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
                     for k in 0..sigma.len() {
