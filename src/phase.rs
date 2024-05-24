@@ -722,6 +722,58 @@ impl SNPFrag {
         }
     }
 
+
+    pub fn chain_phase(&mut self, chain_size: usize) {
+        let mut chain_snps: Vec<usize> = Vec::new();
+        let mut variant_scores: Vec<(usize, f64)> = Vec::new();
+        for i in 0..self.candidate_snps.len() {
+            if self.candidate_snps[i].for_phasing == false {
+                continue;
+            }
+            variant_scores.push((i, self.candidate_snps[i].variant_quality));
+        }
+        // sort by variant quality
+        variant_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        if variant_scores.len() < chain_size {
+            for (i, _) in variant_scores.iter() {
+                chain_snps.push(*i);
+            }
+        } else {
+            for (i, _) in variant_scores.iter().take(chain_size) {
+                chain_snps.push(*i);
+            }
+        }
+
+        let mut largest_prob = f64::NEG_INFINITY;
+        let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
+        let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
+        let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
+        let init_hap: Vec<i32> = vec![1; chain_snps.len()];
+        haplotype_enum.push(init_hap.clone());
+        for ti in 0..chain_snps.len() {
+            for tj in 0..haplotype_enum.len() {
+                let mut tmp_hap = haplotype_enum[tj].clone();
+                tmp_hap[ti] = tmp_hap[ti] * (-1);
+                haplotype_enum.push(tmp_hap);
+            }
+        }
+        assert!(haplotype_enum.len() == 2_usize.pow(chain_snps.len() as u32), "Error: Not all combinations included");
+        for hap in haplotype_enum.iter() {
+            for i in 0..chain_snps.len() {
+                self.candidate_snps[i].haplotype = hap[i];
+            }
+            unsafe {
+                self.init_assignment();
+            }
+            let prob = self.cross_optimize_sigma();
+            if prob > largest_prob {
+                largest_prob = prob;
+                self.save_best_configuration(&mut best_haplotype, &mut best_haplotag);
+            }
+        }
+        self.load_best_configuration(&best_haplotype, &best_haplotag);
+    }
+
     pub fn phase(&mut self, max_enum_snps: usize, random_flip_fraction: f32, max_iters: i32) {
         let mut largest_prob = f64::NEG_INFINITY;
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
