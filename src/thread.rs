@@ -149,6 +149,7 @@ pub fn multithread_phase_haplotag(
                     unsafe {
                         snpfrag.init_assignment();
                     }
+                    // snpfrag.chain_phase(max_enum_snps);
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
                     snpfrag.assign_snp_haplotype(min_phase_score);
