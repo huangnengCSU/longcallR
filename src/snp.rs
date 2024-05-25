@@ -40,6 +40,8 @@ pub struct CandidateSNP {
     pub genotype_probability: [f64; 3],
     // 0th: homo var, 1st: hete var, 2nd: homo ref
     pub genotype_quality: f64,
+    pub genotype: i32,
+    // eta: -1 (homVar), 0 (hetVar), 1 (homRef)
     pub haplotype: i32,
     // delta: 1,-1: hap1, hap2 if phased, 0: unassigned
     pub phase_score: f64,
