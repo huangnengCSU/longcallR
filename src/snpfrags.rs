@@ -5,7 +5,7 @@ use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
-use crate::phase::{cal_phase_score_log, cal_sigma_delta_log};
+use crate::phase::{cal_phase_score_log, cal_sigma_delta_eta_log};
 use crate::snp::{CandidateSNP, Fragment, LD_Pair};
 use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
@@ -398,7 +398,6 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
-            let alt_fraction_i = snp.alt_allele_fraction;
             let mut sigma: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
@@ -437,14 +436,13 @@ impl SNPFrag {
                 snp.single = true; // no surranding high_frac_het_snps
                 continue;
             } else {
-                // phase_score1 = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(1, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                // phase_score2 = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(-1, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                phase_score1 = -10.0_f64 * (1.0 - cal_phase_score_log(1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                phase_score2 = -10.0_f64 * (1.0 - cal_phase_score_log(-1, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score1 = -10.0_f64 * (1.0 - cal_phase_score_log(1, 0, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score2 = -10.0_f64 * (1.0 - cal_phase_score_log(-1, 0, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 snp.single = false;
             }
 
             if phase_score1.max(phase_score2) >= min_phase_score as f64 {
+                // in-phase
                 phase_score = phase_score1.max(phase_score2);
                 let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
                 for k in 0..sigma.len() {
@@ -464,9 +462,9 @@ impl SNPFrag {
                         }
                     }
                 }
-                self.candidate_snps[*ti].non_selected = false;
-                self.candidate_snps[*ti].germline = true;
-                self.candidate_snps[*ti].rna_editing = false;
+                snp.non_selected = false;
+                snp.germline = true;
+                snp.rna_editing = false;
                 // if self.candidate_snps[*ti].alleles[0] != self.candidate_snps[*ti].reference && self.candidate_snps[*ti].alleles[1] != self.candidate_snps[*ti].reference {
                 //     // tri-allelic site
                 //     self.candidate_snps[*ti].variant_type = 3;
@@ -474,9 +472,25 @@ impl SNPFrag {
                 // } else {
                 //     self.candidate_snps[*ti].variant_type = 1;
                 // }
-                self.candidate_snps[*ti].haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
-                self.candidate_snps[*ti].haplotype_expression = haplotype_allele_expression;
-                self.candidate_snps[*ti].phase_score = phase_score;
+                snp.haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
+                snp.haplotype_expression = haplotype_allele_expression;
+                snp.phase_score = phase_score;
+            } else {
+                // out-of-phase
+                snp.non_selected = true;
+                if snp.variant_type == 2 || snp.variant_type == 3 {
+                    snp.genotype = -1;
+                    snp.germline = true;
+                    snp.rna_editing = false;
+                } else if snp.variant_type == 1 {
+                    snp.genotype = 0;
+                    snp.germline = false;
+                    snp.rna_editing = true;
+                } else {
+                    snp.genotype = 1;
+                    snp.germline = false;
+                    snp.rna_editing = true;
+                }
             }
         }
         // resolve single snps
@@ -637,7 +651,7 @@ impl SNPFrag {
                 continue;
             }
             let delta_i = snp.haplotype;
-            let alt_fraction_i = snp.alt_allele_fraction;
+            let eta_i = snp.genotype;
             let mut sigma: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
@@ -645,7 +659,7 @@ impl SNPFrag {
             let mut baseqs = Vec::new();
             let mut hap1_reads_num = 0;
             let mut hap2_reads_num = 0;
-            if delta_i == 0 {
+            if eta_i == -1 || eta_i == 1 {
                 snp.non_selected = true;
                 continue;
             }
@@ -677,7 +691,7 @@ impl SNPFrag {
             if sigma.len() > 0 && hap1_reads_num >= 1 && hap2_reads_num >= 1 {
                 // each haplotype should have at least 2 reads
                 // phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(delta_i, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                phase_score = -10.0_f64 * (1.0 - cal_phase_score_log(delta_i, alt_fraction_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score = -10.0_f64 * (1.0 - cal_phase_score_log(delta_i, eta_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 if phase_score >= min_phase_score as f64 {
                     let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
                     for k in 0..sigma.len() {
@@ -770,7 +784,7 @@ impl SNPFrag {
         for k in 0..self.fragments.len() {
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
-            let mut altfrac: Vec<f32> = Vec::new();
+            let mut eta: Vec<i32> = Vec::new();
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for fe in self.fragments[k].list.iter() {
@@ -778,10 +792,11 @@ impl SNPFrag {
                 assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
                 // assign reads with selected snps
                 if self.candidate_snps[fe.snp_idx].haplotype == 0 { continue; }
+                if self.candidate_snps[fe.snp_idx].genotype != 0 { continue; }
                 ps.push(fe.p);
                 probs.push(fe.prob);
                 delta.push(self.candidate_snps[fe.snp_idx].haplotype);
-                altfrac.push(self.candidate_snps[fe.snp_idx].alt_allele_fraction);
+                eta.push(self.candidate_snps[fe.snp_idx].genotype);
             }
             if sigma_k == 0 {
                 // unasigned haplotag, cluster the read into unknown group
@@ -792,8 +807,8 @@ impl SNPFrag {
                 let mut q = 0.0;
                 let mut qn = 0.0;
                 if delta.len() > 0 {
-                    q = cal_sigma_delta_log(sigma_k, &delta, &altfrac, &ps, &probs);
-                    qn = cal_sigma_delta_log(sigma_k * (-1), &delta, &altfrac, &ps, &probs);
+                    q = cal_sigma_delta_eta_log(sigma_k, &delta, &eta, &ps, &probs);
+                    qn = cal_sigma_delta_eta_log(sigma_k * (-1), &delta, &eta, &ps, &probs);
                 } else {
                     self.fragments[k].assignment = 0;
                     self.fragments[k].assignment_score = 0.0;

@@ -778,7 +778,7 @@ impl SNPFrag {
         best_genotype.clear();
         for i in 0..self.candidate_snps.len() {
             best_haplotype.insert(i, self.candidate_snps[i].haplotype);
-            best_haplotype.insert(i, self.candidate_snps[i].genotype);
+            best_genotype.insert(i, self.candidate_snps[i].genotype);
         }
         for k in 0..self.fragments.len() {
             best_haplotag.insert(k, self.fragments[k].haplotag);
