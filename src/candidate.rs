@@ -596,10 +596,13 @@ impl SNPFrag {
             }
             if genotype_prob[0] > genotype_prob[1] && genotype_prob[0] > genotype_prob[2] {
                 candidate_snp.variant_type = 2;
+                candidate_snp.genotype = -1;
             } else if genotype_prob[1] > genotype_prob[0] && genotype_prob[1] > genotype_prob[2] {
                 candidate_snp.variant_type = 1;
+                candidate_snp.genotype = 0;
             } else {
                 candidate_snp.variant_type = 0;
+                candidate_snp.genotype = 1;
             }
 
             if allele1 == bf.ref_base && allele2 != bf.ref_base {
@@ -637,7 +640,7 @@ impl SNPFrag {
             // candidate rna editing site
             let forward_transcript_cnt = bf.transcript_strands[0];
             let reverse_transcript_cnt = bf.transcript_strands[1];
-            if bf.ref_base == 'A' && (forward_transcript_cnt > reverse_transcript_cnt || forward_transcript_cnt > 2) {
+            if bf.ref_base == 'A' && (forward_transcript_cnt > reverse_transcript_cnt * 2) {
                 if (allele1 == 'G' && allele1_cnt > 0) || (allele2 == 'G' && allele2_cnt > 0) {
                     // potential forward A to G editing
                     if candidate_snp.variant_type != 2 {
@@ -649,7 +652,7 @@ impl SNPFrag {
                         continue;
                     }
                 }
-            } else if bf.ref_base == 'T' && (reverse_transcript_cnt > forward_transcript_cnt || reverse_transcript_cnt > 2) {
+            } else if bf.ref_base == 'T' && (reverse_transcript_cnt > forward_transcript_cnt * 2) {
                 if (allele1 == 'C' && allele1_cnt > 0) || (allele2 == 'C' && allele2_cnt > 0) {
                     // potential reverse A to G editing
                     if candidate_snp.variant_type != 2 {
@@ -688,6 +691,7 @@ impl SNPFrag {
                 // hom_var
                 if allele1 != bf.ref_base && allele2 != bf.ref_base && allele1_freq >= min_allele_freq && allele2_freq >= min_allele_freq {
                     candidate_snp.variant_type = 3; // triallelic SNP
+                    candidate_snp.genotype = -1;
                 }
                 candidate_snp.hom_var = true;
                 candidate_snp.germline = true;
@@ -702,6 +706,7 @@ impl SNPFrag {
                 // het_var
                 if allele1 != bf.ref_base && allele2 != bf.ref_base {
                     candidate_snp.variant_type = 3; // triallelic SNP
+                    candidate_snp.genotype = -1;
                     candidate_snp.hom_var = true;
                     candidate_snp.germline = true;
                     candidate_snp.for_phasing = true;
