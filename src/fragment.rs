@@ -3,7 +3,7 @@ use rust_htslib::{bam, bam::Read, bam::record::Record};
 
 use crate::exon::Exon;
 use crate::snp::{FragElem, Fragment, LD_Pair};
-use crate::snpfrags::SNPFrag;
+use crate::snpfrags::{SNPFrag, Edge};
 use crate::util::Region;
 
 impl SNPFrag {
@@ -218,11 +218,45 @@ impl SNPFrag {
             // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {
+                // record edge count
+                for preidx in 0..fragment.list.len()-1 {
+                    let pre_elem = &fragment.list[preidx];
+                    let next_elem = &fragment.list[preidx+1];
+                    if self.edges.contains_key(&[pre_elem.snp_idx, next_elem.snp_idx]) {
+                        let edge = self.edges.get_mut(&[pre_elem.snp_idx, next_elem.snp_idx]).unwrap();
+                        edge.frag_idxes.push(fragment.fragment_idx);
+                        edge.w += 1;
+                    } else {
+                        let mut edge = Edge::default();
+                        edge.snp_idxes = [pre_elem.snp_idx, next_elem.snp_idx];
+                        edge.snp_poses = [pre_elem.pos, next_elem.pos];
+                        edge.frag_idxes.push(fragment.fragment_idx);
+                        edge.w += 1;
+                        self.edges.insert([pre_elem.snp_idx, next_elem.snp_idx], edge);
+                    }
+
+                }
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
                 }
                 self.fragments.push(fragment);
+            }
+        }
+    }
+
+    pub fn clean_fragments(&mut self) {
+        // trim fragment with edge support < 2
+        for (k, e) in self.edges.iter() {
+            if e.w < 2 {
+                if e.w == 0 { continue; }
+                for idx in 0..e.frag_idxes.len() {
+                    let frag_idx = e.frag_idxes[idx];
+                    let mut frag = &mut self.fragments[frag_idx];
+                    frag.discarded = true;
+                    // let pre_snp_idx = e.snp_idxes[0];
+                    // let next_snp_idx = e.snp_idxes[1];
+                }
             }
         }
     }

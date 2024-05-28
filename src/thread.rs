@@ -132,6 +132,7 @@ pub fn multithread_phase_haplotag(
             );
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(&bam_file, &reg);
+            snpfrag.clean_fragments();
             if genotype_only {
                 // without phasing
                 let vcf_records = snpfrag.output_vcf(min_qual);
@@ -213,6 +214,9 @@ pub fn multithread_phase_haplotag(
                                 let mut hap2_largest_end = 0;
                                 // collect exons
                                 for frag in snpfrag.fragments.iter() {
+                                    if frag.discarded == true {
+                                        continue;
+                                    }
                                     if frag.assignment == 1 {
                                         for e in frag.exons.iter() {
                                             hap1_exons.push(e.clone());

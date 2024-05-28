@@ -29,12 +29,26 @@ pub struct SNPFrag {
     // multiple fragments
     pub phased: bool,
     // haplotype is phased or not
-    // pub edges: HashMap<[usize; 2], Edge>,
-    // // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
+    pub edges: HashMap<[usize; 2], Edge>,
+    // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
     pub allele_pairs: HashMap<[usize; 2], LD_Pair>,
     // allele pair at two snp sites, key is [snp_idx of start_node, snp_idx of end_node], start < end
     pub min_linkers: u32,
     // the number of links for snps can be phased
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Edge {
+    pub snp_idxes: [usize; 2],
+    // index of candidate SNPs(SNPFrag.snps), start node and end node
+    pub snp_poses: [i64; 2],
+    // position of candidate SNPs(SNPFrag.snps), start node and end node
+    pub frag_idxes: Vec<usize>,
+    // index of fragments(SNPFrag.fragments) cover this edge.
+    // pub w: f64,
+    // // weight of edge,  w_{ij}=\sum_{k}x_{ki}x_{kj}log\frac{1-\epsilon_{kij}}{\epsilon_{kij}}
+    pub w: i32,
+    // support number of the edge, each read support the edge will add 1
 }
 
 impl SNPFrag {
@@ -410,6 +424,7 @@ impl SNPFrag {
             let mut hap1_reads_num = 0;
             let mut hap2_reads_num = 0;
             for k in snp.snp_cover_fragments.iter() {
+                if self.fragments[*k].discarded == true { continue; }
                 if self.fragments[*k].assignment == 0 { continue; }
                 if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
                 for fe in self.fragments[*k].list.iter() {
@@ -687,6 +702,7 @@ impl SNPFrag {
                 continue;
             }
             for k in snp.snp_cover_fragments.iter() {
+                if self.fragments[*k].discarded == true { continue; }
                 if self.fragments[*k].assignment == 0 { continue; }
                 if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
                 for fe in self.fragments[*k].list.iter() {
@@ -805,6 +821,7 @@ impl SNPFrag {
     pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         for k in 0..self.fragments.len() {
+            if self.fragments[k].discarded == true { continue; }
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
             let mut eta: Vec<i32> = Vec::new();
@@ -926,6 +943,7 @@ impl SNPFrag {
         }
         for k in 0..self.fragments.len() {
             let frag = &self.fragments[k];
+            if frag.discarded == true { continue; }
             if frag.assignment == 0 { continue; }
             let mut node_snps = Vec::new();
             for fe in frag.list.iter() {
@@ -980,6 +998,7 @@ impl SNPFrag {
         let mut phased_fragments: HashMap<String, i32> = HashMap::new(); // read id, assignment
         for k in 0..self.fragments.len() {
             let frag = &self.fragments[k];
+            if frag.discarded == true { continue; }
             if frag.assignment == 1 || frag.assignment == 2 {
                 phased_fragments.insert(frag.read_id.clone(), frag.assignment);
             }

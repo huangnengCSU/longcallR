@@ -277,6 +277,9 @@ pub fn cal_overall_probability(snpfrag: &SNPFrag) -> f64 {
     // calculate the log10 probability of the current configuration of sigma and delta
     let mut logp = 0.0;
     for k in 0..snpfrag.fragments.len() {
+        if snpfrag.fragments[k].discarded == true {
+            continue;
+        }
         if snpfrag.fragments[k].haplotag == 0 {
             // unassigned fragment
             continue;
@@ -301,6 +304,9 @@ pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i
         let mut eta: Vec<i32> = Vec::new();
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
+        if snpfrag.fragments[*k].discarded == true {
+            continue;
+        }
         if snpfrag.fragments[*k].haplotag == 0 {
             continue;
         }
@@ -343,6 +349,9 @@ pub fn check_new_haplotype(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize,
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
         for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
+            if snpfrag.fragments[*k].discarded == true {
+                continue;
+            }
             if snpfrag.fragments[*k].haplotag == 0 {
                 continue;
             }
@@ -387,6 +396,9 @@ pub fn check_new_genotype(snpfrag: &SNPFrag, updated_genotype: &HashMap<usize, i
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
         for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
+            if snpfrag.fragments[*k].discarded == true {
+                continue;
+            }
             if snpfrag.fragments[*k].haplotag == 0 {
                 continue;
             }
@@ -448,6 +460,9 @@ impl SNPFrag {
     pub unsafe fn init_assignment(&mut self) {
         for k in 0..self.fragments.len() {
             let mut rng = rand::thread_rng();
+            if self.fragments[k].discarded == true { 
+                continue; 
+            }
             // if self.fragments[k].num_hete_links < self.min_linkers {
             //     continue;
             // }
@@ -492,6 +507,9 @@ impl SNPFrag {
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
             let mut processed_snps = HashSet::new(); // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
             for k in 0..self.fragments.len() {
+                if self.fragments[k].discarded == true { 
+                    continue; 
+                }
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
                 let mut eta: Vec<i32> = Vec::new();
@@ -550,6 +568,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].discarded == true {
+                        continue;
+                    }
                     if self.fragments[*k].haplotag == 0 {
                         continue;
                     }
@@ -603,6 +624,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].discarded == true {
+                        continue;
+                    }
                     if self.fragments[*k].haplotag == 0 {
                         continue;
                     }
@@ -664,6 +688,9 @@ impl SNPFrag {
         // check sigma
         if used_for_haplotag {
             for k in 0..self.fragments.len() {
+                if self.fragments[k].discarded == true { 
+                    continue; 
+                }
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
                 let mut eta: Vec<i32> = Vec::new();
@@ -701,6 +728,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].discarded == true {
+                        continue;
+                    }
                     if self.fragments[*k].haplotag == 0 {
                         continue;
                     }
@@ -735,6 +765,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[i].snp_cover_fragments.iter() {
+                    if self.fragments[*k].discarded == true {
+                        continue;
+                    }
                     if self.fragments[*k].haplotag == 0 {
                         continue;
                     }
@@ -913,6 +946,9 @@ impl SNPFrag {
             //             }
             //         }
             //         for tk in 0..self.fragments.len() {
+            //             if self.fragments[tk].discarded == true {
+            //                 continue;
+            //             }
             //             if self.fragments[tk].haplotag == 0 {
             //                 continue;
             //             }
@@ -935,6 +971,9 @@ impl SNPFrag {
             //     {
             //         let mut rng = rand::thread_rng();
             //         for tk in 0..self.fragments.len() {
+            //             if self.fragments[tk].discarded == true {
+            //                 continue;
+            //             }
             //             if self.fragments[tk].haplotag == 0 {
             //                 continue;
             //             }
@@ -982,6 +1021,9 @@ impl SNPFrag {
                 {
                     let mut rng = rand::thread_rng();
                     for tk in 0..self.fragments.len() {
+                        if self.fragments[tk].discarded == true {
+                            continue;
+                        }
                         if self.fragments[tk].haplotag == 0 {
                             continue;
                         }
@@ -1041,6 +1083,9 @@ impl SNPFrag {
             //             }
             //         }
             //         for tk in 0..self.fragments.len() {
+            //             if self.fragments[tk].discarded == true {
+            //                 continue;
+            //             }
             //             if self.fragments[tk].haplotag == 0 {
             //                 continue;
             //             }

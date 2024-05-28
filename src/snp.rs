@@ -80,18 +80,6 @@ pub struct CandidateSNP {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Edge {
-    pub snp_idxes: [usize; 2],
-    // index of candidate SNPs(SNPFrag.snps), start node and end node
-    pub snp_poses: [i64; 2],
-    // position of candidate SNPs(SNPFrag.snps), start node and end node
-    pub frag_idxes: Vec<usize>,
-    // index of fragments(SNPFrag.fragments) cover this edge.
-    pub w: f64,
-    // weight of edge,  w_{ij}=\sum_{k}x_{ki}x_{kj}log\frac{1-\epsilon_{kij}}{\epsilon_{kij}}
-}
-
-#[derive(Debug, Clone, Default)]
 pub struct LD_Pair {
     // pub snp_idxes: [usize; 2],
     // // index of candidate SNPs (SNPFrag.snps), start node and end node
@@ -175,6 +163,8 @@ pub struct FragElem {
 pub struct Fragment {
     pub fragment_idx: usize,
     // index of multiple fragments(SNPFrag.fragments)
+    pub discarded: bool,
+    // whether the fragment is discarded
     pub read_id: String,
     // read name
     pub list: Vec<FragElem>,
