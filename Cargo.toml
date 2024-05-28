@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rust-htslib = { version = "*", default-features = false }
+rust-htslib = { version = "0.46.0", default-features = false }
 rust-lapper = { version = "*", features = ["with_serde"] }
 clap = { version = "4.4.4", features = ["derive"] }
 seq_io = "0.3.1"
