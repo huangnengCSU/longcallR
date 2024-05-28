@@ -222,6 +222,9 @@ impl SNPFrag {
                 for preidx in 0..fragment.list.len()-1 {
                     let pre_elem = &fragment.list[preidx];
                     let next_elem = &fragment.list[preidx+1];
+                    if self.candidate_snps[pre_elem.snp_idx].for_phasing == false || self.candidate_snps[next_elem.snp_idx].for_phasing == false {
+                        continue;
+                    }
                     if self.edges.contains_key(&[pre_elem.snp_idx, next_elem.snp_idx]) {
                         let edge = self.edges.get_mut(&[pre_elem.snp_idx, next_elem.snp_idx]).unwrap();
                         edge.frag_idxes.push(fragment.fragment_idx);
@@ -253,9 +256,12 @@ impl SNPFrag {
                 for idx in 0..e.frag_idxes.len() {
                     let frag_idx = e.frag_idxes[idx];
                     let mut frag = &mut self.fragments[frag_idx];
-                    frag.discarded = true;
-                    // let pre_snp_idx = e.snp_idxes[0];
-                    // let next_snp_idx = e.snp_idxes[1];
+                    // frag.discarded = true;
+                    let pre_snp_idx = e.snp_idxes[0];
+                    let next_snp_idx = e.snp_idxes[1];
+                    self.candidate_snps[pre_snp_idx].snp_cover_fragments.retain(|&x| x != frag_idx);
+                    self.candidate_snps[next_snp_idx].snp_cover_fragments.retain(|&x| x != frag_idx);
+                    frag.list.retain(|x| x.snp_idx != pre_snp_idx && x.snp_idx != next_snp_idx);
                 }
             }
         }
