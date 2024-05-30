@@ -506,16 +506,16 @@ impl SNPFrag {
             }
 
             for bq in identical_baseqs.iter() {
-                let bq = if *bq < 40 { *bq } else { 40 };
-                let error_rate = 0.1_f64.powf((bq as f64) / 10.0);
+                // let bq = if *bq < 30 { *bq } else { 30 };
+                let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
                 loglikelihood[0] += error_rate.log10();
                 loglikelihood[2] += (1.0 - error_rate).log10();
             }
 
             for bq_vec in different_baseqs.iter() {
                 for bq in bq_vec.iter() {
-                    let bq = if *bq < 40 { *bq } else { 40 };
-                    let error_rate = 0.1_f64.powf((bq as f64) / 10.0);
+                    // let bq = if *bq < 30 { *bq } else { 30 };
+                    let error_rate = 0.1_f64.powf((*bq as f64) / 10.0);
                     loglikelihood[0] += (1.0 - error_rate).log10();
                     loglikelihood[2] += error_rate.log10();
                 }
