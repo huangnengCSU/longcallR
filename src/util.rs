@@ -527,7 +527,9 @@ impl Profile {
                                 break;
                             }
                             let base = seq[pos_in_read] as char;
-                            let baseq = base_qual[pos_in_read];
+                            let mut baseq = base_qual[pos_in_read];
+                            baseq = if baseq < 30 { baseq } else { 30 };
+
 
                             // close to left read end or right read end, check whether current position is in polyA tail
                             let ref_base = self.freq_vec[pos_in_freq_vec as usize].ref_base;
