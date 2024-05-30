@@ -73,7 +73,8 @@ impl SNPFrag {
                                 frag_elem.snp_idx = idx;
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = seq[pos_on_query as usize] as char;
-                                frag_elem.baseq = record.qual()[pos_on_query as usize];
+                                let bq = record.qual()[pos_on_query as usize];
+                                frag_elem.baseq = if bq < 30 { bq } else { 30 };
                                 frag_elem.strand = strand;
                                 frag_elem.prob = 10.0_f64.powf(-(frag_elem.baseq as f64) / 10.0);
                                 if frag_elem.base == self.candidate_snps[idx].reference {
