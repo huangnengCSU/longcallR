@@ -113,7 +113,8 @@ impl SNPFrag {
                             if pos_on_ref == snp_pos {
                                 let somatic_cand = &mut self.candidate_snps[self.somatic_snps[idx]];
                                 let base = seq[pos_on_query as usize] as char;
-                                let baseq = record.qual()[pos_on_query as usize];
+                                let mut baseq = record.qual()[pos_on_query as usize];
+                                baseq = if baseq < 30 { baseq } else { 30 };
                                 let [allele1, allele2] = somatic_cand.alleles.clone();
                                 let ref_allele = somatic_cand.reference;
                                 if allele1 == ref_allele || allele2 == ref_allele {
