@@ -131,7 +131,7 @@ pub fn multithread_phase_haplotag(
                 genotype_only,
             );
             // TODO: for very high depth region, down-sampling the reads
-            snpfrag.get_fragments(&bam_file, &reg);
+            snpfrag.get_fragments(&bam_file, &reg, ref_seq);
             snpfrag.clean_fragments();
             if genotype_only {
                 // without phasing
