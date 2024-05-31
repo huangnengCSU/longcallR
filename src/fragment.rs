@@ -3,11 +3,11 @@ use rust_htslib::{bam, bam::Read, bam::record::Record};
 
 use crate::exon::Exon;
 use crate::snp::{FragElem, Fragment, LD_Pair};
-use crate::snpfrags::{SNPFrag, Edge};
+use crate::snpfrags::{Edge, SNPFrag};
 use crate::util::Region;
 
 impl SNPFrag {
-    pub fn get_fragments(&mut self, bam_path: &str, region: &Region) {
+    pub fn get_fragments(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>) {
         let mut bam_reader: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam_reader.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let mut record = Record::new();
@@ -60,7 +60,12 @@ impl SNPFrag {
             let mut exon_end = -1;
             exon_start = pos_on_ref;
             exon_end = exon_start;
-
+            let mut truncated_regions: Vec<(usize, usize)> = Vec::new();    // left-closed right-closed
+            let truncated_threshold = 200.0;
+            let tr_match = 1.0;
+            let (mut tr_start, mut tr_end) = (0, 0);
+            let mut tr_score = 0.0;
+            let mut tr_flag = false;
             for cg in cigar.iter() {
                 match cg.char() as u8 {
                     b'S' | b'H' => {
@@ -68,6 +73,29 @@ impl SNPFrag {
                     }
                     b'M' | b'X' | b'=' => {
                         for _ in 0..cg.len() {
+                            // mask the dense mismatch region in a read
+                            let ref_base = ref_seq[pos_on_ref as usize] as char;
+                            let base = seq[pos_on_query as usize] as char;
+                            let mut baseq = record.qual()[pos_on_query as usize];
+                            baseq = if baseq < 30 { baseq } else { 30 };
+                            if base == ref_base {
+                                tr_score -= tr_match;
+                                if tr_score < 0.0 {
+                                    if tr_flag {
+                                        truncated_regions.push((tr_start, tr_end));
+                                        tr_flag = false;
+                                    }
+                                    tr_score = 0.0;
+                                    tr_start = pos_on_ref as usize;
+                                    tr_end = pos_on_ref as usize;
+                                }
+                            } else {
+                                tr_score += baseq as f64;
+                                if tr_score > truncated_threshold {
+                                    tr_flag = true;
+                                    tr_end = pos_on_ref as usize;
+                                }
+                            }
                             if pos_on_ref == snp_pos {
                                 let mut frag_elem = FragElem::default();
                                 frag_elem.snp_idx = idx;
@@ -153,6 +181,18 @@ impl SNPFrag {
                     }
                 }
             }
+            if tr_flag && tr_end - tr_start > 0 {
+                truncated_regions.push((tr_start, tr_end));
+            }
+            // remove frag_elem which is in truncated regions from fragment.list
+            for frag_elem in fragment.list.clone().iter() {
+                for tr in truncated_regions.iter() {
+                    if frag_elem.pos >= tr.0 as i64 && frag_elem.pos <= tr.1 as i64 {
+                        fragment.list.remove(fragment.list.iter().position(|x| x.pos == frag_elem.pos).unwrap());
+                        break;
+                    }
+                }
+            }
             // the whole read is a single exon, no intron.
             if exon_start != -1 && exon_end != -1 && pos_on_ref > exon_end {
                 exon_end = pos_on_ref;
@@ -220,9 +260,9 @@ impl SNPFrag {
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {
                 // record edge count
-                for preidx in 0..fragment.list.len()-1 {
+                for preidx in 0..fragment.list.len() - 1 {
                     let pre_elem = &fragment.list[preidx];
-                    let next_elem = &fragment.list[preidx+1];
+                    let next_elem = &fragment.list[preidx + 1];
                     if self.candidate_snps[pre_elem.snp_idx].for_phasing == false || self.candidate_snps[next_elem.snp_idx].for_phasing == false {
                         continue;
                     }
@@ -238,7 +278,6 @@ impl SNPFrag {
                         edge.w += 1;
                         self.edges.insert([pre_elem.snp_idx, next_elem.snp_idx], edge);
                     }
-
                 }
                 for fe in fragment.list.iter() {
                     // record each snp cover by which fragments
