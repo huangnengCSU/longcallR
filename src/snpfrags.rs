@@ -5,7 +5,7 @@ use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
-use crate::phase::{cal_phase_score_log, cal_sigma_delta_eta_log};
+use crate::phase::{cal_enum_eta_delta_sigma_log, cal_phase_score_log, cal_sigma_delta_eta_log};
 use crate::snp::{CandidateSNP, Fragment, LD_Pair};
 use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
@@ -649,6 +649,65 @@ impl SNPFrag {
     pub fn assign_genotype(&mut self) {
         for ti in 0..self.candidate_snps.len() {
             let snp = &mut self.candidate_snps[ti];
+
+            if snp.for_phasing == false { continue; }
+            let delta_i = snp.haplotype;
+            let eta_i = snp.genotype;
+            // let coverage_i = snp.depth;
+            let mut sigma: Vec<i32> = Vec::new();
+            let mut ps: Vec<i32> = Vec::new();
+            let mut probs: Vec<f64> = Vec::new();
+            for k in snp.snp_cover_fragments.iter() {
+                if self.fragments[*k].discarded == true {
+                    continue;
+                }
+                if self.fragments[*k].haplotag == 0 {
+                    continue;
+                }
+                // k is fragment index
+                for fe in self.fragments[*k].list.iter() {
+                    if fe.snp_idx == ti {
+                        if fe.phase_site == false { continue; }
+                        assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                        ps.push(fe.p);
+                        probs.push(fe.prob);
+                        sigma.push(self.fragments[*k].haplotag);
+                    }
+                }
+            }
+
+            if sigma.len() == 0 {
+                continue;
+            }
+            let coverage_i = sigma.len() as u32;
+
+            // why we need to calculate both delta and delta*(-1), because when eta=0, delta is random assigned to 1 or -1.
+            let q1 = cal_enum_eta_delta_sigma_log(-1, coverage_i, delta_i, &sigma, &ps, &probs);
+            let q2 = cal_enum_eta_delta_sigma_log(0, coverage_i, delta_i, &sigma, &ps, &probs);
+            let q3 = cal_enum_eta_delta_sigma_log(1, coverage_i, delta_i, &sigma, &ps, &probs);
+
+            let qn1 = cal_enum_eta_delta_sigma_log(-1, coverage_i, delta_i * (-1), &sigma, &ps, &probs);
+            let qn2 = cal_enum_eta_delta_sigma_log(0, coverage_i, delta_i * (-1), &sigma, &ps, &probs);
+            let qn3 = cal_enum_eta_delta_sigma_log(1, coverage_i, delta_i * (-1), &sigma, &ps, &probs);
+
+            let max_q = q1.max(q2).max(q3.max(qn1.max(qn2.max(qn3))));
+            if q1 == max_q {
+                snp.genotype = -1;
+            } else if q2 == max_q {
+                snp.genotype = 0;
+            } else if q3 == max_q {
+                snp.genotype = 1;
+            } else if qn1 == max_q {
+                snp.genotype = -1;
+            } else if qn2 == max_q {
+                snp.genotype = 0;
+                snp.haplotype = snp.haplotype * (-1);
+            } else if qn3 == max_q {
+                snp.genotype = 1;
+            } else {
+                panic!("Error: genotype optimization failed. {},{},{},{},{},{}", q1, q2, q3, qn1, qn2, qn3);
+            }
+
             if snp.for_phasing == false { continue; }
             if snp.variant_type == 0 {
                 snp.genotype = 1;
@@ -841,6 +900,7 @@ impl SNPFrag {
             if sigma_k == 0 {
                 // unasigned haplotag, cluster the read into unknown group
                 self.fragments[k].assignment = 0;
+                self.fragments[k].haplotag = 0;
                 self.fragments[k].assignment_score = 0.0;
                 read_assignments.insert(self.fragments[k].read_id.clone(), 0);
             } else {
@@ -851,6 +911,7 @@ impl SNPFrag {
                     qn = cal_sigma_delta_eta_log(sigma_k * (-1), &delta, &eta, &ps, &probs);
                 } else {
                     self.fragments[k].assignment = 0;
+                    self.fragments[k].haplotag = 0;
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
                     continue;
@@ -884,6 +945,7 @@ impl SNPFrag {
                     // unknown which haplotype the read belongs to, cluster the read into unknown group
                     // panic!("Error: unexpected condition.");
                     self.fragments[k].assignment = 0;
+                    self.fragments[k].haplotag = 0;
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
                 }
