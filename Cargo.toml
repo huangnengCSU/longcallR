@@ -20,6 +20,7 @@ fishers_exact = "1.0.1"
 mathru = "0.15.3"
 probability = "0.20.3"
 petgraph = "0.6.4"
+itertools = "0.11.0"
 
 [profile.release]
 #debug = true
