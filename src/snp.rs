@@ -88,52 +88,49 @@ pub struct LD_Pair {
 }
 
 impl LD_Pair {
-    pub fn calculate_LD_R2(&self, A1: u8, B1: u8, A2: u8, B2: u8) -> f32 {
+    pub fn calculate_LD_R2(&self, A: u8, a: u8, B: u8, b: u8) -> f32 {
         // calculate r2 for two snps
         // A1, B1: alleles of snp1, A2, B2: alleles of snp2, https://en.wikipedia.org/wiki/Linkage_disequilibrium
-        let (mut x11, mut x12, mut x21, mut x22, mut sum) = (0.0, 0.0, 0.0, 0.0, 0.0);
-        let (mut p1, mut p2, mut q1, mut q2) = (0.0, 0.0, 0.0, 0.0);
-        if self.ld_pairs.contains_key(&[A1, B1]) {
-            x11 = self.ld_pairs[&[A1, B1]] as f32;
-            sum += x11;
+        let (mut AB, mut Ab, mut aB, mut ab, mut sum) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        let (mut pA, mut pa, mut pB, mut pb) = (0.0, 0.0, 0.0, 0.0);
+        if self.ld_pairs.contains_key(&[A, B]) {
+            AB = self.ld_pairs[&[A, B]] as f32;
+            sum += AB;
         }
-        if self.ld_pairs.contains_key(&[A1, B2]) {
-            x12 = self.ld_pairs[&[A1, B2]] as f32;
-            sum += x12;
+        if self.ld_pairs.contains_key(&[A, b]) {
+            Ab = self.ld_pairs[&[A, b]] as f32;
+            sum += Ab;
         }
-        if self.ld_pairs.contains_key(&[A2, B1]) {
-            x21 = self.ld_pairs[&[A2, B1]] as f32;
-            sum += x21;
+        if self.ld_pairs.contains_key(&[a, B]) {
+            aB = self.ld_pairs[&[a, B]] as f32;
+            sum += aB;
         }
-        if self.ld_pairs.contains_key(&[A2, B2]) {
-            x22 = self.ld_pairs[&[A2, B2]] as f32;
-            sum += x22;
+        if self.ld_pairs.contains_key(&[a, b]) {
+            ab = self.ld_pairs[&[a, b]] as f32;
+            sum += ab;
         }
 
         // set minimum covered reads
-        if ((x11 < 4.0 || x22 < 4.0) && (x21 < 4.0 || x12 < 4.0)) || (sum < 6.0) { return 0.0; }
+        // if ((x11 < 2.0 || x22 < 2.0) && (x21 < 2.0 || x12 < 2.0)) || (sum < 4.0) { return 0.0; }
 
         if sum == 0.0 { return 0.0; }
-        x11 = x11 / sum;
-        x12 = x12 / sum;
-        x21 = x21 / sum;
-        x22 = x22 / sum;
+        AB = AB / sum;    // P(AB)
+        Ab = Ab / sum;    // P(Ab)
+        aB = aB / sum;    // P(aB)
+        ab = ab / sum;    // P(ab)
 
-        p1 = x11 + x12;
-        p2 = x21 + x22;
-        q1 = x11 + x21;
-        q2 = x12 + x22;
+        pA = AB + Ab;    // P(A)
+        pa = aB + ab;    // P(a)
+        pB = AB + aB;    // P(B)
+        pb = Ab + ab;    // P(b)
 
-        let mut d = x11 - p1 * q1;
-        // let mut d_max = 0.0;
-        // if d < 0.0 {
-        //     d_max = p1 * q1.min(p2 * q2);
-        // } else {
-        //     d_max = p1 * q2.min(p2 * q1);
-        // }
-        // let d_prime = d / d_max;
-        let p = p1 * p2 * q1 * q2;
-        if p == 0.0 { return 0.0; }
+        let mut d = AB - pA * pB;  // D= P(AB) - P(A)P(B)
+        let p = pA * (1.0 - pA) * pB * (1.0 - pB);  // P(A)*(1-P(A))*P(B)*(1-P(B))
+        if pA == 1.0 && pB == 1.0 { return 1.0; }
+        if p == 0.0 {
+            // println!("AB: {}, Ab: {}, aB: {}, ab: {}", AB, Ab, aB, ab);
+            return 0.0;
+        }
         let r2 = d * d / p;   // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
         return r2;
     }
