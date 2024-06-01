@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use itertools::Itertools;
 use rand::Rng;
 
 use crate::snpfrags::SNPFrag;
@@ -181,6 +182,51 @@ pub fn cal_eta_delta_sigma_log(eta_i: i32, coverage_i: u32, delta_i: i32, sigma:
     When comparing A/(A+B) and B/(A+B), we can approximately use 1-log(A)/(log(A)+log(B)) and 1-log(B)/(log(A)+log(B)) to avoid underflow.
     */
     return 1.0 - log_q1 / (log_q2 + log_q3 + log_q4);
+}
+
+pub fn cal_enum_eta_delta_sigma_log(eta_i: i32, coverage_i: u32, delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
+    let mut log_q1: f64 = 0.0;
+    let mut log_q2: f64 = 0.0;
+    let mut log_q3: f64 = 0.0;
+    let mut log_q4: f64 = 0.0;
+    let mut log_q5: f64 = 0.0;
+
+    let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
+    let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
+    let prior_hetvar_log: f64;
+    if coverage_i == 0 {
+        prior_hetvar_log = 0.001_f64.log10();
+    } else {
+        prior_hetvar_log = 0.001_f64.log10() - (coverage_i as f64) * 2.0_f64.log10();
+    }
+
+    for k in 0..sigma.len() {
+        log_q1 += aki(sigma[k], delta_i, eta_i, ps[k], probs[k]).log10();
+    }
+    if eta_i == 0 {
+        log_q1 += prior_hetvar_log;
+    } else if eta_i == 1 {
+        log_q1 += prior_homref_log;
+    } else {
+        log_q1 += prior_homvar_log;
+    }
+
+    for k in 0..sigma.len() {
+        log_q2 += aki(sigma[k], delta_i, -1, ps[k], probs[k]).log10();
+        log_q3 += aki(sigma[k], delta_i, 0, ps[k], probs[k]).log10();
+        log_q4 += aki(sigma[k], delta_i, 1, ps[k], probs[k]).log10();
+        log_q5 += aki(sigma[k], delta_i * (-1), 0, ps[k], probs[k]).log10();
+    }
+    log_q2 += prior_homvar_log;
+    log_q3 += prior_hetvar_log;
+    log_q4 += prior_homref_log;
+    log_q5 += prior_hetvar_log;
+
+    /*
+    Given 0<=A<=1, 0<=B<=1 and A/(A+B) > B/(A+B), we have logA/(logA+logB) < logB/(logA+logB).
+    When comparing A/(A+B) and B/(A+B), we can approximately use 1-log(A)/(log(A)+log(B)) and 1-log(B)/(log(A)+log(B)) to avoid underflow.
+    */
+    return 1.0 - log_q1 / (log_q2 + log_q3 + log_q4 + log_q5);
 }
 
 pub fn cal_delta_sigma_prior_log(delta_i: i32, alt_fraction_i: f32, coverage_i: u32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
@@ -457,11 +503,56 @@ impl SNPFrag {
         }
     }
 
+    pub unsafe fn init_haplotypes_LD(&mut self) {
+        let mut ld_idxes: Vec<usize> = Vec::new();
+        for ti in 0..self.candidate_snps.len() {
+            ld_idxes.push(ti);
+        }
+        let mut r2_map = HashMap::new();
+        for i in 0..ld_idxes.len() {
+            for j in 0..ld_idxes.len() {
+                if i == j { continue; }
+                let idx1 = ld_idxes[i];
+                let idx2 = ld_idxes[j];
+                let snp1 = &self.candidate_snps[idx1];
+                let snp2 = &self.candidate_snps[idx2];
+                if idx1 < idx2 {
+                    if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
+                    let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+                    r2_map.insert([idx1, idx2], r2);
+                } else if idx2 < idx1 {
+                    if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
+                    let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+                    r2_map.insert([idx2, idx1], r2);
+                }
+            }
+        }
+        let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
+        let mut ld_sites: HashSet<usize> = HashSet::new();
+        for idxes in r2_map_high.keys() {
+            ld_sites.insert(idxes[0]);
+            ld_sites.insert(idxes[1]);
+        }
+        for ti in 0..self.candidate_snps.len() {
+            if ld_sites.contains(&ti) {
+                self.candidate_snps[ti].haplotype = 1;
+            } else {
+                let mut rng = rand::thread_rng();
+                let rg: f64 = rng.gen();
+                if rg < 0.5 {
+                    self.candidate_snps[ti].haplotype = 1; // HetVar hap1
+                } else {
+                    self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
+                }
+            }
+        }
+    }
+
     pub unsafe fn init_assignment(&mut self) {
         for k in 0..self.fragments.len() {
             let mut rng = rand::thread_rng();
-            if self.fragments[k].discarded == true { 
-                continue; 
+            if self.fragments[k].discarded == true {
+                continue;
             }
             // if self.fragments[k].num_hete_links < self.min_linkers {
             //     continue;
@@ -507,8 +598,8 @@ impl SNPFrag {
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
             let mut processed_snps = HashSet::new(); // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
             for k in 0..self.fragments.len() {
-                if self.fragments[k].discarded == true { 
-                    continue; 
+                if self.fragments[k].discarded == true {
+                    continue;
                 }
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
@@ -688,8 +779,8 @@ impl SNPFrag {
         // check sigma
         if used_for_haplotag {
             for k in 0..self.fragments.len() {
-                if self.fragments[k].discarded == true { 
-                    continue; 
+                if self.fragments[k].discarded == true {
+                    continue;
                 }
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
@@ -920,7 +1011,8 @@ impl SNPFrag {
             let mut max_iter: i32 = max_iters;
             // random initialization of haplotype and haplotag at each iteration
             unsafe {
-                self.init_haplotypes();
+                // self.init_haplotypes();
+                self.init_haplotypes_LD();
                 self.init_genotype();
             }
             unsafe {
