@@ -103,16 +103,17 @@ impl SNPFrag {
                     continue;
                 }
                 if snp.variant_type == 0 {
-                    continue;
-                    // if snp.alleles[0] != snp.reference {
-                    //     rd.alternative = vec![vec![snp.alleles[0] as u8]];
-                    //     af = snp.allele_freqs[0];
-                    // } else if snp.alleles[1] != snp.reference {
-                    //     rd.alternative = vec![vec![snp.alleles[1] as u8]];
-                    //     af = snp.allele_freqs[1];
-                    // }
-                    // gt = "0/1";
-                    // rd.filter = "NonSelect".to_string().into_bytes();
+                    if snp.alleles[0] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                        af = snp.allele_freqs[0];
+                    } else if snp.alleles[1] != snp.reference {
+                        rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                        af = snp.allele_freqs[1];
+                    } else {
+                        continue;
+                    }
+                    gt = "0/0";
+                    rd.filter = "HomRef".to_string().into_bytes();
                 } else if snp.variant_type == 1 {
                     // continue;
                     if snp.alleles[0] != snp.reference {
@@ -186,7 +187,17 @@ impl SNPFrag {
                     }
                 } else {
                     if snp.variant_type == 0 {
-                        continue;
+                        if snp.alleles[0] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[0] as u8]];
+                            af = snp.allele_freqs[0];
+                        } else if snp.alleles[1] != snp.reference {
+                            rd.alternative = vec![vec![snp.alleles[1] as u8]];
+                            af = snp.allele_freqs[1];
+                        } else {
+                            continue;
+                        }
+                        gt = "0/0";
+                        rd.filter = "HomRef".to_string().into_bytes();
                     } else if snp.variant_type == 1 {
                         if snp.alleles[0] != snp.reference {
                             rd.alternative = vec![vec![snp.alleles[0] as u8]];
