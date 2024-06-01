@@ -132,7 +132,7 @@ pub fn multithread_phase_haplotag(
             );
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(&bam_file, &reg, ref_seq);
-            snpfrag.clean_fragments();
+            // snpfrag.clean_fragments();
             if genotype_only {
                 // without phasing
                 let vcf_records = snpfrag.output_vcf(min_qual);
