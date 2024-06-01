@@ -152,8 +152,8 @@ pub fn multithread_phase_haplotag(
                     }
                     // snpfrag.chain_phase(max_enum_snps);
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
-                    snpfrag.assign_genotype();
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
+                    snpfrag.assign_genotype();
                     snpfrag.assign_snp_haplotype(min_phase_score);
                     // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
@@ -405,6 +405,7 @@ pub fn multithread_phase_haplotag(
     }
     vf.write("##FILTER=<ID=PASS,Description=\"All filters passed\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=LowQual,Description=\"Low phasing quality\">\n".as_bytes()).unwrap();
+    vf.write("##FILTER=<ID=HomRef,Description=\"Homo reference\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=RnaEdit,Description=\"RNA editing\">\n".as_bytes()).unwrap();
     vf.write("##FILTER=<ID=dn,Description=\"Dense cluster of variants\">\n".as_bytes()).unwrap();
     vf.write("##INFO=<ID=RDS,Number=1,Type=String,Description=\"RNA editing or Dense SNP or Single SNP.\">\n".as_bytes()).unwrap();
