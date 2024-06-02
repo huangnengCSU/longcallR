@@ -160,8 +160,6 @@ pub struct FragElem {
 pub struct Fragment {
     pub fragment_idx: usize,
     // index of multiple fragments(SNPFrag.fragments)
-    pub discarded: bool,
-    // whether the fragment is discarded
     pub read_id: String,
     // read name
     pub list: Vec<FragElem>,
