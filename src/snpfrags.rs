@@ -5,7 +5,7 @@ use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
-use crate::phase::{cal_enum_eta_delta_sigma_log, cal_phase_score_log, cal_sigma_delta_eta_log};
+use crate::phase::{cal_delta_eta_sigma_log, cal_phase_score_log, cal_sigma_delta_eta_log};
 use crate::snp::{CandidateSNP, Fragment, LD_Pair};
 use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
@@ -413,7 +413,7 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
-            if snp.variant_type != 1 || snp.genotype != 0 {
+            if snp.variant_type != 1 {
                 snp.non_selected = true;
                 continue;
             }
@@ -425,7 +425,6 @@ impl SNPFrag {
             let mut hap1_reads_num = 0;
             let mut hap2_reads_num = 0;
             for k in snp.snp_cover_fragments.iter() {
-                if self.fragments[*k].discarded == true { continue; }
                 if self.fragments[*k].assignment == 0 { continue; }
                 if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
                 for fe in self.fragments[*k].list.iter() {
@@ -493,6 +492,7 @@ impl SNPFrag {
                 //     self.candidate_snps[*ti].variant_type = 1;
                 // }
                 snp.haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
+                snp.genotype = 0;
                 snp.haplotype_expression = haplotype_allele_expression;
                 snp.phase_score = phase_score;
             } else {
@@ -646,92 +646,7 @@ impl SNPFrag {
         }
     }*/
 
-    pub fn assign_genotype(&mut self) {
-        for ti in 0..self.candidate_snps.len() {
-            let snp = &mut self.candidate_snps[ti];
-
-            if snp.for_phasing == false { continue; }
-            let delta_i = snp.haplotype;
-            let eta_i = snp.genotype;
-            // let coverage_i = snp.depth;
-            let mut sigma: Vec<i32> = Vec::new();
-            let mut ps: Vec<i32> = Vec::new();
-            let mut probs: Vec<f64> = Vec::new();
-            for k in snp.snp_cover_fragments.iter() {
-                if self.fragments[*k].discarded == true {
-                    continue;
-                }
-                if self.fragments[*k].haplotag == 0 {
-                    continue;
-                }
-                // k is fragment index
-                for fe in self.fragments[*k].list.iter() {
-                    if fe.snp_idx == ti {
-                        if fe.phase_site == false { continue; }
-                        assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
-                        ps.push(fe.p);
-                        probs.push(fe.prob);
-                        sigma.push(self.fragments[*k].haplotag);
-                    }
-                }
-            }
-
-            if sigma.len() == 0 {
-                continue;
-            }
-            let coverage_i = sigma.len() as u32;
-
-            // why we need to calculate both delta and delta*(-1), because when eta=0, delta is random assigned to 1 or -1.
-            let q1 = cal_enum_eta_delta_sigma_log(-1, coverage_i, delta_i, &sigma, &ps, &probs);
-            let q2 = cal_enum_eta_delta_sigma_log(0, coverage_i, delta_i, &sigma, &ps, &probs);
-            let q3 = cal_enum_eta_delta_sigma_log(1, coverage_i, delta_i, &sigma, &ps, &probs);
-
-            let qn1 = cal_enum_eta_delta_sigma_log(-1, coverage_i, delta_i * (-1), &sigma, &ps, &probs);
-            let qn2 = cal_enum_eta_delta_sigma_log(0, coverage_i, delta_i * (-1), &sigma, &ps, &probs);
-            let qn3 = cal_enum_eta_delta_sigma_log(1, coverage_i, delta_i * (-1), &sigma, &ps, &probs);
-
-            let max_q = q1.max(q2).max(q3.max(qn1.max(qn2.max(qn3))));
-            if q1 == max_q {
-                snp.genotype = -1;
-            } else if q2 == max_q {
-                snp.genotype = 0;
-            } else if q3 == max_q {
-                snp.genotype = 1;
-            } else if qn1 == max_q {
-                snp.genotype = -1;
-            } else if qn2 == max_q {
-                snp.genotype = 0;
-                snp.haplotype = snp.haplotype * (-1);
-            } else if qn3 == max_q {
-                snp.genotype = 1;
-            } else {
-                panic!("Error: genotype optimization failed. {},{},{},{},{},{}", q1, q2, q3, qn1, qn2, qn3);
-            }
-
-            if snp.for_phasing == false { continue; }
-            if snp.variant_type == 0 {
-                snp.genotype = 1;
-            } else if snp.variant_type == 1 {
-                if snp.genotype == 0 {
-                    continue;
-                } else if snp.genotype == 1 {
-                    snp.variant_type = 0;
-                } else if snp.genotype == -1 {
-                    snp.variant_type = 2;
-                }
-            } else if snp.variant_type == 2 {
-                if snp.genotype == -1 || snp.genotype == 1 {
-                    continue;
-                } else if snp.genotype == 0 {
-                    snp.variant_type = 1;
-                }
-            } else if snp.variant_type == 3 {
-                snp.genotype = -1;
-            }
-        }
-    }
-
-    pub fn assign_snp_haplotype(&mut self, min_phase_score: f32) {
+    pub fn assign_snp_haplotype_genotype(&mut self, min_phase_score: f32) {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
             let snp = &mut self.candidate_snps[ti];
@@ -744,10 +659,10 @@ impl SNPFrag {
                 snp.single = true;
                 continue;
             }
-            if snp.variant_type != 1 {
-                snp.non_selected = true;
-                continue;
-            }
+            // if snp.variant_type != 1 {
+            //     snp.non_selected = true;
+            //     continue;
+            // }
             let delta_i = snp.haplotype;
             let eta_i = snp.genotype;
             let mut sigma: Vec<i32> = Vec::new();
@@ -757,12 +672,11 @@ impl SNPFrag {
             let mut baseqs = Vec::new();
             let mut hap1_reads_num = 0;
             let mut hap2_reads_num = 0;
-            if eta_i != 0 {
-                snp.non_selected = true;
-                continue;
-            }
+            // if eta_i != 0 {
+            //     snp.non_selected = true;
+            //     continue;
+            // }
             for k in snp.snp_cover_fragments.iter() {
-                if self.fragments[*k].discarded == true { continue; }
                 if self.fragments[*k].assignment == 0 { continue; }
                 if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
                 for fe in self.fragments[*k].list.iter() {
@@ -786,11 +700,48 @@ impl SNPFrag {
                 }
             }
 
+            if sigma.len() == 0 {
+                snp.non_selected = true;
+                continue;
+            }
+
+            let q1 = cal_delta_eta_sigma_log(delta_i, 0, &sigma, &ps, &probs);
+            let q2 = cal_delta_eta_sigma_log(delta_i * (-1), 0, &sigma, &ps, &probs);
+            let q3 = cal_delta_eta_sigma_log(delta_i, 1, &sigma, &ps, &probs);
+            let q4 = cal_delta_eta_sigma_log(delta_i, -1, &sigma, &ps, &probs);
+
+            let max_q = q1.max(q2.max(q3.max(q4)));
+            if q1 == max_q {
+                snp.haplotype = delta_i;
+                snp.genotype = 0;
+                snp.variant_type = 1;
+            } else if q2 == max_q {
+                snp.haplotype = delta_i * (-1);
+                snp.genotype = 0;
+                snp.variant_type = 1;
+            } else if q3 == max_q {
+                snp.haplotype = delta_i;
+                snp.genotype = 1;
+                snp.variant_type = 0;
+            } else if q4 == max_q {
+                snp.haplotype = delta_i;
+                snp.genotype = -1;
+                if snp.variant_type != 2 && snp.variant_type != 3 {
+                    snp.variant_type = 2;
+                }
+            } else {
+                panic!("Error: genotype optimization failed. {},{},{},{}", q1, q2, q3, q4);
+            }
+
+            if snp.genotype != 0 {
+                snp.non_selected = true;
+                continue;
+            }
+
             let mut phase_score = 0.0;
             if sigma.len() > 0 && hap1_reads_num >= 1 && hap2_reads_num >= 1 {
                 // each haplotype should have at least 2 reads
-                // phase_score = -10.0_f64 * (1.0 - cal_delta_sigma_prior_log(delta_i, alt_fraction_i, coverage_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                phase_score = -10.0_f64 * (1.0 - cal_phase_score_log(delta_i, eta_i, &sigma, &ps, &probs)).log10(); // calaulate assignment score
+                phase_score = -10.0_f64 * (1.0 - cal_phase_score_log(snp.haplotype, snp.genotype, &sigma, &ps, &probs)).log10(); // calaulate assignment score
                 if phase_score >= min_phase_score as f64 {
                     let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
                     for k in 0..sigma.len() {
@@ -881,7 +832,6 @@ impl SNPFrag {
     pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         for k in 0..self.fragments.len() {
-            if self.fragments[k].discarded == true { continue; }
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
             let mut eta: Vec<i32> = Vec::new();
@@ -1006,7 +956,6 @@ impl SNPFrag {
         }
         for k in 0..self.fragments.len() {
             let frag = &self.fragments[k];
-            if frag.discarded == true { continue; }
             if frag.assignment == 0 { continue; }
             let mut node_snps = Vec::new();
             for fe in frag.list.iter() {
@@ -1061,7 +1010,6 @@ impl SNPFrag {
         let mut phased_fragments: HashMap<String, i32> = HashMap::new(); // read id, assignment
         for k in 0..self.fragments.len() {
             let frag = &self.fragments[k];
-            if frag.discarded == true { continue; }
             if frag.assignment == 1 || frag.assignment == 2 {
                 phased_fragments.insert(frag.read_id.clone(), frag.assignment);
             }

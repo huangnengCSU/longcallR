@@ -153,8 +153,7 @@ pub fn multithread_phase_haplotag(
                     // snpfrag.chain_phase(max_enum_snps);
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-                    snpfrag.assign_genotype();
-                    snpfrag.assign_snp_haplotype(min_phase_score);
+                    snpfrag.assign_snp_haplotype_genotype(min_phase_score);
                     // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     snpfrag.eval_rna_edit_var_phase(min_phase_score);
@@ -214,9 +213,6 @@ pub fn multithread_phase_haplotag(
                                 let mut hap2_largest_end = 0;
                                 // collect exons
                                 for frag in snpfrag.fragments.iter() {
-                                    if frag.discarded == true {
-                                        continue;
-                                    }
                                     if frag.assignment == 1 {
                                         for e in frag.exons.iter() {
                                             hap1_exons.push(e.clone());
