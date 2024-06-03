@@ -731,7 +731,7 @@ impl SNPFrag {
             //     self.load_best_configuration(&best_haplotype, &best_haplotag);
             // }
 
-            for tidx in 0..self.candidate_snps.len() {
+            for tidx in 0..=self.candidate_snps.len() / 4 {
                 {
                     for ti in 0..self.candidate_snps.len() {
                         let mut rng = rand::thread_rng();
