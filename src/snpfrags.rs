@@ -677,7 +677,12 @@ impl SNPFrag {
             //     continue;
             // }
             for k in snp.snp_cover_fragments.iter() {
-                if self.fragments[*k].assignment == 0 { continue; }
+                // heterozygous use phased reads, otherwise use all reads
+                if snp.variant_type == 1 {
+                    if self.fragments[*k].assignment == 0 {
+                        continue;
+                    }
+                }
                 if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
                 for fe in self.fragments[*k].list.iter() {
                     if fe.snp_idx == ti {
