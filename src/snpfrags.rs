@@ -493,6 +493,7 @@ impl SNPFrag {
                 // }
                 snp.haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 snp.genotype = 0;
+                snp.variant_type = 1;
                 snp.haplotype_expression = haplotype_allele_expression;
                 snp.phase_score = phase_score;
             } else {
@@ -910,7 +911,7 @@ impl SNPFrag {
     }
 
 
-    pub fn assign_phase_set(&mut self) -> HashMap<String, u32> {
+    pub fn assign_phase_set(&mut self, min_phase_score: f32) -> HashMap<String, u32> {
         let mut phase_set: HashMap<String, u32> = HashMap::new();
         let mut graph: GraphMap<usize, Vec<usize>, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
         // construct graph for hete snps
@@ -927,7 +928,7 @@ impl SNPFrag {
                 // let mut is_single_snp = false;
                 // let mut is_unconfident_phased_snp = false;
                 // let mut is_ase_snp = false;
-                if snp.dense || snp.single || snp.rna_editing || snp.somatic || snp.phase_score == 0.0 {
+                if snp.dense || snp.single || snp.rna_editing || snp.somatic || snp.phase_score < min_phase_score as f64 {
                     continue;
                 }
                 // if snp.single == true {

@@ -174,7 +174,7 @@ pub fn multithread_phase_haplotag(
                     //         merge_reads_assignments.insert(k.clone(), v.clone());
                     //     }
                     // }
-                    let phase_sets = snpfrag.assign_phase_set();
+                    let phase_sets = snpfrag.assign_phase_set(min_phase_score);
 
                     let mut haplotype_exons: Vec<(Exon, i32, i32)> = Vec::new();
                     {
