@@ -1,6 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
+use petgraph::algo::kosaraju_scc;
+use petgraph::graphmap::GraphMap;
+use petgraph::Undirected;
+use petgraph::visit::Bfs;
 use rand::Rng;
 
 use crate::snpfrags::SNPFrag;
@@ -302,6 +306,38 @@ pub fn cal_inconsistent_percentage(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>
     return (inconsistent as f64) / ((consisitent + inconsistent) as f64);
 }
 
+pub fn get_blocks(block_links: &HashMap<[usize; 2], i32>, weight_threshold: u32) -> (Vec<Vec<usize>>, GraphMap<usize, u32, Undirected>) {
+    let mut graph: GraphMap<usize, u32, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
+    for (edge, w) in block_links.iter() {
+        if graph.contains_edge(edge[0], edge[1]) {
+            // weight += 1
+            let weight = graph.edge_weight_mut(edge[0], edge[1]).unwrap();
+            *weight += (*w).abs() as u32;
+        } else {
+            graph.add_edge(edge[0], edge[1], (*w).abs() as u32);
+        }
+    }
+    // delete edges with weight < weight_threshold
+    let mut lw_edges: Vec<(usize, usize)> = Vec::new();
+    for edge in graph.all_edges() {
+        if *edge.2 < weight_threshold {
+            lw_edges.push((edge.0, edge.1));
+        }
+    }
+    for edge in lw_edges.iter() {
+        graph.remove_edge(edge.0, edge.1);
+    }
+    let scc = kosaraju_scc(&graph);
+    // for block in scc.iter() {
+    //     let mut bfs = Bfs::new(&graph, block[0]);
+    //     print!("{}->", block[0]);
+    //     while let Some(nx) = bfs.next(&graph) {
+    //         print!("{},", nx);
+    //     }
+    // }
+    return (scc, graph);
+}
+
 impl SNPFrag {
     pub unsafe fn init_haplotypes(&mut self) {
         // initialize haplotype of heterozygous snp
@@ -316,14 +352,26 @@ impl SNPFrag {
         }
     }
 
-    pub unsafe fn init_haplotypes_LD(&mut self) {
+    pub unsafe fn init_haplotypes_LD(&mut self, ld_weight_threshold: u32) -> (HashSet<usize>, Vec<HashSet<usize>>) {
+        for ti in 0..self.candidate_snps.len() {
+            let mut rng = rand::thread_rng();
+            let rg: f64 = rng.gen();
+            if rg < 0.5 {
+                self.candidate_snps[ti].haplotype = 1; // HetVar hap1
+            } else {
+                self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
+            }
+        }
+
         let mut ld_idxes: Vec<usize> = Vec::new();
         for ti in 0..self.candidate_snps.len() {
             ld_idxes.push(ti);
         }
-        let mut r2_map = HashMap::new();
+
+        // let mut r2_map = HashMap::new();
+        let mut block_links: HashMap<[usize; 2], i32> = HashMap::new();
         for i in 0..ld_idxes.len() {
-            for j in 0..ld_idxes.len() {
+            for j in i + 1..ld_idxes.len() {
                 if i == j { continue; }
                 let idx1 = ld_idxes[i];
                 let idx2 = ld_idxes[j];
@@ -332,33 +380,103 @@ impl SNPFrag {
                 if idx1 < idx2 {
                     if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
                     let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
-                    r2_map.insert([idx1, idx2], r2);
+                    let (is_block, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+                    if is_block {
+                        block_links.insert([idx1, idx2], weight);
+                    }
+                    // r2_map.insert([idx1, idx2], r2);
                 } else if idx2 < idx1 {
                     if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
                     let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
-                    r2_map.insert([idx2, idx1], r2);
+                    let (is_block, weight) = self.allele_pairs.get(&[idx2, idx1]).unwrap().is_same_block(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+                    if is_block {
+                        block_links.insert([idx2, idx1], weight);
+                    }
+                    // r2_map.insert([idx2, idx1], r2);
                 }
             }
         }
-        let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
-        let mut ld_sites: HashSet<usize> = HashSet::new();
-        for idxes in r2_map_high.keys() {
-            ld_sites.insert(idxes[0]);
-            ld_sites.insert(idxes[1]);
-        }
-        for ti in 0..self.candidate_snps.len() {
-            if ld_sites.contains(&ti) {
-                self.candidate_snps[ti].haplotype = 1;
-            } else {
-                let mut rng = rand::thread_rng();
-                let rg: f64 = rng.gen();
-                if rg < 0.5 {
-                    self.candidate_snps[ti].haplotype = 1; // HetVar hap1
-                } else {
-                    self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
+        // let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
+        // let mut ld_sites: HashSet<usize> = HashSet::new();
+        // for idxes in r2_map_high.keys() {
+        //     ld_sites.insert(idxes[0]);
+        //     ld_sites.insert(idxes[1]);
+        // }
+        // for ti in 0..self.candidate_snps.len() {
+        //     if ld_sites.contains(&ti) {
+        //         self.candidate_snps[ti].haplotype = 1;
+        //     } else {
+        //         let mut rng = rand::thread_rng();
+        //         let rg: f64 = rng.gen();
+        //         if rg < 0.5 {
+        //             self.candidate_snps[ti].haplotype = 1; // HetVar hap1
+        //         } else {
+        //             self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
+        //         }
+        //     }
+        // }
+        let (blocks_vec, block_graph) = get_blocks(&block_links, ld_weight_threshold);
+        let mut block_snps: HashSet<usize> = HashSet::new();
+        let mut blocks_set: Vec<HashSet<usize>> = Vec::new();
+        for block in blocks_vec.iter() {
+            if block.len() < 2 { continue; }
+            // use BFS to assign snps in the phased block
+            let mut bfs = Bfs::new(&block_graph, block[0]);
+            let mut visited_nodes: Vec<usize> = Vec::new();
+            self.candidate_snps[block[0]].haplotype = 1;    // set the first snp as hap1
+            visited_nodes.push(block[0]);
+            while let Some(nx) = bfs.next(&block_graph) {
+                for idx in visited_nodes.iter() {
+                    if *idx < nx {
+                        let Some(weight) = block_links.get(&[*idx, nx]) else { continue; };
+                        if *weight >= ld_weight_threshold as i32 {
+                            self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;  // positive value, same haplotype
+                            break;
+                        } else if *weight <= -1 * ld_weight_threshold as i32 {
+                            self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype; // negative value, different haplotype
+                            break;
+                        }
+                        // if block_links.contains_key(&[*idx, nx]) {
+                        //     if *block_links.get(&[*idx, nx]).unwrap() >= ld_weight_threshold as i32 {
+                        //         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;
+                        //         break;
+                        //     } else if *block_links.get(&[*idx, nx]).unwrap() <= -1 * ld_weight_threshold as i32 {
+                        //         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype;
+                        //         break;
+                        //     }
+                        // }
+                    } else if *idx > nx {
+                        let Some(weight) = block_links.get(&[nx, *idx]) else { continue; };
+                        if *weight >= ld_weight_threshold as i32 {
+                            self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;  // positive value, same haplotype
+                            break;
+                        } else if *weight <= -1 * ld_weight_threshold as i32 {
+                            self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype; // negative value, different haplotype
+                            break;
+                        }
+                        // if block_links.contains_key(&[nx, *idx]) {
+                        //     if *block_links.get(&[nx, *idx]).unwrap() >= ld_weight_threshold as i32 {
+                        //         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;
+                        //         break;
+                        //     } else if *block_links.get(&[nx, *idx]).unwrap() <= -1 * ld_weight_threshold as i32 {
+                        //         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype;
+                        //         break;
+                        //     }
+                        // }
+                    }
                 }
             }
+            let mut rng = rand::thread_rng();
+            let rg: f64 = rng.gen();
+            // print!("block:");
+            blocks_set.push(HashSet::from_iter(block.iter().cloned()));
+            for idx in block.iter().sorted() {
+                // print!("{},", self.candidate_snps[*idx].pos);
+                block_snps.insert(*idx);
+            }
+            // println!();
         }
+        return (block_snps, blocks_set);
     }
 
     pub unsafe fn init_assignment(&mut self) {
@@ -391,7 +509,7 @@ impl SNPFrag {
     }
 
 
-    pub fn cross_optimize_sigma(&mut self) -> f64 {
+    pub fn cross_optimize_sigma(&mut self, block_snps: &HashSet<usize>, blocks: &Vec<HashSet<usize>>, keep_block: bool, with_genotype: bool) -> f64 {
         // Iteration:
         //     1. evaluate the assignment of each read based on the current SNP haplotype.
         //     2. evaluate the SNP haplotype based on the read assignment.
@@ -458,7 +576,11 @@ impl SNPFrag {
             let mut tmp_haplotype_genotype: HashMap<usize, (i32, i32)> = HashMap::new();
             for i in 0..self.candidate_snps.len() {
                 if self.candidate_snps[i].for_phasing == false { continue; }
+                if keep_block {
+                    if block_snps.contains(&i) { continue; }
+                }
                 let delta_i = self.candidate_snps[i].haplotype;
+                let eta_i = self.candidate_snps[i].genotype;
                 let mut sigma: Vec<i32> = Vec::new();
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
@@ -486,17 +608,36 @@ impl SNPFrag {
                 let q3 = cal_delta_eta_sigma_log(delta_i, 1, &sigma, &ps, &probs);  // homref
                 let q4 = cal_delta_eta_sigma_log(delta_i, -1, &sigma, &ps, &probs); // homvar
 
-                let max_q = q1.max(q2.max(q3.max(q4)));
-                if q1 == max_q {
-                    tmp_haplotype_genotype.insert(i, (delta_i, 0));
-                } else if q2 == max_q {
-                    tmp_haplotype_genotype.insert(i, (delta_i * (-1), 0));
-                } else if q3 == max_q {
-                    tmp_haplotype_genotype.insert(i, (delta_i, 1));
-                } else if q4 == max_q {
-                    tmp_haplotype_genotype.insert(i, (delta_i, -1));
+                if with_genotype {
+                    let max_q = q1.max(q2.max(q3.max(q4)));
+                    if q1 == max_q {
+                        tmp_haplotype_genotype.insert(i, (delta_i, 0));
+                    } else if q2 == max_q {
+                        tmp_haplotype_genotype.insert(i, (delta_i * (-1), 0));
+                    } else if q3 == max_q {
+                        tmp_haplotype_genotype.insert(i, (delta_i, 1));
+                    } else if q4 == max_q {
+                        tmp_haplotype_genotype.insert(i, (delta_i, -1));
+                    } else {
+                        panic!("Error: haplotype genotype optimization failed. {}->{}->{}->{}", q1, q2, q3, q4);
+                    }
                 } else {
-                    panic!("Error: haplotype genotype optimization failed. {}->{}->{}->{}", q1, q2, q3, q4);
+                    let mut max_q = 0.0;
+                    if eta_i == 0 {
+                        max_q = q1.max(q2);
+                        if q1 == max_q {
+                            tmp_haplotype_genotype.insert(i, (delta_i, 0));
+                        } else if q2 == max_q {
+                            tmp_haplotype_genotype.insert(i, (delta_i * (-1), 0));
+                        }
+                    } else {
+                        max_q = q3.max(q4);
+                        if q3 == max_q {
+                            tmp_haplotype_genotype.insert(i, (delta_i, 1));
+                        } else if q4 == max_q {
+                            tmp_haplotype_genotype.insert(i, (delta_i, -1));
+                        }
+                    }
                 }
             }
             let check_val = check_new_haplotype_genotype(&self, &tmp_haplotype_genotype);
@@ -505,6 +646,18 @@ impl SNPFrag {
                 // when prob is equal, we still perform the flip to avoid bug of underflow
                 self.candidate_snps[*idx].haplotype = hap.0;
                 self.candidate_snps[*idx].genotype = hap.1;
+                // // update the haplotype of the snps in the same block
+                // if block_snps.contains(&idx) {
+                //     for block in blocks.iter() {
+                //         if block.contains(&idx) {
+                //             for ti in block.iter() {
+                //                 print!("{}:{}->{},", self.candidate_snps[*ti].pos, self.candidate_snps[*ti].haplotype, hap.0);
+                //                 self.candidate_snps[*ti].haplotype = hap.0;
+                //             }
+                //             println!();
+                //         }
+                //     }
+                // }
             }
             if check_val == 0 {
                 haplotype_genotype_increase = false;
@@ -512,7 +665,7 @@ impl SNPFrag {
                 haplotype_genotype_increase = true;
                 haplotag_increase = true;
             }
-            self.check_local_optimal_configuration(true, false);
+            // self.check_local_optimal_configuration(true, false);
 
             num_iters += 1;
             if num_iters > 20 {
@@ -585,20 +738,23 @@ impl SNPFrag {
                 if eta_i == 0 {
                     q1 = cal_delta_eta_sigma_log(delta_i, eta_i, &sigma, &ps, &probs);
                     q2 = cal_delta_eta_sigma_log(delta_i * (-1), eta_i, &sigma, &ps, &probs);
-                    q3 = cal_delta_eta_sigma_log(delta_i, -1, &sigma, &ps, &probs);
-                    q4 = cal_delta_eta_sigma_log(delta_i, 1, &sigma, &ps, &probs);
+                    // q3 = cal_delta_eta_sigma_log(delta_i, -1, &sigma, &ps, &probs);
+                    // q4 = cal_delta_eta_sigma_log(delta_i, 1, &sigma, &ps, &probs);
+                    assert!(q1 >= q2, "Error: haplotype and genotype flipping is not local optimal. {}->{}, {:?}, eta:{}", q1, q2, self.region, eta_i)
                 } else if eta_i == 1 {
                     q1 = cal_delta_eta_sigma_log(delta_i, eta_i, &sigma, &ps, &probs);
                     q2 = cal_delta_eta_sigma_log(delta_i, eta_i * (-1), &sigma, &ps, &probs);
-                    q3 = cal_delta_eta_sigma_log(delta_i, 0, &sigma, &ps, &probs);
-                    q4 = cal_delta_eta_sigma_log(delta_i * (-1), 0, &sigma, &ps, &probs);
+                    // q3 = cal_delta_eta_sigma_log(delta_i, 0, &sigma, &ps, &probs);
+                    // q4 = cal_delta_eta_sigma_log(delta_i * (-1), 0, &sigma, &ps, &probs);
+                    assert!(q1 >= q2, "Error: haplotype and genotype flipping is not local optimal. {}->{}, {:?}, eta:{}", q1, q2, self.region, eta_i)
                 } else if eta_i == -1 {
                     q1 = cal_delta_eta_sigma_log(delta_i, eta_i, &sigma, &ps, &probs);
                     q2 = cal_delta_eta_sigma_log(delta_i, eta_i * (-1), &sigma, &ps, &probs);
-                    q3 = cal_delta_eta_sigma_log(delta_i, 0, &sigma, &ps, &probs);
-                    q4 = cal_delta_eta_sigma_log(delta_i * (-1), 0, &sigma, &ps, &probs);
+                    // q3 = cal_delta_eta_sigma_log(delta_i, 0, &sigma, &ps, &probs);
+                    // q4 = cal_delta_eta_sigma_log(delta_i * (-1), 0, &sigma, &ps, &probs);
+                    assert!(q1 >= q2, "Error: haplotype and genotype flipping is not local optimal. {}->{}, {:?}, eta:{}", q1, q2, self.region, eta_i)
                 }
-                assert!(q1 >= q2 && q1 >= q3 && q1 >= q4, "Error: haplotype and genotype flipping is not local optimal. {}->{}, {}, {}\n{:?}, eta:{}", q1, q2, q3, q4, self.region, eta_i);
+                // assert!(q1 >= q2 && q1 >= q3 && q1 >= q4, "Error: haplotype and genotype flipping is not local optimal. {}->{}, {}, {}\n{:?}, eta:{}", q1, q2, q3, q4, self.region, eta_i);
             }
         }
     }
@@ -632,6 +788,9 @@ impl SNPFrag {
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
         let mut best_genotype: HashMap<usize, i32> = HashMap::new();
 
+        let mut block_snps: HashSet<usize> = HashSet::new();
+        let mut blocks: Vec<HashSet<usize>> = Vec::new();
+
         if self.candidate_snps.len() <= max_enum_snps {
             // enumerate the haplotype, then optimize the assignment
             let mut haplotype_enum: Vec<Vec<i32>> = Vec::new();
@@ -653,7 +812,7 @@ impl SNPFrag {
                     self.init_assignment();
                     self.init_genotype();
                 }
-                let prob = self.cross_optimize_sigma();
+                let prob = self.cross_optimize_sigma(&block_snps, &blocks, false, true);
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -666,13 +825,13 @@ impl SNPFrag {
             // random initialization of haplotype and haplotag at each iteration
             unsafe {
                 // self.init_haplotypes();
-                self.init_haplotypes_LD();
+                (block_snps, blocks) = self.init_haplotypes_LD(5);
                 self.init_genotype();
             }
             unsafe {
                 self.init_assignment();
             }
-            let prob = self.cross_optimize_sigma();
+            let prob = self.cross_optimize_sigma(&block_snps, &blocks, true, false);
             if prob > largest_prob {
                 largest_prob = prob;
                 self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -751,7 +910,7 @@ impl SNPFrag {
                         }
                     }
                 }
-                let prob = self.cross_optimize_sigma();
+                let prob = self.cross_optimize_sigma(&block_snps, &blocks, false, false);
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -770,7 +929,7 @@ impl SNPFrag {
                         }
                     }
                 }
-                let prob = self.cross_optimize_sigma();
+                let prob = self.cross_optimize_sigma(&block_snps, &blocks, false, false);
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);

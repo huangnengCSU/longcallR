@@ -134,6 +134,42 @@ impl LD_Pair {
         let r2 = d * d / p;   // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
         return r2;
     }
+
+    pub fn is_same_block(&self, A: u8, a: u8, B: u8, b: u8) -> (bool, i32) {
+        // calculate r2 for two snps
+        // A1, B1: alleles of snp1, A2, B2: alleles of snp2, https://en.wikipedia.org/wiki/Linkage_disequilibrium
+        let mut count = [0, 0, 0, 0];
+        if self.ld_pairs.contains_key(&[A, B]) {
+            // AB = self.ld_pairs[&[A, B]] as f32;
+            count[0] = self.ld_pairs[&[A, B]] as i32;
+        }
+        if self.ld_pairs.contains_key(&[A, b]) {
+            // Ab = self.ld_pairs[&[A, b]] as f32;
+            count[1] = self.ld_pairs[&[A, b]] as i32;
+        }
+        if self.ld_pairs.contains_key(&[a, B]) {
+            // aB = self.ld_pairs[&[a, B]] as f32;
+            count[2] = self.ld_pairs[&[a, B]] as i32;
+        }
+        if self.ld_pairs.contains_key(&[a, b]) {
+            // ab = self.ld_pairs[&[a, b]] as f32;
+            count[3] = self.ld_pairs[&[a, b]] as i32;
+        }
+        // count sort from large to small
+        // count.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        let c1 = (count[0] + count[3]).min(count[1] + count[2]);
+        let c2 = (count[0] + count[3]).max(count[1] + count[2]);
+        let score = c1 as f32 / c2 as f32;
+        if score == 0.0 {
+            if (count[0] + count[3]) > (count[1] + count[2]) {
+                (true, c2)
+            } else {
+                (true, -1 * c2)
+            }
+        } else {
+            (false, 0)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
