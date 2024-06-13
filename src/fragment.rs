@@ -292,7 +292,7 @@ impl SNPFrag {
         // trim fragment with edge support < 2
         for (k, e) in self.edges.iter() {
             if e.w < 2 {
-                if e.w == 0 { continue; }
+                // if e.w == 0 { continue; }
                 for idx in 0..e.frag_idxes.len() {
                     let frag_idx = e.frag_idxes[idx];
                     let mut frag = &mut self.fragments[frag_idx];
