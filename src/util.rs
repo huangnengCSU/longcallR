@@ -511,7 +511,9 @@ impl Profile {
 
             let mut pos_in_freq_vec: i32 = start_pos as i32 - freq_vec_pos as i32;
             let mut pos_in_read = if leading_softclips > 0 { leading_softclips as usize } else { 0 };
-            for cg in cigar.iter() {
+            let cigars = cigar.to_vec();
+            for cg_idx in 0..cigars.len() {
+                let cg = cigars[cg_idx];
                 match cg.char() as u8 {
                     b'S' | b'H' => {
                         continue;
@@ -533,6 +535,24 @@ impl Profile {
 
                             // close to left read end or right read end, check whether current position is in polyA tail
                             let ref_base = self.freq_vec[pos_in_freq_vec as usize].ref_base;
+
+                            // filter alternate allele near the splicing site
+                            if base != ref_base {
+                                if cgi <= 3 {
+                                    if cg_idx - 1 >= 0 && cigars[cg_idx - 1].char() as u8 == b'N' {
+                                        pos_in_freq_vec += 1;
+                                        pos_in_read += 1;
+                                        continue;
+                                    }
+                                } else if cgi >= cg.len() - 4 {
+                                    if cg_idx + 1 < cigars.len() && cigars[cg_idx + 1].char() as u8 == b'N' {
+                                        pos_in_freq_vec += 1;
+                                        pos_in_read += 1;
+                                        continue;
+                                    }
+                                }
+                            }
+
                             let mut polyA_flag = false;
                             let mut homopolymer_flag = false;
                             let mut trimed_flag = false;    // trime the end of ont reads
