@@ -154,6 +154,8 @@ pub fn multithread_phase_haplotag(
                     snpfrag.phase(max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
                     snpfrag.assign_snp_haplotype_genotype(min_phase_score);
+                    let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
+                    snpfrag.assign_snp_haplotype_genotype(min_phase_score);
                     // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
                     snpfrag.eval_rna_edit_var_phase(min_phase_score);
