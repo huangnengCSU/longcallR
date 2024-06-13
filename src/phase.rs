@@ -377,18 +377,48 @@ impl SNPFrag {
                 let idx2 = ld_idxes[j];
                 let snp1 = &self.candidate_snps[idx1];
                 let snp2 = &self.candidate_snps[idx2];
+                let (mut snp1_ref, mut snp1_alt, mut snp2_ref, mut snp2_alt);
+                let (mut snp1_ref_frac, mut snp1_alt_frac, mut snp2_ref_frac, mut snp2_alt_frac) = (0.0, 0.0, 0.0, 0.0);
+                if snp1.alleles[0] == snp1.reference && snp1.alleles[1] != snp1.reference {
+                    snp1_ref = snp1.alleles[0] as u8;
+                    snp1_ref_frac = snp1.allele_freqs[0];
+                    snp1_alt = snp1.alleles[1] as u8;
+                    snp1_alt_frac = snp1.allele_freqs[1];
+                } else if snp1.alleles[0] != snp1.reference && snp1.alleles[1] == snp1.reference {
+                    snp1_ref = snp1.alleles[1] as u8;
+                    snp1_ref_frac = snp1.allele_freqs[1];
+                    snp1_alt = snp1.alleles[0] as u8;
+                    snp1_alt_frac = snp1.allele_freqs[0];
+                } else {
+                    continue;
+                }
+                if snp2.alleles[0] == snp2.reference && snp2.alleles[1] != snp2.reference {
+                    snp2_ref = snp2.alleles[0] as u8;
+                    snp2_ref_frac = snp2.allele_freqs[0];
+                    snp2_alt = snp2.alleles[1] as u8;
+                    snp2_alt_frac = snp2.allele_freqs[1];
+                } else if snp2.alleles[0] != snp2.reference && snp2.alleles[1] == snp2.reference {
+                    snp2_ref = snp2.alleles[1] as u8;
+                    snp2_ref_frac = snp2.allele_freqs[1];
+                    snp2_alt = snp2.alleles[0] as u8;
+                    snp2_alt_frac = snp2.allele_freqs[0];
+                } else {
+                    continue;
+                }
                 if idx1 < idx2 {
                     if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
-                    let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
-                    let (is_block, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+                    // let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+                    if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
+                    let (is_block, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
                     if is_block {
                         block_links.insert([idx1, idx2], weight);
                     }
                     // r2_map.insert([idx1, idx2], r2);
                 } else if idx2 < idx1 {
                     if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
-                    let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
-                    let (is_block, weight) = self.allele_pairs.get(&[idx2, idx1]).unwrap().is_same_block(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+                    // let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+                    if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
+                    let (is_block, weight) = self.allele_pairs.get(&[idx2, idx1]).unwrap().is_same_block(snp2_ref, snp2_alt, snp1_ref, snp1_alt);
                     if is_block {
                         block_links.insert([idx2, idx1], weight);
                     }
@@ -396,6 +426,7 @@ impl SNPFrag {
                 }
             }
         }
+
         // let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
         // let mut ld_sites: HashSet<usize> = HashSet::new();
         // for idxes in r2_map_high.keys() {
@@ -471,7 +502,7 @@ impl SNPFrag {
             // print!("block:");
             blocks_set.push(HashSet::from_iter(block.iter().cloned()));
             for idx in block.iter().sorted() {
-                // print!("{},", self.candidate_snps[*idx].pos);
+                // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
                 block_snps.insert(*idx);
             }
             // println!();
@@ -825,7 +856,7 @@ impl SNPFrag {
             // random initialization of haplotype and haplotag at each iteration
             unsafe {
                 // self.init_haplotypes();
-                (block_snps, blocks) = self.init_haplotypes_LD(5);
+                (block_snps, blocks) = self.init_haplotypes_LD(2);
                 self.init_genotype();
             }
             unsafe {
