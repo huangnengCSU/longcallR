@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use petgraph::algo::kosaraju_scc;
+use petgraph::dot::{Dot};
 use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use petgraph::visit::Bfs;
@@ -306,21 +307,20 @@ pub fn cal_inconsistent_percentage(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>
     return (inconsistent as f64) / ((consisitent + inconsistent) as f64);
 }
 
-pub fn get_blocks(block_links: &HashMap<[usize; 2], i32>, weight_threshold: u32) -> (Vec<Vec<usize>>, GraphMap<usize, u32, Undirected>) {
-    let mut graph: GraphMap<usize, u32, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
+pub fn get_blocks(block_links: &HashMap<[usize; 2], i32>, weight_threshold: u32) -> (Vec<Vec<usize>>, GraphMap<usize, i32, Undirected>) {
+    let mut graph: GraphMap<usize, i32, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
     for (edge, w) in block_links.iter() {
         if graph.contains_edge(edge[0], edge[1]) {
-            // weight += 1
             let weight = graph.edge_weight_mut(edge[0], edge[1]).unwrap();
-            *weight += (*w).abs() as u32;
+            *weight += *w;
         } else {
-            graph.add_edge(edge[0], edge[1], (*w).abs() as u32);
+            graph.add_edge(edge[0], edge[1], *w);
         }
     }
     // delete edges with weight < weight_threshold
     let mut lw_edges: Vec<(usize, usize)> = Vec::new();
     for edge in graph.all_edges() {
-        if *edge.2 < weight_threshold {
+        if (edge.2.abs() as u32) < weight_threshold {
             lw_edges.push((edge.0, edge.1));
         }
     }
@@ -496,6 +496,7 @@ impl SNPFrag {
                         // }
                     }
                 }
+                visited_nodes.push(nx);
             }
             let mut rng = rand::thread_rng();
             let rg: f64 = rng.gen();
