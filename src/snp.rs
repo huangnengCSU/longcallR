@@ -135,7 +135,7 @@ impl LD_Pair {
         return r2;
     }
 
-    pub fn is_same_block(&self, A: u8, a: u8, B: u8, b: u8) -> (bool, i32) {
+    pub fn is_same_block(&self, A: u8, a: u8, B: u8, b: u8) -> (bool, f32, i32) {
         // calculate r2 for two snps
         // A1, B1: alleles of snp1, A2, B2: alleles of snp2, https://en.wikipedia.org/wiki/Linkage_disequilibrium
         let mut count = [0, 0, 0, 0];
@@ -162,12 +162,12 @@ impl LD_Pair {
         let score = c1 as f32 / c2 as f32;
         if score == 0.0 {
             if (count[0] + count[3]) > (count[1] + count[2]) {
-                (true, c2)
+                (true, score, c2)
             } else {
-                (true, -1 * c2)
+                (true, -1.0 * score, -1 * c2)
             }
         } else {
-            (false, 0)
+            (false, 0.0, 0)
         }
     }
 }
