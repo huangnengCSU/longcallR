@@ -33,6 +33,8 @@ pub struct SNPFrag {
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
     pub allele_pairs: HashMap<[usize; 2], LD_Pair>,
     // allele pair at two snp sites, key is [snp_idx of start_node, snp_idx of end_node], start < end
+    pub ld_blocks: Vec<Vec<usize>>,
+    // index of candidate SNPs in each LD block
     pub min_linkers: u32,
     // the number of links for snps can be phased
 }
@@ -917,48 +919,10 @@ impl SNPFrag {
         // construct graph for hete snps
         for i in 0..self.candidate_snps.len() {
             let snp = &self.candidate_snps[i];
-            if snp.variant_type == 0 || snp.variant_type == 2 || snp.variant_type == 3 {
-                continue;
-            }
-            if snp.variant_type == 1 {
-                // hete snps
-                // let mut is_low_qual = false;
-                // let mut is_dense = false;
-                // let mut is_rna_edit = false;
-                // let mut is_single_snp = false;
-                // let mut is_unconfident_phased_snp = false;
-                // let mut is_ase_snp = false;
-                if snp.dense || snp.single || snp.rna_editing || snp.somatic || snp.phase_score < min_phase_score as f64 {
-                    continue;
-                }
-                // if snp.single == true {
-                //     is_single_snp = true;
-                // }
-                // if snp.ase == true {
-                //     is_ase_snp = true;
-                // }
-                // if !is_dense && !is_single_snp && snp.phase_score == 0.0 {
-                //     is_unconfident_phased_snp = true;
-                // }
-                // if is_dense || is_single_snp || is_unconfident_phased_snp || snp.haplotype == 0 {
-                //     continue;
-                // }
-                // // ase snp
-                // if is_ase_snp && snp.phase_score < ase_ps_cutoff as f64 {
-                //     continue;
-                // }
-                // // hete snp
-                // if !is_ase_snp {
-                //     if snp.variant_quality < min_qual_for_candidate as f64 {
-                //         continue;
-                //     }
-                //     if snp.phase_score < min_phase_score as f64 {
-                //         continue;
-                //     }
-                // }
-                // ase snps > ase_ps_cutoff or hete snps > min_phase_score, construct graph
-                graph.add_node(i);
-            }
+            if snp.genotype != 0 || snp.variant_type != 1 { continue; }
+            if snp.dense || snp.rna_editing { continue; }
+            if snp.phase_score < min_phase_score as f64 { continue; }
+            graph.add_node(i);
         }
         for k in 0..self.fragments.len() {
             let frag = &self.fragments[k];
@@ -971,6 +935,16 @@ impl SNPFrag {
             }
             if node_snps.len() >= 2 {
                 for j in 0..node_snps.len() - 1 {
+                    let haplotype_pair = [self.candidate_snps[node_snps[j]].haplotype, self.candidate_snps[node_snps[j + 1]].haplotype];
+                    let mut allele_pair = [0, 0];
+                    for fe in frag.list.iter() {
+                        if fe.snp_idx == node_snps[j] {
+                            allele_pair[0] = fe.p;
+                        } else if fe.snp_idx == node_snps[j + 1] {
+                            allele_pair[1] = fe.p;
+                        }
+                    }
+                    if haplotype_pair[0] * haplotype_pair[1] != allele_pair[0] * allele_pair[1] { continue; }
                     if !graph.contains_edge(node_snps[j], node_snps[j + 1]) {
                         graph.add_edge(node_snps[j], node_snps[j + 1], vec![k]);    // weight is a vector of fragment index, which is covered by the edge
                     } else {
@@ -979,12 +953,25 @@ impl SNPFrag {
                 }
             }
         }
+        let mut low_w_edges: Vec<(usize, usize)> = Vec::new();
+        for edge in graph.all_edges() {
+            if edge.2.len() < 2 {
+                low_w_edges.push((edge.0, edge.1));
+            }
+        }
+
+        for edge in low_w_edges.iter() {
+            graph.remove_edge(edge.0, edge.1);
+        }
+
         let scc = kosaraju_scc(&graph);
+        // println!("{:?}", scc);
+        // println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
         let region = self.region.clone().to_string();
         for component_nodes in scc.iter() {
-            if component_nodes.len() <= 1 {
-                continue;
-            }
+            // if component_nodes.len() <= 1 {
+            //     continue;
+            // }
             let mut phase_id = 0;
             for node in component_nodes.iter() {
                 if phase_id == 0 {
