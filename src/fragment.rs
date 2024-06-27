@@ -260,9 +260,15 @@ impl SNPFrag {
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {
                 // record edge count
-                for preidx in 0..fragment.list.len() - 1 {
-                    let pre_elem = &fragment.list[preidx];
-                    let next_elem = &fragment.list[preidx + 1];
+                let mut phased_sites = Vec::new();
+                for fe in fragment.list.iter() {
+                    if self.candidate_snps[fe.snp_idx].for_phasing {
+                        phased_sites.push(fe.clone());
+                    }
+                }
+                for preidx in 0..phased_sites.len() - 1 {
+                    let pre_elem = &phased_sites[preidx];
+                    let next_elem = &phased_sites[preidx + 1];
                     if self.candidate_snps[pre_elem.snp_idx].for_phasing == false || self.candidate_snps[next_elem.snp_idx].for_phasing == false {
                         continue;
                     }
@@ -296,7 +302,6 @@ impl SNPFrag {
                 for idx in 0..e.frag_idxes.len() {
                     let frag_idx = e.frag_idxes[idx];
                     let mut frag = &mut self.fragments[frag_idx];
-                    // frag.discarded = true;
                     let pre_snp_idx = e.snp_idxes[0];
                     let next_snp_idx = e.snp_idxes[1];
                     self.candidate_snps[pre_snp_idx].snp_cover_fragments.retain(|&x| x != frag_idx);
