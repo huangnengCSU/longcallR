@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use petgraph::algo::kosaraju_scc;
-// use petgraph::dot::Dot;
+use petgraph::dot::Dot;
 use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use petgraph::visit::Bfs;
@@ -559,12 +559,12 @@ impl SNPFrag {
                 }
                 visited_nodes.push(nx);
             }
-            // print!("block:");
+            print!("block:");
             for idx in block.iter().sorted() {
-                // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
+                print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
                 conserved_snps.insert(*idx);
             }
-            // println!();
+            println!();
         }
         return conserved_snps;
     }
@@ -601,7 +601,9 @@ impl SNPFrag {
     pub fn get_ld_blocks(&mut self, ld_weight_threshold: u32) -> (HashMap<[usize; 2], (i32, f32)>, GraphMap<usize, i32, Undirected>) {
         let mut ld_idxes: Vec<usize> = Vec::new();
         for ti in 0..self.candidate_snps.len() {
-            ld_idxes.push(ti);
+            if self.candidate_snps[ti].for_phasing {
+                ld_idxes.push(ti);
+            }
         }
 
         let mut ld_links: HashMap<[usize; 2], (i32, f32)> = HashMap::new();
@@ -643,8 +645,11 @@ impl SNPFrag {
                 assert!(idx1 < idx2, "Error: unexpected index order.");
                 if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
                 if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
-                let (well_ld, score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
-                if well_ld {
+                // same_block is whether two snps belongs to the same block.
+                // score is like the ratio of reads conflict the main LD pair.
+                // weight is like the number of reads supporting the LD.
+                let (same_block, score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
+                if same_block {
                     ld_links.insert([idx1, idx2], (weight, score));
                 }
             }
@@ -652,12 +657,12 @@ impl SNPFrag {
 
         // construct the graph to find the connected components, which are the LD blocks
         let mut ld_graph: GraphMap<usize, i32, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
-        for (edge, w) in ld_links.iter() {
+        for (edge, (weight, score)) in ld_links.iter() {
             if ld_graph.contains_edge(edge[0], edge[1]) {
-                let weight = ld_graph.edge_weight_mut(edge[0], edge[1]).unwrap();
-                *weight += w.0;
+                let w = ld_graph.edge_weight_mut(edge[0], edge[1]).unwrap();
+                *w += weight;
             } else {
-                ld_graph.add_edge(edge[0], edge[1], w.0);
+                ld_graph.add_edge(edge[0], edge[1], *weight);
             }
         }
 
@@ -671,6 +676,29 @@ impl SNPFrag {
         for edge in low_w_edges.iter() {
             ld_graph.remove_edge(edge.0, edge.1);
         }
+
+        // visualize the LD graph, node is position of snp, edge is the weight of LD
+        // let mut vis_graph: GraphMap<i64, i32, Undirected> = GraphMap::new();
+        // for (edge, (weight, score)) in ld_links.iter() {
+        //     if *score != 0.0 { continue; }  // not perfect LD, make sure each edge is perfect LD
+        //     if vis_graph.contains_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos) {
+        //         let w = vis_graph.edge_weight_mut(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos).unwrap();
+        //         *w += weight;
+        //     } else {
+        //         vis_graph.add_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos, *weight);
+        //     }
+        // }
+        // let mut low_w_edges2: Vec<(i64, i64)> = Vec::new();
+        // for edge in vis_graph.all_edges() {
+        //     if (edge.2.abs() as u32) < ld_weight_threshold {
+        //         low_w_edges2.push((edge.0, edge.1));
+        //     }
+        // }
+        // for edge in low_w_edges2.iter() {
+        //     vis_graph.remove_edge(edge.0, edge.1);
+        // }
+        // println!("{}", format!("{}", Dot::new(&vis_graph)));
+
 
         self.ld_blocks = kosaraju_scc(&ld_graph);
         return (ld_links, ld_graph);
