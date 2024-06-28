@@ -558,12 +558,12 @@ impl SNPFrag {
                 }
                 visited_nodes.push(nx);
             }
-            print!("block:");
+            // print!("block:");
             for idx in block.iter().sorted() {
-                print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
+                // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
                 conserved_snps.insert(*idx);
             }
-            println!();
+            // println!();
         }
         return conserved_snps;
     }
