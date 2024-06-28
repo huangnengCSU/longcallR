@@ -600,7 +600,9 @@ impl SNPFrag {
     pub fn get_ld_blocks(&mut self, ld_weight_threshold: u32) -> (HashMap<[usize; 2], (i32, f32)>, GraphMap<usize, i32, Undirected>) {
         let mut ld_idxes: Vec<usize> = Vec::new();
         for ti in 0..self.candidate_snps.len() {
-            ld_idxes.push(ti);
+            if self.candidate_snps[ti].for_phasing {
+                ld_idxes.push(ti);
+            }
         }
 
         let mut ld_links: HashMap<[usize; 2], (i32, f32)> = HashMap::new();
