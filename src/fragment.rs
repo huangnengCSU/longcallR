@@ -77,7 +77,7 @@ impl SNPFrag {
                             let ref_base = ref_seq[pos_on_ref as usize] as char;
                             let base = seq[pos_on_query as usize] as char;
                             let mut baseq = record.qual()[pos_on_query as usize];
-                            baseq = if baseq < 30 { baseq } else { 30 };
+                            // baseq = if baseq < 30 { baseq } else { 30 };
                             if base == ref_base {
                                 tr_score -= tr_match;
                                 if tr_score < 0.0 {
