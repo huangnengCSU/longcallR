@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 
+use petgraph::{algo::kosaraju_scc, graphmap::GraphMap, Undirected};
 use rust_lapper::{Interval, Lapper};
 
 use crate::Platform;
-use crate::snp::CandidateSNP;
+use crate::snp::{Block, CandidateSNP};
 use crate::snpfrags::SNPFrag;
 use crate::util::Profile;
 
@@ -868,5 +869,131 @@ impl SNPFrag {
         //     tmp_idxes.push(*i);
         // }
         // self.edit_snps = tmp_idxes;
+    }
+
+    pub fn divide_snps_into_blocks(&mut self, ld_weight_threshold: u32) -> GraphMap<usize, i32, Undirected> {
+        let mut ld_idxes: Vec<usize> = Vec::new();
+        for ti in 0..self.candidate_snps.len() {
+            if self.candidate_snps[ti].for_phasing {
+                ld_idxes.push(ti);
+            }
+        }
+        let mut pass_ld_pair: Vec<(usize, usize)> = Vec::new();
+        for i in 0..ld_idxes.len() {
+            for j in i + 1..ld_idxes.len() {
+                if i == j {
+                    continue;
+                }
+                let idx1 = ld_idxes[i];
+                let idx2 = ld_idxes[j];
+                let snp1 = &self.candidate_snps[idx1];
+                let snp2 = &self.candidate_snps[idx2];
+                let (mut snp1_ref, mut snp1_alt, mut snp2_ref, mut snp2_alt);
+                let (mut snp1_ref_frac, mut snp1_alt_frac, mut snp2_ref_frac, mut snp2_alt_frac) =
+                    (0.0, 0.0, 0.0, 0.0);
+                if snp1.alleles[0] == snp1.reference && snp1.alleles[1] != snp1.reference {
+                    snp1_ref = snp1.alleles[0] as u8;
+                    snp1_ref_frac = snp1.allele_freqs[0];
+                    snp1_alt = snp1.alleles[1] as u8;
+                    snp1_alt_frac = snp1.allele_freqs[1];
+                } else if snp1.alleles[0] != snp1.reference && snp1.alleles[1] == snp1.reference {
+                    snp1_ref = snp1.alleles[1] as u8;
+                    snp1_ref_frac = snp1.allele_freqs[1];
+                    snp1_alt = snp1.alleles[0] as u8;
+                    snp1_alt_frac = snp1.allele_freqs[0];
+                } else {
+                    continue;
+                }
+                if snp2.alleles[0] == snp2.reference && snp2.alleles[1] != snp2.reference {
+                    snp2_ref = snp2.alleles[0] as u8;
+                    snp2_ref_frac = snp2.allele_freqs[0];
+                    snp2_alt = snp2.alleles[1] as u8;
+                    snp2_alt_frac = snp2.allele_freqs[1];
+                } else if snp2.alleles[0] != snp2.reference && snp2.alleles[1] == snp2.reference {
+                    snp2_ref = snp2.alleles[1] as u8;
+                    snp2_ref_frac = snp2.allele_freqs[1];
+                    snp2_alt = snp2.alleles[0] as u8;
+                    snp2_alt_frac = snp2.allele_freqs[0];
+                } else {
+                    continue;
+                }
+                assert!(idx1 < idx2, "Error: unexpected index order.");
+                if !self.allele_pairs.contains_key(&[idx1, idx2]) {
+                    continue;
+                }
+                if snp1_ref_frac == 0.0
+                    || snp1_alt_frac == 0.0
+                    || snp2_ref_frac == 0.0
+                    || snp2_alt_frac == 0.0
+                {
+                    continue;
+                }
+                // score is like the ratio of reads conflict the main LD pair.
+                // weight is like the number of reads supporting the LD.
+                let (score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_ld(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
+                self.allele_pairs.get_mut(&[idx1, idx2]).unwrap().set_ld(score, weight);
+                if score == 0.0 {
+                    pass_ld_pair.push((idx1, idx2));
+                }
+            }
+        }
+
+        // construct the graph to find the connected components, which are the LD blocks
+        let mut ld_graph: GraphMap<usize, i32, Undirected> = GraphMap::new(); // node is index in candidate snp, edge is index in fragments
+        for (node1, node2) in pass_ld_pair.iter() {
+            let ld_weight = self.allele_pairs.get(&[*node1, *node2]).unwrap().weight;
+            if ld_graph.contains_edge(*node1, *node2) {
+                *ld_graph.edge_weight_mut(*node1, *node2).unwrap() += ld_weight;
+            } else {
+                ld_graph.add_edge(*node1, *node2, ld_weight);
+            }
+        }
+
+        // delete edges with weight < weight_threshold
+        let mut low_w_edges: Vec<(usize, usize)> = Vec::new();
+        for ld_edge in ld_graph.all_edges() {
+            if (ld_edge.2.abs() as u32) < ld_weight_threshold {
+                low_w_edges.push((ld_edge.0, ld_edge.1));
+            }
+        }
+        for edge in low_w_edges.iter() {
+            ld_graph.remove_edge(edge.0, edge.1);
+        }
+
+        // // visualize the LD graph, node is position of snp, edge is the weight of LD
+        // let mut vis_graph: GraphMap<i64, i32, Undirected> = GraphMap::new();
+        // for (edge, pair) in self.allele_pairs.iter() {
+        //     if pair.score != 0.0 { continue; }  // not perfect LD, make sure each edge is perfect LD
+        //     if vis_graph.contains_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos) {
+        //         let w = vis_graph.edge_weight_mut(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos).unwrap();
+        //         *w += pair.weight;
+        //     } else {
+        //         vis_graph.add_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos, pair.weight);
+        //     }
+        // }
+        // let mut low_w_edges2: Vec<(i64, i64)> = Vec::new();
+        // for edge in vis_graph.all_edges() {
+        //     if (edge.2.abs() as u32) < ld_weight_threshold {
+        //         low_w_edges2.push((edge.0, edge.1));
+        //     }
+        // }
+        // for edge in low_w_edges2.iter() {
+        //     vis_graph.remove_edge(edge.0, edge.1);
+        // }
+        // println!("{}", format!("{}", Dot::new(&vis_graph)));
+
+        let component = kosaraju_scc(&ld_graph);    // each component is an LD block
+        for cid in 0..component.len() {
+            let mut block = Block::default();
+            // print!("block: ");
+            block.block_id = cid as u32;
+            for idx in component[cid].iter() {
+                block.snp_idxes.push(*idx);
+                // print!("{}, ", self.candidate_snps[*idx].pos);
+            }
+            // println!();
+            self.ld_blocks.push(block);
+        }
+        return ld_graph;
     }
 }

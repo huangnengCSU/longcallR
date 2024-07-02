@@ -132,7 +132,7 @@ pub fn multithread_phase_haplotag(
             );
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(&bam_file, &reg, ref_seq);
-            snpfrag.clean_fragments();
+            // snpfrag.clean_fragments();
             if genotype_only {
                 // without phasing
                 let vcf_records = snpfrag.output_vcf(min_qual);
@@ -150,6 +150,7 @@ pub fn multithread_phase_haplotag(
                     unsafe {
                         snpfrag.init_assignment();
                     }
+                    snpfrag.divide_snps_into_blocks(1);
                     // snpfrag.chain_phase(max_enum_snps);
                     snpfrag.phase(1, max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);

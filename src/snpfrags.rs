@@ -6,7 +6,7 @@ use petgraph::Undirected;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
 use crate::phase::{cal_delta_eta_sigma_log, cal_phase_score_log, cal_sigma_delta_eta_log};
-use crate::snp::{CandidateSNP, Fragment, LD_Pair};
+use crate::snp::{Block, CandidateSNP, Fragment, LD_Pair};
 use crate::somatic::calculate_prob_somatic;
 use crate::util::Region;
 
@@ -33,8 +33,8 @@ pub struct SNPFrag {
     // edges of the graph, key is [snp_idx of start_node, snp_idx of end_node]
     pub allele_pairs: HashMap<[usize; 2], LD_Pair>,
     // allele pair at two snp sites, key is [snp_idx of start_node, snp_idx of end_node], start < end
-    pub ld_blocks: Vec<Vec<usize>>,
-    // index of candidate SNPs in each LD block
+    pub ld_blocks: Vec<Block>,
+    // LD blocks
     pub min_linkers: u32,
     // the number of links for snps can be phased
 }

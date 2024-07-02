@@ -85,6 +85,12 @@ pub struct LD_Pair {
     // // index of candidate SNPs (SNPFrag.snps), start node and end node
     pub ld_pairs: HashMap<[u8; 2], u32>,
     // support number of pair of alleles at two snp sites
+    pub valid: bool,
+    // whether the score and weight of the LD pair is valid
+    pub score: f32,
+    // conflict ratio, 0.0 means no conflict. positive value means same haplotype, negative value means opposite haplotype.
+    pub weight: i32,
+    // number of reads support the LD pair. positive value means same haplotype, negative value means opposite haplotype.
 }
 
 impl LD_Pair {
@@ -135,7 +141,7 @@ impl LD_Pair {
         return r2;
     }
 
-    pub fn is_same_block(&self, A: u8, a: u8, B: u8, b: u8) -> (bool, f32, i32) {
+    pub fn calculate_ld(&self, A: u8, a: u8, B: u8, b: u8) -> (f32, i32) {
         // calculate r2 for two snps
         // A1, B1: alleles of snp1, A2, B2: alleles of snp2, https://en.wikipedia.org/wiki/Linkage_disequilibrium
         let mut count = [0, 0, 0, 0];
@@ -160,15 +166,17 @@ impl LD_Pair {
         let c1 = (count[0] + count[3]).min(count[1] + count[2]);
         let c2 = (count[0] + count[3]).max(count[1] + count[2]);
         let score = c1 as f32 / c2 as f32;
-        if score == 0.0 {
-            if (count[0] + count[3]) > (count[1] + count[2]) {
-                (true, score, c2)
-            } else {
-                (true, -1.0 * score, -1 * c2)
-            }
+        if (count[0] + count[3]) > (count[1] + count[2]) {
+            (score, c2)
         } else {
-            (false, 0.0, 0)
+            (-1.0 * score, -1 * c2)
         }
+    }
+
+    pub fn set_ld(&mut self, score: f32, weight: i32) {
+        self.score = score;
+        self.weight = weight;
+        self.valid = true;
     }
 }
 
@@ -212,3 +220,8 @@ pub struct Fragment {
     // number of linked heterozygous snps in the fragment
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Block {
+    pub block_id: u32,
+    pub snp_idxes: Vec<usize>,
+}

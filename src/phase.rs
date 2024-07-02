@@ -173,6 +173,66 @@ pub fn cal_delta_eta_sigma_log(delta_i: i32, eta_i: i32, sigma: &Vec<i32>, ps: &
     return 1.0 - log_q1 / (log_q2 + log_q3 + log_q4 + log_q5);
 }
 
+pub fn cal_block_delta_eta_sigma_log(block_delta: &Vec<i32>, block_eta: &Vec<i32>, block_sigma: &Vec<Vec<i32>>, block_ps: &Vec<Vec<i32>>, block_probs: &Vec<Vec<f64>>) -> f64 {
+    // same as call_delta_sigma, but use log to avoid underflow
+    let mut sum_prob: f64 = 0.0;
+    for i in 0..block_delta.len() {
+        let delta_i = block_delta[i];
+        let eta_i = block_eta[i];
+        let sigma = &block_sigma[i];
+        let ps = &block_ps[i];
+        let probs = &block_probs[i];
+
+        let mut log_q1: f64 = 0.0;
+        let mut log_q2: f64 = 0.0;
+        let mut log_q3: f64 = 0.0;
+        let mut log_q4: f64 = 0.0;
+        let mut log_q5: f64 = 0.0;
+
+        let prior_homref_log: f64 = (1.0 - 1.5 * 0.001 as f64).log10();
+        let prior_homvar_log: f64 = (0.5 * 0.001 as f64).log10();
+        let prior_hetvar_log: f64;
+        let coverage_i = sigma.len() as u32;
+        if coverage_i == 0 {
+            prior_hetvar_log = 0.001_f64.log10();
+        } else {
+            prior_hetvar_log = 0.001_f64.log10() - (coverage_i as f64) * 2.0_f64.log10();
+        }
+
+
+        for k in 0..sigma.len() {
+            log_q1 += aki(sigma[k], delta_i, eta_i, ps[k], probs[k]).log10();
+        }
+
+        if eta_i == 0 {
+            log_q1 += prior_hetvar_log;
+        } else if eta_i == 1 {
+            log_q1 += prior_homref_log;
+        } else {
+            log_q1 += prior_homvar_log;
+        }
+
+        for k in 0..sigma.len() {
+            log_q2 += aki(sigma[k], delta_i, -1, ps[k], probs[k]).log10();
+            log_q3 += aki(sigma[k], delta_i, 0, ps[k], probs[k]).log10();
+            log_q4 += aki(sigma[k], delta_i, 1, ps[k], probs[k]).log10();
+            log_q5 += aki(sigma[k], delta_i * (-1), 0, ps[k], probs[k]).log10();
+        }
+
+        log_q2 += prior_homvar_log;
+        log_q3 += prior_hetvar_log;
+        log_q4 += prior_homref_log;
+        log_q5 += prior_hetvar_log;
+
+        /*
+        Given 0<=A<=1, 0<=B<=1 and A/(A+B) > B/(A+B), we have logA/(logA+logB) < logB/(logA+logB).
+        When comparing A/(A+B) and B/(A+B), we can approximately use 1-log(A)/(log(A)+log(B)) and 1-log(B)/(log(A)+log(B)) to avoid underflow.
+        */
+        sum_prob += 1.0 - log_q1 / (log_q2 + log_q3 + log_q4 + log_q5);
+    }
+    return sum_prob;
+}
+
 pub fn cal_phase_score_log(delta_i: i32, eta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>, probs: &Vec<f64>) -> f64 {
     // same as call_delta_sigma, but use log to avoid underflow
     let mut log_q1: f64 = 0.0;
@@ -296,6 +356,52 @@ pub fn check_new_haplotype_genotype(snpfrag: &SNPFrag, updated_haplotype_genotyp
     return flag;
 }
 
+pub fn check_block_new_haplotype_haplotag(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize, i32>, updated_haplotag: &HashMap<usize, i32>) -> i32 {
+    let mut logp = 0.0;
+    let mut pre_logp = 0.0;
+    for (i, h) in updated_haplotype.iter() {
+        let delta_i = *h;
+        let eta_i = snpfrag.candidate_snps[*i].genotype;
+        let mut sigma: Vec<i32> = Vec::new();
+        let mut tmp_sigma: Vec<i32> = Vec::new();
+        let mut ps: Vec<i32> = Vec::new();
+        let mut probs: Vec<f64> = Vec::new();
+        for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
+            if snpfrag.fragments[*k].haplotag == 0 {
+                continue;
+            }
+            for fe in snpfrag.fragments[*k].list.iter() {
+                if fe.snp_idx != *i {
+                    continue;
+                }
+                if fe.phase_site == false {
+                    continue;
+                }
+                assert_ne!(fe.p, 0, "Error: phasing with unexpected hete SNP.");
+                ps.push(fe.p);
+                probs.push(fe.prob);
+                sigma.push(snpfrag.fragments[*k].haplotag);
+                tmp_sigma.push(updated_haplotag[k]);
+            }
+        }
+        if sigma.len() == 0 || tmp_sigma.len() == 0 {
+            continue;
+        }
+        logp += cal_delta_eta_sigma_log(delta_i, eta_i, &tmp_sigma, &ps, &probs);
+        pre_logp += cal_delta_eta_sigma_log(snpfrag.candidate_snps[*i].haplotype, eta_i, &sigma, &ps, &probs);
+    }
+    let mut flag = 0;
+    if logp > pre_logp {
+        flag = 1;
+    } else if logp == pre_logp {
+        flag = 0;
+    } else {
+        flag = -1;
+    }
+    // assert!(flag >= 0, "Error: new haplotype decrease the probability. {} -> {}", pre_logp, logp);
+    return flag;
+}
+
 pub fn cal_inconsistent_percentage(delta_i: i32, sigma: &Vec<i32>, ps: &Vec<i32>) -> f64 {
     let mut consisitent = 0;
     let mut inconsistent = 0;
@@ -351,166 +457,166 @@ impl SNPFrag {
         }
     }
 
-    pub unsafe fn init_haplotypes_LD(&mut self, ld_weight_threshold: u32) -> (HashSet<usize>, Vec<HashSet<usize>>) {
-        for ti in 0..self.candidate_snps.len() {
-            let mut rng = rand::thread_rng();
-            let rg: f64 = rng.gen();
-            if rg < 0.5 {
-                self.candidate_snps[ti].haplotype = 1; // HetVar hap1
-            } else {
-                self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
-            }
-        }
+    // pub unsafe fn init_haplotypes_LD(&mut self, ld_weight_threshold: u32) -> (HashSet<usize>, Vec<HashSet<usize>>) {
+    //     for ti in 0..self.candidate_snps.len() {
+    //         let mut rng = rand::thread_rng();
+    //         let rg: f64 = rng.gen();
+    //         if rg < 0.5 {
+    //             self.candidate_snps[ti].haplotype = 1; // HetVar hap1
+    //         } else {
+    //             self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
+    //         }
+    //     }
+    //
+    //     let mut ld_idxes: Vec<usize> = Vec::new();
+    //     for ti in 0..self.candidate_snps.len() {
+    //         ld_idxes.push(ti);
+    //     }
+    //
+    //     // let mut r2_map = HashMap::new();
+    //     let mut block_links: HashMap<[usize; 2], i32> = HashMap::new();
+    //     for i in 0..ld_idxes.len() {
+    //         for j in i + 1..ld_idxes.len() {
+    //             if i == j { continue; }
+    //             let idx1 = ld_idxes[i];
+    //             let idx2 = ld_idxes[j];
+    //             let snp1 = &self.candidate_snps[idx1];
+    //             let snp2 = &self.candidate_snps[idx2];
+    //             let (mut snp1_ref, mut snp1_alt, mut snp2_ref, mut snp2_alt);
+    //             let (mut snp1_ref_frac, mut snp1_alt_frac, mut snp2_ref_frac, mut snp2_alt_frac) = (0.0, 0.0, 0.0, 0.0);
+    //             if snp1.alleles[0] == snp1.reference && snp1.alleles[1] != snp1.reference {
+    //                 snp1_ref = snp1.alleles[0] as u8;
+    //                 snp1_ref_frac = snp1.allele_freqs[0];
+    //                 snp1_alt = snp1.alleles[1] as u8;
+    //                 snp1_alt_frac = snp1.allele_freqs[1];
+    //             } else if snp1.alleles[0] != snp1.reference && snp1.alleles[1] == snp1.reference {
+    //                 snp1_ref = snp1.alleles[1] as u8;
+    //                 snp1_ref_frac = snp1.allele_freqs[1];
+    //                 snp1_alt = snp1.alleles[0] as u8;
+    //                 snp1_alt_frac = snp1.allele_freqs[0];
+    //             } else {
+    //                 continue;
+    //             }
+    //             if snp2.alleles[0] == snp2.reference && snp2.alleles[1] != snp2.reference {
+    //                 snp2_ref = snp2.alleles[0] as u8;
+    //                 snp2_ref_frac = snp2.allele_freqs[0];
+    //                 snp2_alt = snp2.alleles[1] as u8;
+    //                 snp2_alt_frac = snp2.allele_freqs[1];
+    //             } else if snp2.alleles[0] != snp2.reference && snp2.alleles[1] == snp2.reference {
+    //                 snp2_ref = snp2.alleles[1] as u8;
+    //                 snp2_ref_frac = snp2.allele_freqs[1];
+    //                 snp2_alt = snp2.alleles[0] as u8;
+    //                 snp2_alt_frac = snp2.allele_freqs[0];
+    //             } else {
+    //                 continue;
+    //             }
+    //             if idx1 < idx2 {
+    //                 if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
+    //                 // let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
+    //                 if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
+    //                 let (is_block, score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
+    //                 if is_block {
+    //                     block_links.insert([idx1, idx2], weight);
+    //                 }
+    //                 // r2_map.insert([idx1, idx2], r2);
+    //             } else if idx2 < idx1 {
+    //                 if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
+    //                 // let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
+    //                 if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
+    //                 let (is_block, score, weight) = self.allele_pairs.get(&[idx2, idx1]).unwrap().is_same_block(snp2_ref, snp2_alt, snp1_ref, snp1_alt);
+    //                 if is_block {
+    //                     block_links.insert([idx2, idx1], weight);
+    //                 }
+    //                 // r2_map.insert([idx2, idx1], r2);
+    //             }
+    //         }
+    //     }
+    //
+    //     // let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
+    //     // let mut ld_sites: HashSet<usize> = HashSet::new();
+    //     // for idxes in r2_map_high.keys() {
+    //     //     ld_sites.insert(idxes[0]);
+    //     //     ld_sites.insert(idxes[1]);
+    //     // }
+    //     // for ti in 0..self.candidate_snps.len() {
+    //     //     if ld_sites.contains(&ti) {
+    //     //         self.candidate_snps[ti].haplotype = 1;
+    //     //     } else {
+    //     //         let mut rng = rand::thread_rng();
+    //     //         let rg: f64 = rng.gen();
+    //     //         if rg < 0.5 {
+    //     //             self.candidate_snps[ti].haplotype = 1; // HetVar hap1
+    //     //         } else {
+    //     //             self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
+    //     //         }
+    //     //     }
+    //     // }
+    //     let (blocks_vec, block_graph) = get_blocks(&block_links, ld_weight_threshold);
+    //     let mut block_snps: HashSet<usize> = HashSet::new();
+    //     let mut blocks_set: Vec<HashSet<usize>> = Vec::new();
+    //     for block in blocks_vec.iter() {
+    //         if block.len() < 2 { continue; }
+    //         // use BFS to assign snps in the phased block
+    //         let mut bfs = Bfs::new(&block_graph, block[0]);
+    //         let mut visited_nodes: Vec<usize> = Vec::new();
+    //         self.candidate_snps[block[0]].haplotype = 1;    // set the first snp as hap1
+    //         visited_nodes.push(block[0]);
+    //         while let Some(nx) = bfs.next(&block_graph) {
+    //             for idx in visited_nodes.iter() {
+    //                 if *idx < nx {
+    //                     let Some(weight) = block_links.get(&[*idx, nx]) else { continue; };
+    //                     if *weight >= ld_weight_threshold as i32 {
+    //                         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;  // positive value, same haplotype
+    //                         break;
+    //                     } else if *weight <= -1 * ld_weight_threshold as i32 {
+    //                         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype; // negative value, different haplotype
+    //                         break;
+    //                     }
+    //                     // if block_links.contains_key(&[*idx, nx]) {
+    //                     //     if *block_links.get(&[*idx, nx]).unwrap() >= ld_weight_threshold as i32 {
+    //                     //         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;
+    //                     //         break;
+    //                     //     } else if *block_links.get(&[*idx, nx]).unwrap() <= -1 * ld_weight_threshold as i32 {
+    //                     //         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype;
+    //                     //         break;
+    //                     //     }
+    //                     // }
+    //                 } else if *idx > nx {
+    //                     let Some(weight) = block_links.get(&[nx, *idx]) else { continue; };
+    //                     if *weight >= ld_weight_threshold as i32 {
+    //                         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;  // positive value, same haplotype
+    //                         break;
+    //                     } else if *weight <= -1 * ld_weight_threshold as i32 {
+    //                         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype; // negative value, different haplotype
+    //                         break;
+    //                     }
+    //                     // if block_links.contains_key(&[nx, *idx]) {
+    //                     //     if *block_links.get(&[nx, *idx]).unwrap() >= ld_weight_threshold as i32 {
+    //                     //         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;
+    //                     //         break;
+    //                     //     } else if *block_links.get(&[nx, *idx]).unwrap() <= -1 * ld_weight_threshold as i32 {
+    //                     //         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype;
+    //                     //         break;
+    //                     //     }
+    //                     // }
+    //                 }
+    //             }
+    //             visited_nodes.push(nx);
+    //         }
+    //         let mut rng = rand::thread_rng();
+    //         let rg: f64 = rng.gen();
+    //         // print!("block:");
+    //         blocks_set.push(HashSet::from_iter(block.iter().cloned()));
+    //         for idx in block.iter().sorted() {
+    //             // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
+    //             block_snps.insert(*idx);
+    //         }
+    //         // println!();
+    //     }
+    //     return (block_snps, blocks_set);
+    // }
 
-        let mut ld_idxes: Vec<usize> = Vec::new();
-        for ti in 0..self.candidate_snps.len() {
-            ld_idxes.push(ti);
-        }
-
-        // let mut r2_map = HashMap::new();
-        let mut block_links: HashMap<[usize; 2], i32> = HashMap::new();
-        for i in 0..ld_idxes.len() {
-            for j in i + 1..ld_idxes.len() {
-                if i == j { continue; }
-                let idx1 = ld_idxes[i];
-                let idx2 = ld_idxes[j];
-                let snp1 = &self.candidate_snps[idx1];
-                let snp2 = &self.candidate_snps[idx2];
-                let (mut snp1_ref, mut snp1_alt, mut snp2_ref, mut snp2_alt);
-                let (mut snp1_ref_frac, mut snp1_alt_frac, mut snp2_ref_frac, mut snp2_alt_frac) = (0.0, 0.0, 0.0, 0.0);
-                if snp1.alleles[0] == snp1.reference && snp1.alleles[1] != snp1.reference {
-                    snp1_ref = snp1.alleles[0] as u8;
-                    snp1_ref_frac = snp1.allele_freqs[0];
-                    snp1_alt = snp1.alleles[1] as u8;
-                    snp1_alt_frac = snp1.allele_freqs[1];
-                } else if snp1.alleles[0] != snp1.reference && snp1.alleles[1] == snp1.reference {
-                    snp1_ref = snp1.alleles[1] as u8;
-                    snp1_ref_frac = snp1.allele_freqs[1];
-                    snp1_alt = snp1.alleles[0] as u8;
-                    snp1_alt_frac = snp1.allele_freqs[0];
-                } else {
-                    continue;
-                }
-                if snp2.alleles[0] == snp2.reference && snp2.alleles[1] != snp2.reference {
-                    snp2_ref = snp2.alleles[0] as u8;
-                    snp2_ref_frac = snp2.allele_freqs[0];
-                    snp2_alt = snp2.alleles[1] as u8;
-                    snp2_alt_frac = snp2.allele_freqs[1];
-                } else if snp2.alleles[0] != snp2.reference && snp2.alleles[1] == snp2.reference {
-                    snp2_ref = snp2.alleles[1] as u8;
-                    snp2_ref_frac = snp2.allele_freqs[1];
-                    snp2_alt = snp2.alleles[0] as u8;
-                    snp2_alt_frac = snp2.allele_freqs[0];
-                } else {
-                    continue;
-                }
-                if idx1 < idx2 {
-                    if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
-                    // let r2 = self.allele_pairs.get(&[idx1, idx2]).unwrap().calculate_LD_R2(snp1.alleles[0] as u8, snp1.alleles[1] as u8, snp2.alleles[0] as u8, snp2.alleles[1] as u8);
-                    if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
-                    let (is_block, score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
-                    if is_block {
-                        block_links.insert([idx1, idx2], weight);
-                    }
-                    // r2_map.insert([idx1, idx2], r2);
-                } else if idx2 < idx1 {
-                    if !self.allele_pairs.contains_key(&[idx2, idx1]) { continue; }
-                    // let r2 = self.allele_pairs.get(&[idx2, idx1]).unwrap().calculate_LD_R2(snp2.alleles[0] as u8, snp2.alleles[1] as u8, snp1.alleles[0] as u8, snp1.alleles[1] as u8);
-                    if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
-                    let (is_block, score, weight) = self.allele_pairs.get(&[idx2, idx1]).unwrap().is_same_block(snp2_ref, snp2_alt, snp1_ref, snp1_alt);
-                    if is_block {
-                        block_links.insert([idx2, idx1], weight);
-                    }
-                    // r2_map.insert([idx2, idx1], r2);
-                }
-            }
-        }
-
-        // let r2_map_high: HashMap<[usize; 2], f32> = r2_map.iter().filter(|(_, &v)| v > 0.9).map(|(&k, &v)| (k, v)).collect();
-        // let mut ld_sites: HashSet<usize> = HashSet::new();
-        // for idxes in r2_map_high.keys() {
-        //     ld_sites.insert(idxes[0]);
-        //     ld_sites.insert(idxes[1]);
-        // }
-        // for ti in 0..self.candidate_snps.len() {
-        //     if ld_sites.contains(&ti) {
-        //         self.candidate_snps[ti].haplotype = 1;
-        //     } else {
-        //         let mut rng = rand::thread_rng();
-        //         let rg: f64 = rng.gen();
-        //         if rg < 0.5 {
-        //             self.candidate_snps[ti].haplotype = 1; // HetVar hap1
-        //         } else {
-        //             self.candidate_snps[ti].haplotype = -1;  // HetVar hap2
-        //         }
-        //     }
-        // }
-        let (blocks_vec, block_graph) = get_blocks(&block_links, ld_weight_threshold);
-        let mut block_snps: HashSet<usize> = HashSet::new();
-        let mut blocks_set: Vec<HashSet<usize>> = Vec::new();
-        for block in blocks_vec.iter() {
-            if block.len() < 2 { continue; }
-            // use BFS to assign snps in the phased block
-            let mut bfs = Bfs::new(&block_graph, block[0]);
-            let mut visited_nodes: Vec<usize> = Vec::new();
-            self.candidate_snps[block[0]].haplotype = 1;    // set the first snp as hap1
-            visited_nodes.push(block[0]);
-            while let Some(nx) = bfs.next(&block_graph) {
-                for idx in visited_nodes.iter() {
-                    if *idx < nx {
-                        let Some(weight) = block_links.get(&[*idx, nx]) else { continue; };
-                        if *weight >= ld_weight_threshold as i32 {
-                            self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;  // positive value, same haplotype
-                            break;
-                        } else if *weight <= -1 * ld_weight_threshold as i32 {
-                            self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype; // negative value, different haplotype
-                            break;
-                        }
-                        // if block_links.contains_key(&[*idx, nx]) {
-                        //     if *block_links.get(&[*idx, nx]).unwrap() >= ld_weight_threshold as i32 {
-                        //         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;
-                        //         break;
-                        //     } else if *block_links.get(&[*idx, nx]).unwrap() <= -1 * ld_weight_threshold as i32 {
-                        //         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype;
-                        //         break;
-                        //     }
-                        // }
-                    } else if *idx > nx {
-                        let Some(weight) = block_links.get(&[nx, *idx]) else { continue; };
-                        if *weight >= ld_weight_threshold as i32 {
-                            self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;  // positive value, same haplotype
-                            break;
-                        } else if *weight <= -1 * ld_weight_threshold as i32 {
-                            self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype; // negative value, different haplotype
-                            break;
-                        }
-                        // if block_links.contains_key(&[nx, *idx]) {
-                        //     if *block_links.get(&[nx, *idx]).unwrap() >= ld_weight_threshold as i32 {
-                        //         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*idx].haplotype;
-                        //         break;
-                        //     } else if *block_links.get(&[nx, *idx]).unwrap() <= -1 * ld_weight_threshold as i32 {
-                        //         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*idx].haplotype;
-                        //         break;
-                        //     }
-                        // }
-                    }
-                }
-                visited_nodes.push(nx);
-            }
-            let mut rng = rand::thread_rng();
-            let rg: f64 = rng.gen();
-            // print!("block:");
-            blocks_set.push(HashSet::from_iter(block.iter().cloned()));
-            for idx in block.iter().sorted() {
-                // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
-                block_snps.insert(*idx);
-            }
-            // println!();
-        }
-        return (block_snps, blocks_set);
-    }
-
-    pub unsafe fn init_haplotypes_LD2(&mut self, ld_links: &HashMap<[usize; 2], (i32, f32)>, ld_graph: &GraphMap<usize, i32, Undirected>, ld_weight_threshold: u32) -> HashSet<usize> {
+    pub unsafe fn init_haplotypes_LD2(&mut self, ld_graph: &GraphMap<usize, i32, Undirected>, ld_weight_threshold: u32) -> HashSet<usize> {
         // randomly assign haplotypes for candidate snps
         for ti in 0..self.candidate_snps.len() {
             let mut rng = rand::thread_rng();
@@ -522,19 +628,16 @@ impl SNPFrag {
             }
         }
 
-        // calculate LD blocks and
-        // let (ld_links, ld_graph) = self.get_ld_blocks(ld_weight_threshold);
-        // println!("{}", format!("{}", Dot::new(&ld_graph)));
-
         // use BFS to assign haplotype of snps in each block
         let mut conserved_snps: HashSet<usize> = HashSet::new();    // snps in the block with more than 2 snps
+        // println!("{}", format!("{}", Dot::new(&ld_graph)));
         for block in self.ld_blocks.iter() {
-            if block.len() < 2 { continue; }
+            if block.snp_idxes.len() < 2 { continue; }
             // use BFS to assign snps in the phased block
-            let mut bfs = Bfs::new(&ld_graph, block[0]);
+            let mut bfs = Bfs::new(&ld_graph, block.snp_idxes[0]);
             let mut visited_nodes: Vec<usize> = Vec::new();
-            self.candidate_snps[block[0]].haplotype = 1;    // set the first snp as hap1
-            visited_nodes.push(block[0]);
+            self.candidate_snps[block.snp_idxes[0]].haplotype = 1;    // set the first snp as hap1
+            visited_nodes.push(block.snp_idxes[0]);
             while let Some(nx) = bfs.next(&ld_graph) {
                 for visited_idx in visited_nodes.iter() {
                     let (from_idx, to_idx);
@@ -547,11 +650,22 @@ impl SNPFrag {
                     } else {
                         continue;
                     }
-                    let Some(weight) = ld_links.get(&[from_idx, to_idx]) else { continue; };
-                    if weight.0 >= ld_weight_threshold as i32 {
+                    let mut weight = 0;
+                    if self.allele_pairs.contains_key(&[from_idx, to_idx]) {
+                        if !self.allele_pairs.get(&[from_idx, to_idx]).unwrap().valid {
+                            continue;   // Score and weight are merely initial values when declared
+                        }
+                        if self.allele_pairs.get(&[from_idx, to_idx]).unwrap().score != 0.0 {
+                            continue;   // not perfect LD
+                        }
+                        weight = self.allele_pairs.get(&[from_idx, to_idx]).unwrap().weight;
+                    } else {
+                        continue;
+                    }
+                    if weight >= ld_weight_threshold as i32 {
                         self.candidate_snps[nx].haplotype = 1 * self.candidate_snps[*visited_idx].haplotype;  // positive value, same haplotype
                         break;
-                    } else if weight.0 <= -1 * ld_weight_threshold as i32 {
+                    } else if weight <= -1 * ld_weight_threshold as i32 {
                         self.candidate_snps[nx].haplotype = -1 * self.candidate_snps[*visited_idx].haplotype; // negative value, different haplotype
                         break;
                     }
@@ -559,9 +673,12 @@ impl SNPFrag {
                 visited_nodes.push(nx);
             }
             // print!("block:");
-            for idx in block.iter().sorted() {
-                // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
-                conserved_snps.insert(*idx);
+            if block.snp_idxes.len() >= 2 {
+                // blocks with only one snp are not conserved
+                for idx in block.snp_idxes.iter() {
+                    // print!("({},{})", self.candidate_snps[*idx].pos, self.candidate_snps[*idx].haplotype);
+                    conserved_snps.insert(*idx);
+                }
             }
             // println!();
         }
@@ -597,111 +714,111 @@ impl SNPFrag {
         }
     }
 
-    pub fn get_ld_blocks(&mut self, ld_weight_threshold: u32) -> (HashMap<[usize; 2], (i32, f32)>, GraphMap<usize, i32, Undirected>) {
-        let mut ld_idxes: Vec<usize> = Vec::new();
-        for ti in 0..self.candidate_snps.len() {
-            if self.candidate_snps[ti].for_phasing {
-                ld_idxes.push(ti);
-            }
-        }
-
-        let mut ld_links: HashMap<[usize; 2], (i32, f32)> = HashMap::new();
-        for i in 0..ld_idxes.len() {
-            for j in i + 1..ld_idxes.len() {
-                if i == j { continue; }
-                let idx1 = ld_idxes[i];
-                let idx2 = ld_idxes[j];
-                let snp1 = &self.candidate_snps[idx1];
-                let snp2 = &self.candidate_snps[idx2];
-                let (mut snp1_ref, mut snp1_alt, mut snp2_ref, mut snp2_alt);
-                let (mut snp1_ref_frac, mut snp1_alt_frac, mut snp2_ref_frac, mut snp2_alt_frac) = (0.0, 0.0, 0.0, 0.0);
-                if snp1.alleles[0] == snp1.reference && snp1.alleles[1] != snp1.reference {
-                    snp1_ref = snp1.alleles[0] as u8;
-                    snp1_ref_frac = snp1.allele_freqs[0];
-                    snp1_alt = snp1.alleles[1] as u8;
-                    snp1_alt_frac = snp1.allele_freqs[1];
-                } else if snp1.alleles[0] != snp1.reference && snp1.alleles[1] == snp1.reference {
-                    snp1_ref = snp1.alleles[1] as u8;
-                    snp1_ref_frac = snp1.allele_freqs[1];
-                    snp1_alt = snp1.alleles[0] as u8;
-                    snp1_alt_frac = snp1.allele_freqs[0];
-                } else {
-                    continue;
-                }
-                if snp2.alleles[0] == snp2.reference && snp2.alleles[1] != snp2.reference {
-                    snp2_ref = snp2.alleles[0] as u8;
-                    snp2_ref_frac = snp2.allele_freqs[0];
-                    snp2_alt = snp2.alleles[1] as u8;
-                    snp2_alt_frac = snp2.allele_freqs[1];
-                } else if snp2.alleles[0] != snp2.reference && snp2.alleles[1] == snp2.reference {
-                    snp2_ref = snp2.alleles[1] as u8;
-                    snp2_ref_frac = snp2.allele_freqs[1];
-                    snp2_alt = snp2.alleles[0] as u8;
-                    snp2_alt_frac = snp2.allele_freqs[0];
-                } else {
-                    continue;
-                }
-                assert!(idx1 < idx2, "Error: unexpected index order.");
-                if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
-                if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
-                // same_block is whether two snps belongs to the same block.
-                // score is like the ratio of reads conflict the main LD pair.
-                // weight is like the number of reads supporting the LD.
-                let (same_block, score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
-                if same_block {
-                    ld_links.insert([idx1, idx2], (weight, score));
-                }
-            }
-        }
-
-        // construct the graph to find the connected components, which are the LD blocks
-        let mut ld_graph: GraphMap<usize, i32, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
-        for (edge, (weight, score)) in ld_links.iter() {
-            if ld_graph.contains_edge(edge[0], edge[1]) {
-                let w = ld_graph.edge_weight_mut(edge[0], edge[1]).unwrap();
-                *w += weight;
-            } else {
-                ld_graph.add_edge(edge[0], edge[1], *weight);
-            }
-        }
-
-        // delete edges with weight < weight_threshold
-        let mut low_w_edges: Vec<(usize, usize)> = Vec::new();
-        for edge in ld_graph.all_edges() {
-            if (edge.2.abs() as u32) < ld_weight_threshold {
-                low_w_edges.push((edge.0, edge.1));
-            }
-        }
-        for edge in low_w_edges.iter() {
-            ld_graph.remove_edge(edge.0, edge.1);
-        }
-
-        // visualize the LD graph, node is position of snp, edge is the weight of LD
-        // let mut vis_graph: GraphMap<i64, i32, Undirected> = GraphMap::new();
-        // for (edge, (weight, score)) in ld_links.iter() {
-        //     if *score != 0.0 { continue; }  // not perfect LD, make sure each edge is perfect LD
-        //     if vis_graph.contains_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos) {
-        //         let w = vis_graph.edge_weight_mut(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos).unwrap();
-        //         *w += weight;
-        //     } else {
-        //         vis_graph.add_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos, *weight);
-        //     }
-        // }
-        // let mut low_w_edges2: Vec<(i64, i64)> = Vec::new();
-        // for edge in vis_graph.all_edges() {
-        //     if (edge.2.abs() as u32) < ld_weight_threshold {
-        //         low_w_edges2.push((edge.0, edge.1));
-        //     }
-        // }
-        // for edge in low_w_edges2.iter() {
-        //     vis_graph.remove_edge(edge.0, edge.1);
-        // }
-        // println!("{}", format!("{}", Dot::new(&vis_graph)));
-
-
-        self.ld_blocks = kosaraju_scc(&ld_graph);
-        return (ld_links, ld_graph);
-    }
+    // pub fn get_ld_blocks(&mut self, ld_weight_threshold: u32) -> (HashMap<[usize; 2], (i32, f32)>, GraphMap<usize, i32, Undirected>) {
+    //     let mut ld_idxes: Vec<usize> = Vec::new();
+    //     for ti in 0..self.candidate_snps.len() {
+    //         if self.candidate_snps[ti].for_phasing {
+    //             ld_idxes.push(ti);
+    //         }
+    //     }
+    //
+    //     let mut ld_links: HashMap<[usize; 2], (i32, f32)> = HashMap::new();
+    //     for i in 0..ld_idxes.len() {
+    //         for j in i + 1..ld_idxes.len() {
+    //             if i == j { continue; }
+    //             let idx1 = ld_idxes[i];
+    //             let idx2 = ld_idxes[j];
+    //             let snp1 = &self.candidate_snps[idx1];
+    //             let snp2 = &self.candidate_snps[idx2];
+    //             let (mut snp1_ref, mut snp1_alt, mut snp2_ref, mut snp2_alt);
+    //             let (mut snp1_ref_frac, mut snp1_alt_frac, mut snp2_ref_frac, mut snp2_alt_frac) = (0.0, 0.0, 0.0, 0.0);
+    //             if snp1.alleles[0] == snp1.reference && snp1.alleles[1] != snp1.reference {
+    //                 snp1_ref = snp1.alleles[0] as u8;
+    //                 snp1_ref_frac = snp1.allele_freqs[0];
+    //                 snp1_alt = snp1.alleles[1] as u8;
+    //                 snp1_alt_frac = snp1.allele_freqs[1];
+    //             } else if snp1.alleles[0] != snp1.reference && snp1.alleles[1] == snp1.reference {
+    //                 snp1_ref = snp1.alleles[1] as u8;
+    //                 snp1_ref_frac = snp1.allele_freqs[1];
+    //                 snp1_alt = snp1.alleles[0] as u8;
+    //                 snp1_alt_frac = snp1.allele_freqs[0];
+    //             } else {
+    //                 continue;
+    //             }
+    //             if snp2.alleles[0] == snp2.reference && snp2.alleles[1] != snp2.reference {
+    //                 snp2_ref = snp2.alleles[0] as u8;
+    //                 snp2_ref_frac = snp2.allele_freqs[0];
+    //                 snp2_alt = snp2.alleles[1] as u8;
+    //                 snp2_alt_frac = snp2.allele_freqs[1];
+    //             } else if snp2.alleles[0] != snp2.reference && snp2.alleles[1] == snp2.reference {
+    //                 snp2_ref = snp2.alleles[1] as u8;
+    //                 snp2_ref_frac = snp2.allele_freqs[1];
+    //                 snp2_alt = snp2.alleles[0] as u8;
+    //                 snp2_alt_frac = snp2.allele_freqs[0];
+    //             } else {
+    //                 continue;
+    //             }
+    //             assert!(idx1 < idx2, "Error: unexpected index order.");
+    //             if !self.allele_pairs.contains_key(&[idx1, idx2]) { continue; }
+    //             if snp1_ref_frac == 0.0 || snp1_alt_frac == 0.0 || snp2_ref_frac == 0.0 || snp2_alt_frac == 0.0 { continue; }
+    //             // same_block is whether two snps belongs to the same block.
+    //             // score is like the ratio of reads conflict the main LD pair.
+    //             // weight is like the number of reads supporting the LD.
+    //             let (same_block, score, weight) = self.allele_pairs.get(&[idx1, idx2]).unwrap().is_same_block(snp1_ref, snp1_alt, snp2_ref, snp2_alt);
+    //             if same_block {
+    //                 ld_links.insert([idx1, idx2], (weight, score));
+    //             }
+    //         }
+    //     }
+    //
+    //     // construct the graph to find the connected components, which are the LD blocks
+    //     let mut ld_graph: GraphMap<usize, i32, Undirected> = GraphMap::new();  // node is index in candidate snp, edge is index in fragments
+    //     for (edge, (weight, score)) in ld_links.iter() {
+    //         if ld_graph.contains_edge(edge[0], edge[1]) {
+    //             let w = ld_graph.edge_weight_mut(edge[0], edge[1]).unwrap();
+    //             *w += weight;
+    //         } else {
+    //             ld_graph.add_edge(edge[0], edge[1], *weight);
+    //         }
+    //     }
+    //
+    //     // delete edges with weight < weight_threshold
+    //     let mut low_w_edges: Vec<(usize, usize)> = Vec::new();
+    //     for edge in ld_graph.all_edges() {
+    //         if (edge.2.abs() as u32) < ld_weight_threshold {
+    //             low_w_edges.push((edge.0, edge.1));
+    //         }
+    //     }
+    //     for edge in low_w_edges.iter() {
+    //         ld_graph.remove_edge(edge.0, edge.1);
+    //     }
+    //
+    //     // visualize the LD graph, node is position of snp, edge is the weight of LD
+    //     // let mut vis_graph: GraphMap<i64, i32, Undirected> = GraphMap::new();
+    //     // for (edge, (weight, score)) in ld_links.iter() {
+    //     //     if *score != 0.0 { continue; }  // not perfect LD, make sure each edge is perfect LD
+    //     //     if vis_graph.contains_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos) {
+    //     //         let w = vis_graph.edge_weight_mut(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos).unwrap();
+    //     //         *w += weight;
+    //     //     } else {
+    //     //         vis_graph.add_edge(self.candidate_snps[edge[0]].pos, self.candidate_snps[edge[1]].pos, *weight);
+    //     //     }
+    //     // }
+    //     // let mut low_w_edges2: Vec<(i64, i64)> = Vec::new();
+    //     // for edge in vis_graph.all_edges() {
+    //     //     if (edge.2.abs() as u32) < ld_weight_threshold {
+    //     //         low_w_edges2.push((edge.0, edge.1));
+    //     //     }
+    //     // }
+    //     // for edge in low_w_edges2.iter() {
+    //     //     vis_graph.remove_edge(edge.0, edge.1);
+    //     // }
+    //     // println!("{}", format!("{}", Dot::new(&vis_graph)));
+    //
+    //
+    //     self.ld_blocks = kosaraju_scc(&ld_graph);
+    //     return (ld_links, ld_graph);
+    // }
 
 
     pub fn cross_optimize(&mut self, conserved_snps: &HashSet<usize>, keep_conserved: bool, with_genotype: bool) -> f64 {
@@ -718,7 +835,6 @@ impl SNPFrag {
         while haplotype_genotype_increase | haplotag_increase {
             // optimize sigma
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
-            let mut processed_snps = HashSet::new(); // some snps in self.hete_snps may be filtered by previous steps, record the snps that covered by the fragments
             for k in 0..self.fragments.len() {
                 let sigma_k = self.fragments[k].haplotag;
                 let mut delta: Vec<i32> = Vec::new();
@@ -735,7 +851,6 @@ impl SNPFrag {
                     probs.push(fe.prob);
                     delta.push(self.candidate_snps[fe.snp_idx].haplotype);
                     eta.push(self.candidate_snps[fe.snp_idx].genotype);
-                    processed_snps.insert(fe.snp_idx);
                 }
 
                 if delta.len() == 0 {
@@ -743,7 +858,6 @@ impl SNPFrag {
                 }
                 let q = cal_sigma_delta_eta_log(sigma_k, &delta, &eta, &ps, &probs);
                 let qn = cal_sigma_delta_eta_log(sigma_k * (-1), &delta, &eta, &ps, &probs);
-                // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
 
                 if q < qn {
                     tmp_haplotag.insert(k, sigma_k * (-1));
@@ -752,7 +866,6 @@ impl SNPFrag {
                 }
             }
 
-            // assert!(SNPFrag::cal_overall_probability(&self, &processed_snps, &self.haplotype) >= SNPFrag::cal_overall_probability(&self, &self.haplotag, &self.haplotype));
             let check_val = check_new_haplotag(&self, &tmp_haplotag);
             assert!(check_val >= 0, "Error: check new haplotag: {:?}", self.candidate_snps);
             for (k, h) in tmp_haplotag.iter() {
@@ -872,52 +985,6 @@ impl SNPFrag {
         return prob;
     }
 
-    fn block_flip_optimize(&mut self, ld_links: &HashMap<[usize; 2], (i32, f32)>, ld_weight_threshold: u32) {
-        if self.ld_blocks.len() == 0 {
-            return;
-        }
-        // calculate block-wise LD
-        for i in 0..self.ld_blocks.len() - 1 {
-            for j in i + 1..self.ld_blocks.len() {
-                let mut block_score = 0.0;
-                let mut block_weight = 0;
-                let i_block = &self.ld_blocks[i];
-                let j_block = &self.ld_blocks[j];
-                for i_idx in i_block.iter() {
-                    for j_idx in j_block.iter() {
-                        let (from_idx, to_idx);
-                        if *i_idx < *j_idx {
-                            from_idx = *i_idx;
-                            to_idx = *j_idx;
-                        } else if *i_idx > *j_idx {
-                            from_idx = *j_idx;
-                            to_idx = *i_idx;
-                        } else {
-                            continue;
-                        }
-                        let Some(weight) = ld_links.get(&[from_idx, to_idx]) else { continue; };
-                        if weight.0 < ld_weight_threshold as i32 { continue; }
-                        block_score += weight.1;
-                        block_weight += 1;
-                    }
-                }
-                if block_weight < ld_weight_threshold { continue; }
-                block_score = block_score / block_weight as f32;
-                println!("{},{}: {},{}", i, j, block_weight, block_score);
-                // println!("{:?}", i_block);
-                // println!("{:?}", j_block);
-                for ti in i_block.iter() {
-                    print!("{},", self.candidate_snps[*ti].pos);
-                }
-                println!();
-                for ti in j_block.iter() {
-                    print!("{},", self.candidate_snps[*ti].pos);
-                }
-                println!();
-            }
-        }
-    }
-
     fn check_local_optimal_configuration(&self, used_for_haplotype_genotype: bool, used_for_haplotag: bool) {
         // check sigma
         if used_for_haplotag {
@@ -1031,7 +1098,8 @@ impl SNPFrag {
 
         let mut conserved_snps: HashSet<usize> = HashSet::new();    //SNPs will not be flipped
 
-        let (ld_links, ld_graph) = self.get_ld_blocks(ld_weight_threshold);
+        // let (ld_links, ld_graph) = self.get_ld_blocks(ld_weight_threshold);
+        let ld_graph = self.divide_snps_into_blocks(ld_weight_threshold);
         // println!("{}", format!("{}", Dot::new(&ld_graph)));
 
         if self.candidate_snps.len() <= max_enum_snps {
@@ -1069,13 +1137,20 @@ impl SNPFrag {
             unsafe {
                 // self.init_haplotypes();
                 // (block_snps, blocks) = self.init_haplotypes_LD(2);
-                conserved_snps = self.init_haplotypes_LD2(&ld_links, &ld_graph, ld_weight_threshold);
+                conserved_snps = self.init_haplotypes_LD2(&ld_graph, ld_weight_threshold);
                 self.init_genotype();
             }
             unsafe {
                 self.init_assignment();
             }
             let prob = self.cross_optimize(&conserved_snps, true, false);
+            if prob > largest_prob {
+                largest_prob = prob;
+                self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
+            }
+            self.load_best_configuration(&best_haplotype, &best_haplotag, &best_genotype);
+
+            let prob = self.cross_optimize_by_block();
             if prob > largest_prob {
                 largest_prob = prob;
                 self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -1241,7 +1316,226 @@ impl SNPFrag {
             // }
             self.load_best_configuration(&best_haplotype, &best_haplotag, &best_genotype);
         }
-        // self.block_flip_optimize(&ld_links, ld_weight_threshold);
         // println!("largest_prob: {}", largest_prob);
+    }
+
+    // pub fn cross_optimize_by_block(&mut self) -> f64 {
+    //     // only flip block to improve the probability of the haplotype and haplotag
+    //
+    //     let mut haplotype_increase: bool = true;
+    //     let mut haplotag_increase: bool = true;
+    //     let mut num_iters = 0;
+    //
+    //     while haplotag_increase | haplotype_increase {
+    //
+    //         // optimize sigma
+    //         let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
+    //         for k in 0..self.fragments.len() {
+    //             let sigma_k = self.fragments[k].haplotag;
+    //             let mut delta: Vec<i32> = Vec::new();
+    //             let mut eta: Vec<i32> = Vec::new();
+    //             let mut ps: Vec<i32> = Vec::new();
+    //             let mut probs: Vec<f64> = Vec::new();
+    //             if sigma_k == 0 {
+    //                 continue;
+    //             }
+    //             for fe in self.fragments[k].list.iter() {
+    //                 if fe.phase_site == false { continue; }
+    //                 assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+    //                 ps.push(fe.p);
+    //                 probs.push(fe.prob);
+    //                 delta.push(self.candidate_snps[fe.snp_idx].haplotype);
+    //                 eta.push(self.candidate_snps[fe.snp_idx].genotype);
+    //             }
+    //
+    //             if delta.len() == 0 {
+    //                 continue;
+    //             }
+    //             let q = cal_sigma_delta_eta_log(sigma_k, &delta, &eta, &ps, &probs);
+    //             let qn = cal_sigma_delta_eta_log(sigma_k * (-1), &delta, &eta, &ps, &probs);
+    //             // println!("optimize sigma {} q:{}, qn:{}, sigma: {}", k, q, qn, sigma_k);
+    //
+    //             if q < qn {
+    //                 tmp_haplotag.insert(k, sigma_k * (-1));
+    //             } else {
+    //                 tmp_haplotag.insert(k, sigma_k);
+    //             }
+    //         }
+    //
+    //         let check_val = check_new_haplotag(&self, &tmp_haplotag);
+    //         assert!(check_val >= 0, "Error: check new haplotag: {:?}", self.candidate_snps);
+    //         for (k, h) in tmp_haplotag.iter() {
+    //             // when prob is equal, we still perform the flip to avoid bug of underflow
+    //             self.fragments[*k].haplotag = *h;
+    //         }
+    //         if check_val == 0 {
+    //             haplotag_increase = false;
+    //         } else {
+    //             haplotag_increase = true;
+    //             haplotype_increase = true;
+    //         }
+    //
+    //         // optimize delta
+    //         let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
+    //         for block in self.ld_blocks.iter() {
+    //             let mut delta_block = Vec::new();
+    //             let mut delta_block_flip = Vec::new();
+    //             let mut eta_block = Vec::new();
+    //             let mut sigma_block = Vec::new();
+    //             let mut ps_block = Vec::new();
+    //             let mut probs_block = Vec::new();
+    //             for idx in block.snp_idxes.iter() {
+    //                 delta_block.push(self.candidate_snps[*idx].haplotype);
+    //                 delta_block_flip.push(self.candidate_snps[*idx].haplotype * (-1));
+    //                 eta_block.push(self.candidate_snps[*idx].genotype);
+    //                 let mut sigma: Vec<i32> = Vec::new();
+    //                 let mut ps: Vec<i32> = Vec::new();
+    //                 let mut probs: Vec<f64> = Vec::new();
+    //                 for k in self.candidate_snps[*idx].snp_cover_fragments.iter() {
+    //                     if self.fragments[*k].haplotag == 0 {
+    //                         continue;
+    //                     }
+    //                     // k is fragment index
+    //                     for fe in self.fragments[*k].list.iter() {
+    //                         if fe.snp_idx == *idx {
+    //                             if fe.phase_site == false { continue; }
+    //                             assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+    //                             ps.push(fe.p);
+    //                             probs.push(fe.prob);
+    //                             sigma.push(self.fragments[*k].haplotag);
+    //                         }
+    //                     }
+    //                 }
+    //                 sigma_block.push(sigma);
+    //                 ps_block.push(ps);
+    //                 probs_block.push(probs);
+    //             }
+    //             let q = cal_block_delta_eta_sigma_log(&delta_block, &eta_block, &sigma_block, &ps_block, &probs_block);  // hetvar
+    //             let q_flip = cal_block_delta_eta_sigma_log(&delta_block_flip, &eta_block, &sigma_block, &ps_block, &probs_block);  // hetvar
+    //             if q < q_flip {
+    //                 for i in 0..block.snp_idxes.len() {
+    //                     tmp_haplotype.insert(block.snp_idxes[i], delta_block_flip[i]);
+    //                 }
+    //             } else {
+    //                 for i in 0..block.snp_idxes.len() {
+    //                     tmp_haplotype.insert(block.snp_idxes[i], delta_block[i]);
+    //                 }
+    //             }
+    //         }
+    //         let check_val = check_block_new_haplotype(&self, &tmp_haplotype);
+    //         assert!(check_val >= 0, "Error: check new haplotype: {:?}", self.candidate_snps);
+    //         for (idx, hap) in tmp_haplotype.iter() {
+    //             // when prob is equal, we still perform the flip to avoid bug of underflow
+    //             self.candidate_snps[*idx].haplotype = *hap;
+    //         }
+    //         if check_val == 0 {
+    //             haplotype_increase = false;
+    //         } else {
+    //             haplotype_increase = true;
+    //             haplotag_increase = true;
+    //         }
+    //         num_iters += 1;
+    //         if num_iters > 20 {
+    //             println!("Warning: iteration inside cross_optimize exceeds 20 times.");
+    //             break;
+    //         }
+    //     }
+    //     let prob = cal_overall_probability(&self);
+    //     return prob;
+    // }
+
+    pub fn cross_optimize_by_block(&mut self) -> f64 {
+        // optimize delta
+        let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
+        let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
+        for block in self.ld_blocks.iter() {
+            let mut delta_block = Vec::new();
+            let mut delta_block_flip = Vec::new();
+            let mut eta_block = Vec::new();
+            let mut sigma_block = Vec::new();
+            let mut sigma_block_flip_vec = Vec::new();
+            let mut sigma_block_flip_hashmap = HashMap::new();
+            let mut ps_block = Vec::new();
+            let mut probs_block = Vec::new();
+            let mut block_snp_idx_set = HashSet::new();
+            let mut flip_read;
+            for idx in block.snp_idxes.iter() {
+                block_snp_idx_set.insert(*idx);
+            }
+            for idx in block.snp_idxes.iter() {
+                delta_block.push(self.candidate_snps[*idx].haplotype);
+                delta_block_flip.push(self.candidate_snps[*idx].haplotype * (-1));
+                eta_block.push(self.candidate_snps[*idx].genotype);
+                let mut sigma: Vec<i32> = Vec::new();
+                let mut sigma_flip: Vec<i32> = Vec::new();
+                let mut ps: Vec<i32> = Vec::new();
+                let mut probs: Vec<f64> = Vec::new();
+                for k in self.candidate_snps[*idx].snp_cover_fragments.iter() {
+                    if self.fragments[*k].haplotag == 0 {
+                        continue;
+                    }
+                    // k is fragment index
+                    flip_read = true;
+                    for fe in self.fragments[*k].list.iter() {
+                        if !block_snp_idx_set.contains(&fe.snp_idx) {
+                            // if the read is entirely covered by the block, we will flip the read together with flipping the snp
+                            flip_read = false;
+                        }
+                        if fe.snp_idx == *idx {
+                            if fe.phase_site == false { continue; }
+                            assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
+                            ps.push(fe.p);
+                            probs.push(fe.prob);
+                            if flip_read {
+                                sigma_flip.push(self.fragments[*k].haplotag * (-1));
+                                sigma_block_flip_hashmap.insert(*k, self.fragments[*k].haplotag * (-1));
+                            } else {
+                                sigma_flip.push(self.fragments[*k].haplotag);
+                                sigma_block_flip_hashmap.insert(*k, self.fragments[*k].haplotag);
+                            }
+                            sigma.push(self.fragments[*k].haplotag);
+                        }
+                    }
+                }
+                sigma_block.push(sigma);
+                sigma_block_flip_vec.push(sigma_flip);
+                ps_block.push(ps);
+                probs_block.push(probs);
+            }
+            let q = cal_block_delta_eta_sigma_log(&delta_block, &eta_block, &sigma_block, &ps_block, &probs_block);  // hetvar
+            let q_flip = cal_block_delta_eta_sigma_log(&delta_block_flip, &eta_block, &sigma_block_flip_vec, &ps_block, &probs_block);  // hetvar
+            // println!("q:{}, q_flip:{}", q, q_flip);
+            if q < q_flip {
+                for i in 0..block.snp_idxes.len() {
+                    tmp_haplotype.insert(block.snp_idxes[i], delta_block_flip[i]);
+                }
+                for k in 0..self.fragments.len() {
+                    if sigma_block_flip_hashmap.contains_key(&k) {
+                        tmp_haplotag.insert(k, sigma_block_flip_hashmap.get(&k).unwrap().clone());
+                    } else {
+                        tmp_haplotag.insert(k, self.fragments[k].haplotag);
+                    }
+                }
+            } else {
+                for i in 0..block.snp_idxes.len() {
+                    tmp_haplotype.insert(block.snp_idxes[i], delta_block[i]);
+                }
+                for k in 0..self.fragments.len() {
+                    tmp_haplotag.insert(k, self.fragments[k].haplotag);
+                }
+            }
+        }
+        let check_val = check_block_new_haplotype_haplotag(&self, &tmp_haplotype, &tmp_haplotag);
+        assert!(check_val >= 0, "Error: check new haplotype: {:?}", self.candidate_snps);
+        for (i, h) in tmp_haplotype.iter() {
+            // when prob is equal, we still perform the flip to avoid bug of underflow
+            self.candidate_snps[*i].haplotype = *h;
+        }
+        for (k, h) in tmp_haplotag.iter() {
+            // when prob is equal, we still perform the flip to avoid bug of underflow
+            self.fragments[*k].haplotag = *h;
+        }
+        let prob = cal_overall_probability(&self);
+        return prob;
     }
 }
