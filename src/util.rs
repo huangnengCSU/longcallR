@@ -539,7 +539,7 @@ impl Profile {
                             // filter alternate allele near the splicing site
                             if base != ref_base {
                                 if cgi <= 3 {
-                                    if cg_idx - 1 >= 0 && cigars[cg_idx - 1].char() as u8 == b'N' {
+                                    if (cg_idx as i64 - 1) >= 0 && cigars[cg_idx - 1].char() as u8 == b'N' {
                                         pos_in_freq_vec += 1;
                                         pos_in_read += 1;
                                         continue;
