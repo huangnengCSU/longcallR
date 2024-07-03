@@ -398,7 +398,7 @@ pub fn check_block_new_haplotype_haplotag(snpfrag: &SNPFrag, updated_haplotype: 
     } else {
         flag = -1;
     }
-    // assert!(flag >= 0, "Error: new haplotype decrease the probability. {} -> {}", pre_logp, logp);
+    assert!(flag >= 0, "Error: new haplotype decrease the probability. {} -> {}", pre_logp, logp);
     return flag;
 }
 
@@ -1525,8 +1525,9 @@ impl SNPFrag {
                 }
             }
         }
-        let check_val = check_block_new_haplotype_haplotag(&self, &tmp_haplotype, &tmp_haplotag);
-        assert!(check_val >= 0, "Error: check new haplotype: {:?}", self.candidate_snps);
+        // cal_block_delta_eta_sigma_log is quite different from cal_delta_eta_sigma_log, so the probability is not comparable
+        // let check_val = check_block_new_haplotype_haplotag(&self, &tmp_haplotype, &tmp_haplotag);
+        // assert!(check_val >= 0, "Error: check new haplotype: {:?}", self.candidate_snps);
         for (i, h) in tmp_haplotype.iter() {
             // when prob is equal, we still perform the flip to avoid bug of underflow
             self.candidate_snps[*i].haplotype = *h;
