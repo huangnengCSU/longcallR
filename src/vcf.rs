@@ -1,3 +1,10 @@
+use std::collections::{HashMap, HashSet};
+
+use noodles_vcf::variant::record::{AlternateBases, Filters};
+use noodles_vcf::variant::record::samples::keys::key;
+use noodles_vcf::variant::record::samples::Sample;
+use noodles_vcf::variant::record::samples::series::Value;
+
 use crate::snpfrags::SNPFrag;
 
 #[derive(Debug, Default, Clone)]
@@ -371,5 +378,58 @@ impl SNPFrag {
         }
         return records;
     }
+}
+
+
+pub fn load_vcf(vcf_path: &String) -> (HashMap<String, HashSet<usize>>, HashMap<String, HashMap<usize, (u8, f32)>>) {
+    let mut input_candidates: HashMap<String, HashSet<usize>> = HashMap::new();
+    let mut input_candidates_genotype_qual: HashMap<String, HashMap<usize, (u8, f32)>> = HashMap::new();
+    let mut reader = noodles_vcf::io::reader::Builder::default().build_from_path(vcf_path).unwrap();
+    let header = reader.read_header().unwrap();
+    for result in reader.records() {
+        let record = result.unwrap();
+        if record.filters().is_pass(&header).unwrap() && record.reference_bases().len() == 1 {
+            for alt in record.alternate_bases().iter() {
+                if alt.unwrap().len() != 1 {
+                    continue;
+                }
+            }
+            let chr = record.reference_sequence_name();
+            let pos = record.variant_start().unwrap().unwrap().get();
+            let qual = record.quality_score().unwrap().unwrap();
+            // store position by chromosome
+            input_candidates.entry(chr.to_string()).or_insert(HashSet::new()).insert(pos);
+            let samples = record.samples();
+            for (_, sample) in samples.iter().enumerate() {
+                let gt = sample.get(&header, key::GENOTYPE).unwrap().unwrap().unwrap();
+                match gt {
+                    Value::Genotype(genotype) => {
+                        let mut gt_vec = Vec::new();
+                        for vi in genotype.iter() {
+                            let (allele, _) = vi.unwrap();
+                            let allele = allele.unwrap();
+                            gt_vec.push(allele);
+                        }
+                        if gt_vec.len() != 2 {
+                            continue;
+                        }
+                        if gt_vec[0] + gt_vec[1] == 1 {
+                            // gt: 0/1
+                            input_candidates_genotype_qual.entry(chr.to_string()).or_insert(HashMap::new()).insert(pos, (1, qual));
+                        } else if gt_vec[0] + gt_vec[1] == 2 {
+                            // gt: 1/1
+                            input_candidates_genotype_qual.entry(chr.to_string()).or_insert(HashMap::new()).insert(pos, (2, qual));
+                        } else if gt_vec[0] + gt_vec[1] == 3 {
+                            // gt: 1/2
+                            input_candidates_genotype_qual.entry(chr.to_string()).or_insert(HashMap::new()).insert(pos, (3, qual));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    return (input_candidates, input_candidates_genotype_qual);
 }
 

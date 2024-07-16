@@ -13,11 +13,13 @@ use crate::exon::{Exon, exon_cluster};
 use crate::Platform;
 use crate::snpfrags::SNPFrag;
 use crate::util::{load_reference, parse_fai, Profile, Region};
+use crate::vcf::load_vcf;
 
 pub fn multithread_phase_haplotag(
     bam_file: String,
     ref_file: String,
-    vcf_file: String,
+    input_vcf_file: Option<String>,
+    output_vcf_file: String,
     phased_bam_file: String,
     thread_size: usize,
     isolated_regions: Vec<Region>,
@@ -75,6 +77,12 @@ pub fn multithread_phase_haplotag(
         contig_order.push(k.clone());
     }
 
+    let mut candidates = HashMap::new();
+    let mut candidates_genotype_qual = HashMap::new();
+    if input_vcf_file.clone().is_some() {
+        (candidates, candidates_genotype_qual) = load_vcf(input_vcf_file.as_ref().unwrap());
+    }
+
     pool.install(|| {
         isolated_regions.par_iter().for_each(|reg| {
             let mut profile = Profile::default();
@@ -108,28 +116,34 @@ pub fn multithread_phase_haplotag(
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.min_linkers = min_linkers;
-            snpfrag.get_candidate_snps(
-                &profile,
-                &platform,
-                exon_region_vec,
-                min_allele_freq,
-                min_qual,
-                hetvar_high_frac_cutoff,
-                min_allele_freq_include_intron,
-                min_depth,
-                max_depth,
-                min_baseq,
-                use_strand_bias,
-                strand_bias_threshold,
-                cover_strand_bias_threshold,
-                distance_to_splicing_site,
-                window_size,
-                dense_win_size,
-                min_dense_cnt,
-                somatic_allele_frac_cutoff,
-                somatic_allele_cnt_cutoff,
-                genotype_only,
-            );
+            if input_vcf_file.clone().is_some() {
+                let chr_candidates = candidates.get(&reg.chr);
+                let chr_candidates_genotype_qual = candidates_genotype_qual.get(&reg.chr);
+                snpfrag.get_candidate_snps_from_input(&profile, ref_seq, &chr_candidates, &chr_candidates_genotype_qual, 10.0);
+            } else {
+                snpfrag.get_candidate_snps(
+                    &profile,
+                    &platform,
+                    exon_region_vec,
+                    min_allele_freq,
+                    min_qual,
+                    hetvar_high_frac_cutoff,
+                    min_allele_freq_include_intron,
+                    min_depth,
+                    max_depth,
+                    min_baseq,
+                    use_strand_bias,
+                    strand_bias_threshold,
+                    cover_strand_bias_threshold,
+                    distance_to_splicing_site,
+                    window_size,
+                    dense_win_size,
+                    min_dense_cnt,
+                    somatic_allele_frac_cutoff,
+                    somatic_allele_cnt_cutoff,
+                    genotype_only,
+                );
+            }
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(&bam_file, &reg, ref_seq);
             // snpfrag.clean_fragments();
@@ -395,7 +409,7 @@ pub fn multithread_phase_haplotag(
             }
         });
     });
-    let mut vf = File::create(vcf_file).unwrap();
+    let mut vf = File::create(output_vcf_file).unwrap();
     vf.write("##fileformat=VCFv4.3\n".as_bytes()).unwrap();
     for ctglen in contig_lengths.iter() {
         let chromosome = ctglen.0.clone();

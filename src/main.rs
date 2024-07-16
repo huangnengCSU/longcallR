@@ -63,6 +63,10 @@ struct Args {
     #[arg(short = 'x', long, num_args(0..))]
     contigs: Option<Vec<String>>,
 
+    /// Input vcf file
+    #[arg(long)]
+    input_vcf: Option<String>,
+
     /// Number of threads, default 1
     #[arg(short = 't', long, default_value_t = 1)]
     threads: usize,
@@ -272,6 +276,7 @@ fn main() {
     let out_vcf = (arg.output.clone() + ".vcf").clone();
     let ref_path = arg.ref_path.as_str();
     let anno_path = arg.annotation;
+    let input_vcf = arg.input_vcf;
     let input_region = arg.region;
     let input_contigs = arg.contigs;
     let threads = arg.threads;
@@ -447,6 +452,7 @@ fn main() {
     multithread_phase_haplotag(
         bam_path.to_string().clone(),
         ref_path.to_string().clone(),
+        input_vcf.clone(),
         out_vcf.clone(),
         out_bam.clone(),
         threads,

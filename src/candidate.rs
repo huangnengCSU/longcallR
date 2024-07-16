@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
 use petgraph::{algo::kosaraju_scc, graphmap::GraphMap, Undirected};
 use rust_lapper::{Interval, Lapper};
@@ -833,7 +834,6 @@ impl SNPFrag {
             }
         }
 
-
         let mut tmp_idxes = Vec::new();
         for i in self.homo_snps.iter() {
             if self.candidate_snps[*i].dense {
@@ -869,6 +869,90 @@ impl SNPFrag {
         //     tmp_idxes.push(*i);
         // }
         // self.edit_snps = tmp_idxes;
+    }
+
+    pub fn get_candidate_snps_from_input(&mut self,
+                                         profile: &Profile,
+                                         ref_seq: &Vec<u8>,
+                                         &chr_candidates_position: &Option<&HashSet<usize>>,
+                                         &chr_candidates_genotype_qual: &Option<&HashMap<usize, (u8, f32)>>,
+                                         min_qual: f32, ) {
+        if chr_candidates_position.is_some() {
+            let pileup = &profile.freq_vec;
+            let mut position = profile.region.start - 1; // 0-based
+            for bfidx in 0..pileup.len() {
+                let bf = &pileup[bfidx];
+                if bf.i {
+                    // current pileup is insertion, position is not changed
+                    continue;
+                }
+                let (allele1, allele1_cnt, allele2, allele2_cnt) = bf.get_two_major_alleles(bf.ref_base);
+                if chr_candidates_position.unwrap().contains(&(position as usize + 1)) {
+                    let ref_pos = position; // 0-based
+                    let ref_base = ref_seq[ref_pos as usize] as char;
+                    let (genotype, qual) = chr_candidates_genotype_qual.unwrap().get(&(ref_pos as usize + 1)).unwrap();
+                    // if *qual < min_qual {
+                    //     position += 1;
+                    //     continue;
+                    // }
+                    let depth = bf.get_depth_exclude_intron_deletion();
+                    let allele1_freq = (allele1_cnt as f32) / (depth as f32);
+                    let allele2_freq = (allele2_cnt as f32) / (depth as f32);
+                    let mut candidate_snp = CandidateSNP::default();
+                    candidate_snp.chromosome = profile.region.chr.clone().into_bytes();
+                    candidate_snp.pos = ref_pos as i64;
+                    candidate_snp.reference = ref_base;
+                    candidate_snp.alleles = [allele1, allele2];
+                    candidate_snp.allele_freqs = [allele1_freq, allele2_freq];
+                    candidate_snp.depth = depth;
+                    candidate_snp.variant_quality = *qual as f64;
+                    candidate_snp.genotype_quality = *qual as f64;
+
+                    // genotype: 0: 0|0, 1: 0|1, 2: 1|1, 3: 1|2
+                    match *genotype {
+                        0 => {
+                            // 0|0
+                            candidate_snp.variant_type = 0;
+                            candidate_snp.genotype = 1;
+                        }
+                        1 => {
+                            // 0|1
+                            candidate_snp.variant_type = 1;
+                            candidate_snp.genotype = 0;
+                            candidate_snp.for_phasing = true;
+                            candidate_snp.germline = true;
+                            candidate_snp.high_frac_het = true;
+                            self.candidate_snps.push(candidate_snp);
+                            self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
+                        }
+                        2 => {
+                            // 1|1
+                            candidate_snp.variant_type = 2;
+                            candidate_snp.genotype = -1;
+                            candidate_snp.for_phasing = true;
+                            candidate_snp.germline = true;
+                            candidate_snp.hom_var = true;
+                            self.candidate_snps.push(candidate_snp);
+                            self.homo_snps.push(self.candidate_snps.len() - 1);
+                        }
+                        3 => {
+                            candidate_snp.variant_type = 3;
+                            candidate_snp.genotype = -1;
+                            candidate_snp.germline = true;
+                            candidate_snp.hom_var = true;
+                            self.candidate_snps.push(candidate_snp);
+                            self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
+                        }
+                        _ => {
+                            println!("Error: unknown genotype");
+                            position += 1;
+                            continue;
+                        }
+                    }
+                }
+                position += 1;
+            }
+        }
     }
 
     pub fn divide_snps_into_blocks(&mut self, ld_weight_threshold: u32) -> GraphMap<usize, i32, Undirected> {
