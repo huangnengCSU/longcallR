@@ -474,7 +474,6 @@ impl Profile {
         // When region is large and the number of reads is large, the runtime of init_profile_with_pileup is time-consuming.
         // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
 
-        let start_time = Instant::now();
         let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let vec_size = (region.end - region.start) as usize;    // end is exclusive
@@ -529,9 +528,7 @@ impl Profile {
                                 break;
                             }
                             let base = seq[pos_in_read] as char;
-                            let mut baseq = base_qual[pos_in_read];
-                            baseq = if baseq < 30 { baseq } else { 30 };
-
+                            let baseq = if base_qual[pos_in_read] < 30 { base_qual[pos_in_read] } else { 30 };
 
                             // close to left read end or right read end, check whether current position is in polyA tail
                             let ref_base = self.freq_vec[pos_in_freq_vec as usize].ref_base;
