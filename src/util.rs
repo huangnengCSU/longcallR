@@ -470,7 +470,7 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, platform: &Platform, min_mapq: u8, min_baseq: u8, min_read_length: usize, min_depth: u32, max_depth: u32, distance_to_read_end: u32, polya_tail_length: u32) {
+    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, platform: &Platform, min_mapq: u8, min_read_length: usize, distance_to_read_end: u32, polya_tail_length: u32) {
         // When region is large and the number of reads is large, the runtime of init_profile_with_pileup is time-consuming.
         // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
 
