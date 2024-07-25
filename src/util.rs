@@ -247,10 +247,10 @@ pub fn parse_fai(fai_path: &str) -> Vec<(String, u32)> {
     return contig_lengths;
 }
 
-pub fn find_isolated_regions_with_depth(bam_path: &str, chr: &str, ref_len: u32, min_mapq: u8, min_read_length: usize) -> Vec<Region> {
+pub fn find_isolated_regions_with_depth(bam_path: &String, chr: &str, ref_len: u32, min_mapq: u8, min_read_length: usize) -> Vec<Region> {
     let mut isolated_regions: Vec<Region> = Vec::new();
     let mut depth_vec: Vec<u32> = vec![0; ref_len as usize];
-    let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+    let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path.as_str()).unwrap();
     let header = bam.header().clone();
     bam.fetch(chr).unwrap();
     for r in bam.records() {
@@ -444,7 +444,7 @@ pub fn multithread_produce3(bam_file: String, ref_file: String, thread_size: usi
     }
     pool.install(|| {
         contig_names.par_iter().for_each(|ctg| {
-            let isolated_regions = find_isolated_regions_with_depth(bam_file.as_str(), ctg, contig_lengths.iter().find(|(chr, _)| chr == ctg).unwrap().1, min_mapq, min_read_length);
+            let isolated_regions = find_isolated_regions_with_depth(&bam_file, ctg, contig_lengths.iter().find(|(chr, _)| chr == ctg).unwrap().1, min_mapq, min_read_length);
             for region in isolated_regions {
                 results.lock().unwrap().push(region);
             }
@@ -470,11 +470,11 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn init_with_pileup(&mut self, bam_path: &str, region: &Region, ref_seq: &Vec<u8>, platform: &Platform, min_mapq: u8, min_read_length: usize, distance_to_read_end: u32, polya_tail_length: u32) {
+    pub fn init_with_pileup(&mut self, bam_path: &String, region: &Region, ref_seq: &Vec<u8>, platform: &Platform, min_mapq: u8, min_read_length: usize, distance_to_read_end: u32, polya_tail_length: u32) {
         // When region is large and the number of reads is large, the runtime of init_profile_with_pileup is time-consuming.
         // This function is used to fill the profile by parsing each read in the bam file instead of using pileup.
 
-        let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
+        let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path.as_str()).unwrap();
         bam.fetch((region.chr.as_str(), region.start, region.end)).unwrap();
         let vec_size = (region.end - region.start) as usize;    // end is exclusive
         self.freq_vec = vec![BaseFreq::default(); vec_size];
