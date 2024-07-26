@@ -1095,10 +1095,8 @@ impl SNPFrag {
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
         let mut best_genotype: HashMap<usize, i32> = HashMap::new();
-
         let mut conserved_snps: HashSet<usize> = HashSet::new();    //SNPs will not be flipped
 
-        // let (ld_links, ld_graph) = self.get_ld_blocks(ld_weight_threshold);
         let ld_graph = self.divide_snps_into_blocks(ld_weight_threshold);
         // println!("{}", format!("{}", Dot::new(&ld_graph)));
 

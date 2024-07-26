@@ -121,6 +121,30 @@ pub struct BaseFreq {
 }
 
 impl BaseFreq {
+    pub fn get_allele_baseq(&self, allele: char) -> Vec<u8> {
+        match allele {
+            'A' | 'a' => self.baseq.a.clone(),
+            'C' | 'c' => self.baseq.c.clone(),
+            'G' | 'g' => self.baseq.g.clone(),
+            'T' | 't' => self.baseq.t.clone(),
+            _ => {
+                panic!("Invalid allele: {}", allele);
+            }
+        }
+    }
+
+    pub fn get_allele_base_strands(&self, allele: char) -> [i32; 2] {
+        match allele {
+            'A' | 'a' => self.base_strands.a.clone(),
+            'C' | 'c' => self.base_strands.c.clone(),
+            'G' | 'g' => self.base_strands.g.clone(),
+            'T' | 't' => self.base_strands.t.clone(),
+            _ => {
+                panic!("Invalid allele: {}", allele);
+            }
+        }
+    }
+
     pub fn subtract(&mut self, base: u8) {
         match base {
             b'A' => {

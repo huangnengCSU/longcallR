@@ -100,26 +100,46 @@ pub fn multithread_phase_haplotag(
                     return;
                 }
             }
-            profile.init_with_pileup(
-                &bam_file.as_str(),
-                &reg,
-                ref_seq,
-                platform,
-                min_mapq,
-                min_baseq,
-                min_read_length,
-                min_depth,
-                max_depth,
-                distance_to_read_end,
-                polya_tail_len,
-            );
+            profile.init_with_pileup(&bam_file, &reg, ref_seq, platform, min_mapq, min_read_length, distance_to_read_end, polya_tail_len);
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.min_linkers = min_linkers;
             if input_vcf_file.clone().is_some() {
                 let chr_candidates = candidates.get(&reg.chr);
                 let chr_candidates_genotype_qual = candidates_genotype_qual.get(&reg.chr);
-                snpfrag.get_candidate_snps_from_input(&profile, ref_seq, &chr_candidates, &chr_candidates_genotype_qual, 10.0);
+                snpfrag.get_candidate_snps_from_input(&profile, ref_seq, &chr_candidates, &chr_candidates_genotype_qual, 0.0);
+                // let mut chr_hetvar_cands = Vec::new();
+                // let mut chr_homvar_cands = Vec::new();
+                // for snp in chr_candidates_genotype_qual.unwrap().keys() {
+                //     let (gt, _) = chr_candidates_genotype_qual.unwrap().get(snp).unwrap();
+                //     if *gt == 1 {
+                //         chr_hetvar_cands.push(*snp);
+                //     } else if *gt == 2 {
+                //         chr_homvar_cands.push(*snp);
+                //     }
+                // }
+                // snpfrag.get_candidate_snps2(&profile,
+                //                             &chr_hetvar_cands,
+                //                             &chr_homvar_cands,
+                //                             &platform,
+                //                             exon_region_vec,
+                //                             min_allele_freq,
+                //                             min_qual,
+                //                             hetvar_high_frac_cutoff,
+                //                             min_allele_freq_include_intron,
+                //                             min_depth,
+                //                             max_depth,
+                //                             min_baseq,
+                //                             use_strand_bias,
+                //                             strand_bias_threshold,
+                //                             cover_strand_bias_threshold,
+                //                             distance_to_splicing_site,
+                //                             window_size,
+                //                             dense_win_size,
+                //                             min_dense_cnt,
+                //                             somatic_allele_frac_cutoff,
+                //                             somatic_allele_cnt_cutoff,
+                //                             genotype_only, )
             } else {
                 snpfrag.get_candidate_snps(
                     &profile,
@@ -146,7 +166,7 @@ pub fn multithread_phase_haplotag(
             }
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(&bam_file, &reg, ref_seq);
-            // snpfrag.clean_fragments();
+            snpfrag.clean_fragments();
             if genotype_only {
                 // without phasing
                 let vcf_records = snpfrag.output_vcf(min_qual);
@@ -160,11 +180,8 @@ pub fn multithread_phase_haplotag(
                 if snpfrag.candidate_snps.len() >= 0 {
                     unsafe {
                         snpfrag.init_haplotypes();
-                    }
-                    unsafe {
                         snpfrag.init_assignment();
                     }
-                    snpfrag.divide_snps_into_blocks(1);
                     // snpfrag.chain_phase(max_enum_snps);
                     snpfrag.phase(1, max_enum_snps, random_flip_fraction, max_iters);
                     let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);

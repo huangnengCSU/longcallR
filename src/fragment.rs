@@ -60,12 +60,14 @@ impl SNPFrag {
             let mut exon_end = -1;
             exon_start = pos_on_ref;
             exon_end = exon_start;
-            let mut truncated_regions: Vec<(usize, usize)> = Vec::new();    // left-closed right-closed
+
+            let mut truncation_regions: Vec<(usize, usize)> = Vec::new();    // left-closed right-closed
             let truncated_threshold = 200.0;
-            let tr_match = 1.0;
-            let (mut tr_start, mut tr_end) = (0, 0);
-            let mut tr_score = 0.0;
-            let mut tr_flag = false;
+            let match_socre = 1.0;
+            let (mut truncation_start, mut truncation_end) = (0, 0);
+            let mut truncation_score = 0.0;
+            let mut truncation_flag = false;
+
             for cg in cigar.iter() {
                 match cg.char() as u8 {
                     b'S' | b'H' => {
@@ -75,25 +77,24 @@ impl SNPFrag {
                         for _ in 0..cg.len() {
                             // mask the dense mismatch region in a read
                             let ref_base = ref_seq[pos_on_ref as usize] as char;
-                            let base = seq[pos_on_query as usize] as char;
-                            let mut baseq = record.qual()[pos_on_query as usize];
-                            // baseq = if baseq < 30 { baseq } else { 30 };
-                            if base == ref_base {
-                                tr_score -= tr_match;
-                                if tr_score < 0.0 {
-                                    if tr_flag {
-                                        truncated_regions.push((tr_start, tr_end));
-                                        tr_flag = false;
+                            let read_base = seq[pos_on_query as usize] as char;
+                            let read_baseq = record.qual()[pos_on_query as usize];
+                            if read_base == ref_base {
+                                truncation_score -= match_socre;
+                                if truncation_score < 0.0 {
+                                    if truncation_flag {
+                                        truncation_regions.push((truncation_start, truncation_end));
+                                        truncation_flag = false;
                                     }
-                                    tr_score = 0.0;
-                                    tr_start = pos_on_ref as usize;
-                                    tr_end = pos_on_ref as usize;
+                                    truncation_score = 0.0;
+                                    truncation_start = pos_on_ref as usize;
+                                    truncation_end = pos_on_ref as usize;
                                 }
                             } else {
-                                tr_score += baseq as f64;
-                                if tr_score > truncated_threshold {
-                                    tr_flag = true;
-                                    tr_end = pos_on_ref as usize;
+                                truncation_score += read_baseq as f64;
+                                if truncation_score > truncated_threshold {
+                                    truncation_flag = true;
+                                    truncation_end = pos_on_ref as usize;
                                 }
                             }
                             if pos_on_ref == snp_pos {
@@ -101,8 +102,7 @@ impl SNPFrag {
                                 frag_elem.snp_idx = idx;
                                 frag_elem.pos = pos_on_ref;
                                 frag_elem.base = seq[pos_on_query as usize] as char;
-                                let bq = record.qual()[pos_on_query as usize];
-                                frag_elem.baseq = if bq < 30 { bq } else { 30 };
+                                frag_elem.baseq = if record.qual()[pos_on_query as usize] < 30 { record.qual()[pos_on_query as usize] } else { 30 };
                                 frag_elem.strand = strand;
                                 frag_elem.prob = 10.0_f64.powf(-(frag_elem.baseq as f64) / 10.0);
                                 if frag_elem.base == self.candidate_snps[idx].reference {
@@ -181,22 +181,26 @@ impl SNPFrag {
                     }
                 }
             }
-            if tr_flag && tr_end - tr_start > 0 {
-                truncated_regions.push((tr_start, tr_end));
+
+            if truncation_flag && truncation_end - truncation_start > 0 {
+                truncation_regions.push((truncation_start, truncation_end));
             }
+
             // remove frag_elem which is in truncated regions from fragment.list
             for frag_elem in fragment.list.clone().iter() {
-                for tr in truncated_regions.iter() {
+                for tr in truncation_regions.iter() {
                     if frag_elem.pos >= tr.0 as i64 && frag_elem.pos <= tr.1 as i64 {
                         fragment.list.remove(fragment.list.iter().position(|x| x.pos == frag_elem.pos).unwrap());
                         break;
                     }
                 }
             }
+
             // the whole read is a single exon, no intron.
             if exon_start != -1 && exon_end != -1 && pos_on_ref > exon_end {
                 exon_end = pos_on_ref;
             }
+
             if exon_end != exon_start {
                 if fragment.exons.len() > 0 {
                     fragment.exons.push(Exon {
@@ -246,29 +250,29 @@ impl SNPFrag {
                     }
                 }
             }
+
             // hete snps >= 1
-            let mut hete_links = 0;
-            for fe in fragment.list.iter() {
-                assert_ne!(fe.p, 0, "Error: fe.p==0");
-                if fe.phase_site {
-                    hete_links += 1;
-                }
-            }
+            let hete_links = fragment.list.iter()
+                .inspect(|fe| assert_ne!(fe.p, 0, "Error: fe.p == 0"))
+                .filter(|fe| fe.phase_site)
+                .count() as u32;
             fragment.num_hete_links = hete_links;
 
             // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {
                 // record edge count
-                let mut phased_sites = Vec::new();
-                for fe in fragment.list.iter() {
-                    if self.candidate_snps[fe.snp_idx].for_phasing {
-                        phased_sites.push(fe.clone());
-                    }
-                }
+                let phased_sites: Vec<_> = fragment.list.iter()
+                    .filter(|fe| self.candidate_snps[fe.snp_idx].for_phasing)
+                    .cloned()
+                    .collect();
+
                 for preidx in 0..phased_sites.len() - 1 {
-                    let pre_elem = &phased_sites[preidx];
-                    let next_elem = &phased_sites[preidx + 1];
+                    let (pre_elem, next_elem) = if phased_sites[preidx].pos < phased_sites[preidx + 1].pos {
+                        (&phased_sites[preidx], &phased_sites[preidx + 1])
+                    } else {
+                        (&phased_sites[preidx + 1], &phased_sites[preidx])
+                    };
                     if self.candidate_snps[pre_elem.snp_idx].for_phasing == false || self.candidate_snps[next_elem.snp_idx].for_phasing == false {
                         continue;
                     }
