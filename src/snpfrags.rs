@@ -933,6 +933,14 @@ impl SNPFrag {
                     node_snps.push(fe.snp_idx);
                 }
             }
+            if node_snps.len() == 1 {
+                // read only cover single snp, add self loop edge.
+                if !graph.contains_edge(node_snps[0], node_snps[0]) {
+                    graph.add_edge(node_snps[0], node_snps[0], vec![k]);    // weight is a vector of fragment index, which is covered by the edge
+                } else {
+                    graph.edge_weight_mut(node_snps[0], node_snps[0]).unwrap().push(k);
+                }
+            }
             if node_snps.len() >= 2 {
                 for j in 0..node_snps.len() - 1 {
                     let haplotype_pair = [self.candidate_snps[node_snps[j]].haplotype, self.candidate_snps[node_snps[j + 1]].haplotype];
