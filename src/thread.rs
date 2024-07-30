@@ -540,7 +540,8 @@ pub fn multithread_phase_haplotag(
             let mut read_assignments: HashMap<String, i32> = HashMap::new();
             for rd in read_haplotag_queue.lock().unwrap().iter() {
                 if read_assignments.contains_key(&rd.0) {
-                    read_assignments.remove(&rd.0);   // one read belongs to at least two regions
+                    // read_assignments.remove(&rd.0);   // one read belongs to at least two regions
+                    continue;
                 } else {
                     read_assignments.insert(rd.0.clone(), rd.1);
                 }
@@ -548,7 +549,8 @@ pub fn multithread_phase_haplotag(
             let mut read_phasesets: HashMap<String, u32> = HashMap::new();
             for rd in read_phaseset_queue.lock().unwrap().iter() {
                 if read_phasesets.contains_key(&rd.0) {
-                    read_phasesets.remove(&rd.0);   // one read belongs to at least two regions or two phase sets
+                    // read_phasesets.remove(&rd.0);   // one read belongs to at least two regions or two phase sets
+                    continue;
                 } else {
                     read_phasesets.insert(rd.0.clone(), rd.1);
                 }
