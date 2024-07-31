@@ -5,7 +5,9 @@ import pysam
 from scipy.stats import binomtest
 
 
-def parse_isoquant_read_assignment(assignment_file, assignment_type=["unique", "unique_minor_difference"]):
+def parse_isoquant_read_assignment(assignment_file, assignment_type={"unique", "unique_minor_difference"},
+                                   classification_type={"full_splice_match", "incomplete_splice_match",
+                                                        "mono_exon_match"}):
     records = {}
     with open(assignment_file) as f:
         for line in f:
@@ -13,8 +15,15 @@ def parse_isoquant_read_assignment(assignment_file, assignment_type=["unique", "
                 continue
             parts = line.strip().split("\t")
             if parts[5] in assignment_type:
-                read_name, isoform_id, gene_id = parts[0], parts[3], parts[4]
-                records.setdefault(gene_id, {}).setdefault(isoform_id, []).append(read_name)
+                read_name, isoform_id, gene_id, additional_info = parts[0], parts[3], parts[4], parts[8]
+                additional_info_dict = {key.strip(): value.strip() for key, value in
+                                        (pair.split('=') for pair in additional_info.split(';') if pair.strip())}
+                try:
+                    classification = additional_info_dict["Classification"]
+                    if classification in classification_type:
+                        records.setdefault(gene_id, {}).setdefault(isoform_id, []).append(read_name)
+                except KeyError:
+                    continue
     return records
 
 
@@ -86,13 +95,16 @@ def get_reads_tag(bam_file, chr, start_pos, end_pos):
             reads_tag[read.query_name] = {"PS": PS, "HP": HP}
     return reads_tag
 
+
 def write_header(out_file):
     with open(out_file, "w") as f:
         f.write("Gene\tIsoform\tChromosome\tStart\tEnd\tPS\tHP1\tHP2\tP-value\n")
 
-def analyze_haplotype_isoform(assignment_file, annotation_file, bam_file, out_file, min_support=10, p_value=0.05):
+
+def analyze_haplotype_isoform(assignment_file, annotation_file, bam_file, out_file, assignment_type,
+                              classification_type, min_support=10, p_value=0.05):
+    isoquant_read_assignment = parse_isoquant_read_assignment(assignment_file, assignment_type, classification_type)
     gene_regions = get_gene_regions(annotation_file)
-    isoquant_read_assignment = parse_isoquant_read_assignment(assignment_file)
     write_header(out_file)
     with open(out_file, "a") as fwriter:
         for gene_id, isoform_records in isoquant_read_assignment.items():
@@ -110,7 +122,8 @@ def analyze_haplotype_isoform(assignment_file, annotation_file, bam_file, out_fi
                     if total_counts >= min_support:
                         p = binomtest(hp_counts[0], total_counts, 0.5, alternative='two-sided').pvalue
                         if p <= p_value:
-                            fwriter.write(f"{gene_id}\t{isoform_id}\t{gene_region['chr']}\t{gene_region['start']}\t{gene_region['end']}\t{ps}\t{hp_counts[0]}\t{hp_counts[1]}\t{p}\n")
+                            fwriter.write(
+                                f"{gene_id}\t{isoform_id}\t{gene_region['chr']}\t{gene_region['start']}\t{gene_region['end']}\t{ps}\t{hp_counts[0]}\t{hp_counts[1]}\t{p}\n")
 
 
 if __name__ == "__main__":
@@ -120,6 +133,11 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--annotation", required=True, help="Annotation file")
     parser.add_argument("-b", "--bam", required=True, help="BAM file")
     parser.add_argument("-o", "--output", required=True, help="Output tsv file to report ASE events")
+    parser.add_argument('--assignment_type', type=str, nargs='+', default=["unique", "unique_minor_difference"],
+                        help='Assignment types to include. Default is ["unique", "unique_minor_difference"].')
+    parser.add_argument('--classification_type', type=str, nargs='+',
+                        default=["full_splice_match", "incomplete_splice_match", "mono_exon_match"],
+                        help='Classification types to include. Default is ["full_splice_match", "incomplete_splice_match", "mono_exon_match"].')
     parser.add_argument("--min_support", type=int, default=10,
                         help="Minimum support reads for counting event (default: 10)")
     parser.add_argument("--p_value", type=float, default=0.05,
@@ -128,4 +146,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if os.path.exists(args.output):
         raise FileExistsError(f"Output file {args.output} already exists")
-    analyze_haplotype_isoform(args.assignment, args.annotation, args.bam, args.output, args.min_support, args.p_value)
+    assignment_type = set(args.assignment_type)
+    classification_type = set(args.classification_type)
+    analyze_haplotype_isoform(args.assignment, args.annotation, args.bam, args.output, assignment_type,
+                              classification_type, args.min_support, args.p_value)
