@@ -252,9 +252,12 @@ impl SNPFrag {
             }
 
             // hete snps >= 1
+            // let hete_links = fragment.list.iter()
+            //     .inspect(|fe| assert_ne!(fe.p, 0, "Error: fe.p == 0"))
+            //     .filter(|fe| fe.phase_site)
+            //     .count() as u32;
             let hete_links = fragment.list.iter()
                 .inspect(|fe| assert_ne!(fe.p, 0, "Error: fe.p == 0"))
-                .filter(|fe| fe.phase_site)
                 .count() as u32;
             fragment.num_hete_links = hete_links;
 
@@ -262,8 +265,11 @@ impl SNPFrag {
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {
                 // record edge count
+                // let phased_sites: Vec<_> = fragment.list.iter()
+                //     .filter(|fe| self.candidate_snps[fe.snp_idx].for_phasing)
+                //     .cloned()
+                //     .collect();
                 let phased_sites: Vec<_> = fragment.list.iter()
-                    .filter(|fe| self.candidate_snps[fe.snp_idx].for_phasing)
                     .cloned()
                     .collect();
 
