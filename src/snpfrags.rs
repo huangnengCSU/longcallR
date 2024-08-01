@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use petgraph::algo::kosaraju_scc;
 use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
+use rand::Rng;
 use rust_htslib::{bam, bam::Read, bam::record::Record};
 
 use crate::phase::{cal_delta_eta_sigma_log, cal_phase_score_log, cal_sigma_delta_eta_log};
@@ -486,6 +487,18 @@ impl SNPFrag {
                 snp.non_selected = false;
                 snp.germline = true;
                 snp.rna_editing = false;
+                snp.for_phasing = true;
+                for k in snp.snp_cover_fragments.iter() {
+                    if self.fragments[*k].haplotag == 0 || self.fragments[*k].assignment == 0 {
+                        let mut rng = rand::thread_rng();
+                        let rg: f64 = rng.gen();
+                        if rg < 0.5 {
+                            self.fragments[*k].haplotag = -1;
+                        } else {
+                            self.fragments[*k].haplotag = 1;
+                        }
+                    }
+                }
                 // if self.candidate_snps[*ti].alleles[0] != self.candidate_snps[*ti].reference && self.candidate_snps[*ti].alleles[1] != self.candidate_snps[*ti].reference {
                 //     // tri-allelic site
                 //     self.candidate_snps[*ti].variant_type = 3;
@@ -846,7 +859,8 @@ impl SNPFrag {
             let mut ps: Vec<i32> = Vec::new();
             let mut probs: Vec<f64> = Vec::new();
             for fe in self.fragments[k].list.iter() {
-                if fe.phase_site == false { continue; }
+                // if fe.phase_site == false { continue; }
+                if self.candidate_snps[fe.snp_idx].for_phasing == false { continue; }
                 if self.candidate_snps[fe.snp_idx].haplotype == 0 { continue; }
                 if self.candidate_snps[fe.snp_idx].genotype != 0 { continue; }
                 assert_ne!(fe.p, 0, "Error: phase for unexpected allele.");
