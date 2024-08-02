@@ -218,6 +218,8 @@ pub struct Fragment {
     // exons of the read on the reference, 0-based, [start, end)
     pub num_hete_links: u32,
     // number of linked heterozygous snps in the fragment
+    pub for_phasing: bool,
+    // whether used in phasing
 }
 
 #[derive(Debug, Clone, Default)]
