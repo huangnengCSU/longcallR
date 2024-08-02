@@ -251,27 +251,25 @@ impl SNPFrag {
                 }
             }
 
-            // hete snps >= 1
-            // let hete_links = fragment.list.iter()
-            //     .inspect(|fe| assert_ne!(fe.p, 0, "Error: fe.p == 0"))
-            //     .filter(|fe| fe.phase_site)
-            //     .count() as u32;
             let hete_links = fragment.list.iter()
                 .inspect(|fe| assert_ne!(fe.p, 0, "Error: fe.p == 0"))
+                .filter(|fe| fe.phase_site)
                 .count() as u32;
+            // let hete_links = fragment.list.iter()
+            //     .inspect(|fe| assert_ne!(fe.p, 0, "Error: fe.p == 0"))
+            //     .count() as u32;
             fragment.num_hete_links = hete_links;
 
-            // For hifi data, min_linkers is 1, for nanopore data, min_linkers is 2 (preset). For phasing, at least min_linkers hete snps or at least 2 ase snps.
             assert!(self.min_linkers > 0, "Error: min_linkers <= 0");
             if hete_links >= self.min_linkers {
-                // record edge count
-                // let phased_sites: Vec<_> = fragment.list.iter()
-                //     .filter(|fe| self.candidate_snps[fe.snp_idx].for_phasing)
-                //     .cloned()
-                //     .collect();
+                fragment.for_phasing = true;
                 let phased_sites: Vec<_> = fragment.list.iter()
+                    .filter(|fe| self.candidate_snps[fe.snp_idx].for_phasing)
                     .cloned()
                     .collect();
+                // let phased_sites: Vec<_> = fragment.list.iter()
+                //     .cloned()
+                //     .collect();
 
                 for preidx in 0..phased_sites.len() - 1 {
                     let (pre_elem, next_elem) = if phased_sites[preidx].pos < phased_sites[preidx + 1].pos {
@@ -296,7 +294,12 @@ impl SNPFrag {
                     }
                 }
                 for fe in fragment.list.iter() {
-                    // record each snp cover by which fragments
+                    self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
+                }
+                self.fragments.push(fragment);
+            } else {
+                fragment.for_phasing = false;
+                for fe in fragment.list.iter() {
                     self.candidate_snps[fe.snp_idx].snp_cover_fragments.push(fragment.fragment_idx);
                 }
                 self.fragments.push(fragment);
