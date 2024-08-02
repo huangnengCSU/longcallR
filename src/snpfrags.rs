@@ -428,8 +428,9 @@ impl SNPFrag {
             let mut hap1_reads_num = 0;
             let mut hap2_reads_num = 0;
             for k in snp.snp_cover_fragments.iter() {
-                if self.fragments[*k].assignment == 0 { continue; }
-                if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
+                if !self.fragments[*k].for_phasing || self.fragments[*k].assignment == 0 || self.fragments[*k].num_hete_links < self.min_linkers {
+                    continue;
+                }
                 for fe in self.fragments[*k].list.iter() {
                     if fe.snp_idx == *ti {
                         if fe.base != '-' {
@@ -488,17 +489,14 @@ impl SNPFrag {
                 snp.germline = true;
                 snp.rna_editing = false;
                 snp.for_phasing = true;
-                for k in snp.snp_cover_fragments.iter() {
-                    if self.fragments[*k].haplotag == 0 || self.fragments[*k].assignment == 0 {
-                        let mut rng = rand::thread_rng();
-                        let rg: f64 = rng.gen();
-                        if rg < 0.5 {
-                            self.fragments[*k].haplotag = -1;
-                        } else {
-                            self.fragments[*k].haplotag = 1;
-                        }
+                let mut rng = rand::thread_rng();
+                for &k in &snp.snp_cover_fragments {
+                    self.fragments[k].for_phasing = true;
+                    if self.fragments[k].haplotag == 0 || self.fragments[k].assignment == 0 {
+                        self.fragments[k].haplotag = if rng.gen::<f64>() < 0.5 { -1 } else { 1 };
                     }
                 }
+
                 // if self.candidate_snps[*ti].alleles[0] != self.candidate_snps[*ti].reference && self.candidate_snps[*ti].alleles[1] != self.candidate_snps[*ti].reference {
                 //     // tri-allelic site
                 //     self.candidate_snps[*ti].variant_type = 3;
@@ -694,12 +692,12 @@ impl SNPFrag {
             // }
             for k in snp.snp_cover_fragments.iter() {
                 // heterozygous use phased reads, otherwise use all reads
-                if snp.variant_type == 1 {
-                    if self.fragments[*k].assignment == 0 {
-                        continue;
-                    }
+                if !self.fragments[*k].for_phasing || self.fragments[*k].num_hete_links < self.min_linkers {
+                    continue;
                 }
-                if self.fragments[*k].num_hete_links < self.min_linkers { continue; }
+                if snp.variant_type == 1 && self.fragments[*k].assignment == 0 {
+                    continue;
+                }
                 for fe in self.fragments[*k].list.iter() {
                     if fe.snp_idx == ti {
                         if fe.base != '-' {
@@ -853,6 +851,7 @@ impl SNPFrag {
     pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         for k in 0..self.fragments.len() {
+            if !self.fragments[k].for_phasing { continue; }
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
             let mut eta: Vec<i32> = Vec::new();
@@ -940,7 +939,7 @@ impl SNPFrag {
         }
         for k in 0..self.fragments.len() {
             let frag = &self.fragments[k];
-            if frag.assignment == 0 { continue; }
+            if !frag.for_phasing || frag.assignment == 0 { continue; }
             let mut node_snps = Vec::new();
             for fe in frag.list.iter() {
                 if graph.contains_node(fe.snp_idx) {
@@ -975,12 +974,10 @@ impl SNPFrag {
                 }
             }
         }
-        let mut low_w_edges: Vec<(usize, usize)> = Vec::new();
-        for edge in graph.all_edges() {
-            if edge.2.len() < 2 {
-                low_w_edges.push((edge.0, edge.1));
-            }
-        }
+        let low_w_edges: Vec<(usize, usize)> = graph.all_edges()
+            .filter(|&edge| edge.2.len() < 2)
+            .map(|edge| (edge.0, edge.1))
+            .collect();
 
         for edge in low_w_edges.iter() {
             graph.remove_edge(edge.0, edge.1);
