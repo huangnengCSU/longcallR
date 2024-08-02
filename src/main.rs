@@ -236,29 +236,10 @@ struct Args {
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     genotype_only: bool,
 
-    /// When set, output vcf file does not contain phase information.
-    #[clap(long, action = ArgAction::SetFalse, default_value = "true")]
-    no_phase_vcf: bool,
 
     /// When set, do not output phased bam file.
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_bam_output: bool,
-
-    /// When set, find haplotype-specific exons.
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    haplotype_specific_exon: bool,
-
-    /// minimum number of reads to support the haplotype-specific exon
-    #[arg(long, default_value_t = 8)]
-    min_sup_haplotype_exon: u32,
-
-    /// haplotype_bam_output
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    haplotype_bam_output: bool,
-
-    /// output read assignment
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    output_read_assignment: bool,
 
     // /// debug SNP
     // #[clap(long, action = ArgAction::SetTrue)]
@@ -287,12 +268,7 @@ fn main() {
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
     let genotype_only = arg.genotype_only;
-    let phasing_output = arg.no_phase_vcf; // default=true
     let no_bam_output = arg.no_bam_output; // default=false
-    let haplotype_bam_output = arg.haplotype_bam_output; // default=false
-    let output_read_assignment = arg.output_read_assignment; // default=false
-    let haplotype_specific_exon = arg.haplotype_specific_exon; // default=false
-    let min_sup_haplotype_exon = arg.min_sup_haplotype_exon;
     let min_mapq = arg.min_mapq;
     let min_baseq = arg.min_baseq;
     let min_qual = arg.min_qual;
@@ -486,10 +462,6 @@ fn main() {
         read_assignment_cutoff,
         imbalance_allele_expression_cutoff,
         no_bam_output,
-        haplotype_bam_output,
-        output_read_assignment,
-        haplotype_specific_exon,
-        min_sup_haplotype_exon,
         somatic_allele_frac_cutoff,
         somatic_allele_cnt_cutoff,
     );
