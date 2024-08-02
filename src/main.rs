@@ -232,10 +232,6 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     somatic_allele_cnt_cutoff: u32,
 
-    /// Without phasing, only using genotype probability
-    #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
-    genotype_only: bool,
-
 
     /// When set, do not output phased bam file.
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
@@ -267,7 +263,6 @@ fn main() {
     let max_iters = arg.max_iters;
     let max_enum_snps = arg.max_enum_snps;
     let random_flip_fraction = arg.random_flip_fraction;
-    let genotype_only = arg.genotype_only;
     let no_bam_output = arg.no_bam_output; // default=false
     let min_mapq = arg.min_mapq;
     let min_baseq = arg.min_baseq;
@@ -434,7 +429,6 @@ fn main() {
         threads,
         regions,
         exon_regions,
-        genotype_only,
         &platform,
         max_iters,
         min_mapq,

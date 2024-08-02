@@ -23,7 +23,6 @@ pub fn multithread_phase_haplotag(
     thread_size: usize,
     isolated_regions: Vec<Region>,
     exon_regions: HashMap<String, Vec<Interval<usize, u8>>>,
-    genotype_only: bool,
     platform: &Platform,
     max_iters: i32,
     min_mapq: u8,
@@ -130,8 +129,7 @@ pub fn multithread_phase_haplotag(
                 //                             dense_win_size,
                 //                             min_dense_cnt,
                 //                             somatic_allele_frac_cutoff,
-                //                             somatic_allele_cnt_cutoff,
-                //                             genotype_only, )
+                //                             somatic_allele_cnt_cutoff)
             } else {
                 snpfrag.get_candidate_snps(
                     &profile,
@@ -153,7 +151,6 @@ pub fn multithread_phase_haplotag(
                     min_dense_cnt,
                     somatic_allele_frac_cutoff,
                     somatic_allele_cnt_cutoff,
-                    genotype_only,
                 );
             }
             // TODO: for very high depth region, down-sampling the reads
