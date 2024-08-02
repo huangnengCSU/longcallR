@@ -1575,12 +1575,12 @@ impl SNPFrag {
     }
 
     pub fn divide_snps_into_blocks(&mut self, ld_weight_threshold: u32) -> GraphMap<usize, i32, Undirected> {
-        let mut ld_idxes: Vec<usize> = Vec::new();
-        for ti in 0..self.candidate_snps.len() {
-            if self.candidate_snps[ti].for_phasing {
-                ld_idxes.push(ti);
-            }
-        }
+        let ld_idxes: Vec<usize> = self.candidate_snps.iter()
+            .enumerate()
+            .filter(|(_, snp)| snp.for_phasing)
+            .map(|(index, _)| index)
+            .collect();
+
         let mut pass_ld_pair: Vec<(usize, usize)> = Vec::new();
         for i in 0..ld_idxes.len() {
             for j in i + 1..ld_idxes.len() {
@@ -1653,12 +1653,10 @@ impl SNPFrag {
         }
 
         // delete edges with weight < weight_threshold
-        let mut low_w_edges: Vec<(usize, usize)> = Vec::new();
-        for ld_edge in ld_graph.all_edges() {
-            if (ld_edge.2.abs() as u32) < ld_weight_threshold {
-                low_w_edges.push((ld_edge.0, ld_edge.1));
-            }
-        }
+        let low_w_edges: Vec<(usize, usize)> = ld_graph.all_edges()
+            .filter(|ld_edge| (ld_edge.2.abs() as u32) < ld_weight_threshold)
+            .map(|ld_edge| (ld_edge.0, ld_edge.1))
+            .collect();
         for edge in low_w_edges.iter() {
             ld_graph.remove_edge(edge.0, edge.1);
         }
@@ -1686,17 +1684,14 @@ impl SNPFrag {
         // println!("{}", format!("{}", Dot::new(&vis_graph)));
 
         let component = kosaraju_scc(&ld_graph);    // each component is an LD block
-        for cid in 0..component.len() {
-            let mut block = Block::default();
-            // print!("block: ");
-            block.block_id = cid as u32;
-            for idx in component[cid].iter() {
-                block.snp_idxes.push(*idx);
-                // print!("{}, ", self.candidate_snps[*idx].pos);
-            }
-            // println!();
+        component.iter().enumerate().for_each(|(cid, indices)| {
+            let block = Block {
+                block_id: cid as u32,
+                snp_idxes: indices.clone(),
+                ..Default::default()
+            };
             self.ld_blocks.push(block);
-        }
+        });
         return ld_graph;
     }
 }
