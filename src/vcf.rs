@@ -398,7 +398,6 @@ pub fn load_vcf(vcf_path: &String) -> (HashMap<String, HashSet<usize>>, HashMap<
             let pos = record.variant_start().unwrap().unwrap().get();
             let qual = record.quality_score().unwrap().unwrap();
             // store position by chromosome
-            input_candidates.entry(chr.to_string()).or_insert(HashSet::new()).insert(pos);
             let samples = record.samples();
             for (_, sample) in samples.iter().enumerate() {
                 let gt = sample.get(&header, key::GENOTYPE).unwrap().unwrap().unwrap();
@@ -416,12 +415,15 @@ pub fn load_vcf(vcf_path: &String) -> (HashMap<String, HashSet<usize>>, HashMap<
                         if gt_vec[0] + gt_vec[1] == 1 {
                             // gt: 0/1
                             input_candidates_genotype_qual.entry(chr.to_string()).or_insert(HashMap::new()).insert(pos, (1, qual));
+                            input_candidates.entry(chr.to_string()).or_insert(HashSet::new()).insert(pos);
                         } else if gt_vec[0] + gt_vec[1] == 2 {
                             // gt: 1/1
                             input_candidates_genotype_qual.entry(chr.to_string()).or_insert(HashMap::new()).insert(pos, (2, qual));
+                            input_candidates.entry(chr.to_string()).or_insert(HashSet::new()).insert(pos);
                         } else if gt_vec[0] + gt_vec[1] == 3 {
                             // gt: 1/2
                             input_candidates_genotype_qual.entry(chr.to_string()).or_insert(HashMap::new()).insert(pos, (3, qual));
+                            input_candidates.entry(chr.to_string()).or_insert(HashSet::new()).insert(pos);
                         }
                     }
                     _ => {}
