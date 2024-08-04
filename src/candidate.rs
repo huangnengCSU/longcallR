@@ -26,7 +26,6 @@ impl SNPFrag {
         exon_region_vec: Vec<Interval<usize, u8>>,
         min_allele_freq: f32,
         min_qual: u32,
-        hetvar_high_frac_cutoff: f32,
         min_allele_freq_include_intron: f32,
         min_coverage: u32,
         max_coverage: u32,
@@ -462,7 +461,6 @@ impl SNPFrag {
                     candidate_snp.genotype = -1;
                 }
                 candidate_snp.hom_var = true;
-                candidate_snp.germline = true;
                 candidate_snp.for_phasing = true;
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
@@ -476,44 +474,18 @@ impl SNPFrag {
                     candidate_snp.variant_type = 3; // triallelic SNP
                     candidate_snp.genotype = -1;
                     candidate_snp.hom_var = true;
-                    candidate_snp.germline = true;
                     candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
                     self.homo_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
                     continue;
-                } else if allele1 != bf.ref_base && allele2 == bf.ref_base {
-                    if allele1_freq >= hetvar_high_frac_cutoff && allele1_cnt >= 3 {
-                        candidate_snp.high_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    } else {
-                        candidate_snp.low_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    }
-                } else if allele2 != bf.ref_base && allele1 == bf.ref_base {
-                    if allele2_freq >= hetvar_high_frac_cutoff && allele2_cnt >= 3 {
-                        candidate_snp.high_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    } else {
-                        candidate_snp.low_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    }
+                } else if allele1 != bf.ref_base || allele2 != bf.ref_base {
+                    candidate_snp.het_var = true;
+                    candidate_snp.for_phasing = true;
+                    self.candidate_snps.push(candidate_snp);
+                    self.het_snps.push(self.candidate_snps.len() - 1);
+                    position += 1;
+                    continue;
                 } else {
                     println!("Error: unexpected condition, {:?}", candidate_snp);
                     position += 1;
@@ -533,8 +505,7 @@ impl SNPFrag {
         let mut concat_idxes = Vec::new();
         // filter dense region, hom_var + high_frac_het + low_frac_het
         concat_idxes.extend(self.homo_snps.clone());
-        concat_idxes.extend(self.high_frac_het_snps.clone());
-        concat_idxes.extend(self.low_frac_het_snps.clone());
+        concat_idxes.extend(self.het_snps.clone());
         // concat_idxes.extend(self.edit_snps.clone());
         concat_idxes.sort();
 
@@ -596,22 +567,13 @@ impl SNPFrag {
         self.homo_snps = tmp_idxes;
 
         let mut tmp_idxes = Vec::new();
-        for i in self.low_frac_het_snps.iter() {
+        for i in self.het_snps.iter() {
             if self.candidate_snps[*i].dense {
                 continue;
             }
             tmp_idxes.push(*i);
         }
-        self.low_frac_het_snps = tmp_idxes;
-
-        let mut tmp_idxes = Vec::new();
-        for i in self.high_frac_het_snps.iter() {
-            if self.candidate_snps[*i].dense {
-                continue;
-            }
-            tmp_idxes.push(*i);
-        }
-        self.high_frac_het_snps = tmp_idxes;
+        self.het_snps = tmp_idxes;
 
         // let mut tmp_idxes = Vec::new();
         // for i in self.edit_snps.iter() {
@@ -1314,7 +1276,6 @@ impl SNPFrag {
                     candidate_snp.genotype = -1;
                 }
                 candidate_snp.hom_var = true;
-                candidate_snp.germline = true;
                 candidate_snp.for_phasing = true;
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
@@ -1328,44 +1289,18 @@ impl SNPFrag {
                     candidate_snp.variant_type = 3; // triallelic SNP
                     candidate_snp.genotype = -1;
                     candidate_snp.hom_var = true;
-                    candidate_snp.germline = true;
                     candidate_snp.for_phasing = true;
                     self.candidate_snps.push(candidate_snp);
                     self.homo_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
                     continue;
-                } else if allele1 != bf.ref_base && allele2 == bf.ref_base {
-                    if allele1_freq >= hetvar_high_frac_cutoff && allele1_cnt >= 3 {
-                        candidate_snp.high_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    } else {
-                        candidate_snp.low_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    }
-                } else if allele2 != bf.ref_base && allele1 == bf.ref_base {
-                    if allele2_freq >= hetvar_high_frac_cutoff && allele2_cnt >= 3 {
-                        candidate_snp.high_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    } else {
-                        candidate_snp.low_frac_het = true;
-                        candidate_snp.for_phasing = true;
-                        self.candidate_snps.push(candidate_snp);
-                        self.low_frac_het_snps.push(self.candidate_snps.len() - 1);
-                        position += 1;
-                        continue;
-                    }
+                } else if allele1 != bf.ref_base || allele2 != bf.ref_base {
+                    candidate_snp.het_var = true;
+                    candidate_snp.for_phasing = true;
+                    self.candidate_snps.push(candidate_snp);
+                    self.het_snps.push(self.candidate_snps.len() - 1);
+                    position += 1;
+                    continue;
                 } else {
                     println!("Error: unexpected condition, {:?}", candidate_snp);
                     position += 1;
@@ -1380,8 +1315,7 @@ impl SNPFrag {
         let mut concat_idxes = Vec::new();
         // filter dense region, hom_var + high_frac_het + low_frac_het
         concat_idxes.extend(self.homo_snps.clone());
-        concat_idxes.extend(self.high_frac_het_snps.clone());
-        concat_idxes.extend(self.low_frac_het_snps.clone());
+        concat_idxes.extend(self.het_snps.clone());
         // concat_idxes.extend(self.edit_snps.clone());
         concat_idxes.sort();
 
@@ -1441,22 +1375,14 @@ impl SNPFrag {
         self.homo_snps = tmp_idxes;
 
         let mut tmp_idxes = Vec::new();
-        for i in self.low_frac_het_snps.iter() {
+        for i in self.het_snps.iter() {
             if self.candidate_snps[*i].dense {
                 continue;
             }
             tmp_idxes.push(*i);
         }
-        self.low_frac_het_snps = tmp_idxes;
+        self.het_snps = tmp_idxes;
 
-        let mut tmp_idxes = Vec::new();
-        for i in self.high_frac_het_snps.iter() {
-            if self.candidate_snps[*i].dense {
-                continue;
-            }
-            tmp_idxes.push(*i);
-        }
-        self.high_frac_het_snps = tmp_idxes;
 
         // let mut tmp_idxes = Vec::new();
         // for i in self.edit_snps.iter() {
@@ -1517,17 +1443,15 @@ impl SNPFrag {
                             candidate_snp.variant_type = 1;
                             candidate_snp.genotype = 0;
                             candidate_snp.for_phasing = true;
-                            candidate_snp.germline = true;
-                            candidate_snp.high_frac_het = true;
+                            candidate_snp.het_var = true;
                             self.candidate_snps.push(candidate_snp);
-                            self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
+                            self.het_snps.push(self.candidate_snps.len() - 1);
                         }
                         2 => {
                             // 1|1
                             candidate_snp.variant_type = 2;
                             candidate_snp.genotype = -1;
                             candidate_snp.for_phasing = true;
-                            candidate_snp.germline = true;
                             candidate_snp.hom_var = true;
                             self.candidate_snps.push(candidate_snp);
                             self.homo_snps.push(self.candidate_snps.len() - 1);
@@ -1535,10 +1459,9 @@ impl SNPFrag {
                         3 => {
                             candidate_snp.variant_type = 3;
                             candidate_snp.genotype = -1;
-                            candidate_snp.germline = true;
                             candidate_snp.hom_var = true;
                             self.candidate_snps.push(candidate_snp);
-                            self.high_frac_het_snps.push(self.candidate_snps.len() - 1);
+                            self.het_snps.push(self.candidate_snps.len() - 1);
                         }
                         _ => {
                             println!("Error: unknown genotype");

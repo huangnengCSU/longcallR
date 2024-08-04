@@ -49,14 +49,10 @@ pub struct CandidateSNP {
     // index of the fragment cover this SNP
     pub rna_editing: bool,
     // A->G, T-C, rna_editing variant does not have haplotype information, no phasing
-    pub germline: bool,
-    // germline snp or not after evaluation of phased high frac het snps
     pub dense: bool,
     // lie in the dense snp region
-    pub low_frac_het: bool,
-    // low fraction het_var
-    pub high_frac_het: bool,
-    // high fraction het_var
+    pub het_var: bool,
+    // het var
     pub for_phasing: bool,
     // whether used in phasing
     pub hom_var: bool,
@@ -75,8 +71,6 @@ pub struct CandidateSNP {
     // base qualities for identifying somatic mutation
     pub phase_set: u32,
     // phase set id is the position of the first snp in the phase set
-    pub haplotype_expression: [u32; 4],
-    // hap1_ref, hap1_alt, hap2_ref, hap2_alt
 }
 
 #[derive(Debug, Clone, Default)]

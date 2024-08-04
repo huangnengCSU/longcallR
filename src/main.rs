@@ -107,10 +107,6 @@ struct Args {
     #[arg(long, default_value_t = 0.20)]
     min_allele_freq: f32,
 
-    /// fraction threshold of heterozygous variant used for phasing, high fraction het var
-    #[arg(long, default_value_t = 0.25)]
-    hetvar_high_frac_cutoff: f32,
-
     // /// Minimum support number for each allele
     // #[arg(long, default_value_t = 2)]
     // min_allele_cnt: u32,
@@ -267,7 +263,6 @@ fn main() {
     let min_mapq = arg.min_mapq;
     let min_baseq = arg.min_baseq;
     let min_qual = arg.min_qual;
-    let hetvar_high_frac_cutoff = arg.hetvar_high_frac_cutoff;
     let strand_bias_threshold = arg.strand_bias_threshold;
     let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
     let distance_to_splicing_site = arg.distance_to_splicing_site;
@@ -435,7 +430,6 @@ fn main() {
         min_baseq,
         min_allele_freq,
         min_qual,
-        hetvar_high_frac_cutoff,
         min_allele_freq_include_intron,
         use_strand_bias,
         strand_bias_threshold,

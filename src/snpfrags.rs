@@ -20,10 +20,8 @@ pub struct SNPFrag {
     // index of candidate homozygous SNPs
     pub edit_snps: Vec<usize>,
     // index of candidate rna editing SNPs
-    pub low_frac_het_snps: Vec<usize>,
-    // index of candidate low fraction het SNPs
-    pub high_frac_het_snps: Vec<usize>,
-    // index of candidate high fraction het SNPs
+    pub het_snps: Vec<usize>,
+    // index of candidate het SNPs
     pub somatic_snps: Vec<usize>,
     // index of candidate somatic mutation
     pub fragments: Vec<Fragment>,
@@ -467,26 +465,7 @@ impl SNPFrag {
             if phase_score1.max(phase_score2) >= min_phase_score as f64 {
                 // in-phase
                 phase_score = phase_score1.max(phase_score2);
-                let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
-                for k in 0..sigma.len() {
-                    if sigma[k] == 1 {
-                        // hap1
-                        if ps[k] == 1 {
-                            haplotype_allele_expression[0] += 1; // hap1 allele1, reference allele
-                        } else if ps[k] == -1 {
-                            haplotype_allele_expression[1] += 1; // hap1 allele2, alternative allele
-                        }
-                    } else if sigma[k] == -1 {
-                        // hap2
-                        if ps[k] == 1 {
-                            haplotype_allele_expression[2] += 1; // hap2 allele1, reference allele
-                        } else if ps[k] == -1 {
-                            haplotype_allele_expression[3] += 1; // hap2 allele2, alternative allele
-                        }
-                    }
-                }
                 snp.non_selected = false;
-                snp.germline = true;
                 snp.rna_editing = false;
                 snp.for_phasing = true;
                 let mut rng = rand::thread_rng();
@@ -507,12 +486,10 @@ impl SNPFrag {
                 snp.haplotype = if phase_score1 >= phase_score2 { 1 } else { -1 };
                 snp.genotype = 0;
                 snp.variant_type = 1;
-                snp.haplotype_expression = haplotype_allele_expression;
                 snp.phase_score = phase_score;
             } else {
                 // out-of-phase
                 snp.non_selected = true;
-                snp.germline = false;
                 snp.rna_editing = true;
             }
         }
@@ -761,31 +738,7 @@ impl SNPFrag {
             if sigma.len() > 0 && hap1_reads_num >= 1 && hap2_reads_num >= 1 {
                 // each haplotype should have at least 2 reads
                 phase_score = -10.0_f64 * (1.0 - cal_phase_score_log(snp.haplotype, snp.genotype, &sigma, &ps, &probs)).log10(); // calaulate assignment score
-                if phase_score >= min_phase_score as f64 {
-                    let mut haplotype_allele_expression: [u32; 4] = [0, 0, 0, 0];   // hap1_ref, hap1_alt, hap2_ref, hap2_alt
-                    for k in 0..sigma.len() {
-                        if sigma[k] == 1 {
-                            // hap1
-                            if ps[k] == 1 {
-                                haplotype_allele_expression[0] += 1; // hap1 allele1, reference allele
-                            } else if ps[k] == -1 {
-                                haplotype_allele_expression[1] += 1; // hap1 allele2, alternative allele
-                            }
-                        } else if sigma[k] == -1 {
-                            // hap2
-                            if ps[k] == 1 {
-                                haplotype_allele_expression[2] += 1; // hap2 allele1, reference allele
-                            } else if ps[k] == -1 {
-                                haplotype_allele_expression[3] += 1; // hap2 allele2, alternative allele
-                            }
-                        }
-                    }
-                    snp.germline = true;
-                    snp.haplotype_expression = haplotype_allele_expression;
-                    snp.phase_score = phase_score;
-                } else {
-                    snp.phase_score = phase_score;
-                }
+                snp.phase_score = phase_score;
             } else {
                 snp.phase_score = 0.19940219;
             }
