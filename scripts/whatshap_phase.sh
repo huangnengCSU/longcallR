@@ -51,7 +51,7 @@ done
 
 # Split the VCF file by chromosome
 parallel --joblog "${out}/splited_vcf.log" -j"$threads" \
-"bcftools view -r {1} $vcf > $out/{1}.splited.vcf" ::: "${CHR[@]}"
+"bcftools view -r {1} -f PASS $vcf > $out/{1}.splited.vcf" ::: "${CHR[@]}"
 
 # Whatshap phase
 parallel --joblog "${out}/whatshap_phase.log" -j"$threads" \
