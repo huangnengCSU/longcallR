@@ -908,33 +908,53 @@ impl SNPFrag {
                 }
             }
             if node_snps.len() >= 2 {
-                for j in 0..node_snps.len() - 1 {
-                    let haplotype_pair = [self.candidate_snps[node_snps[j]].haplotype, self.candidate_snps[node_snps[j + 1]].haplotype];
-                    let mut allele_pair = [0, 0];
-                    for fe in frag.list.iter() {
-                        if fe.snp_idx == node_snps[j] {
-                            allele_pair[0] = fe.p;
-                        } else if fe.snp_idx == node_snps[j + 1] {
-                            allele_pair[1] = fe.p;
+                // for j in 0..node_snps.len() - 1 {
+                //     let haplotype_pair = [self.candidate_snps[node_snps[j]].haplotype, self.candidate_snps[node_snps[j + 1]].haplotype];
+                //     let mut allele_pair = [0, 0];
+                //     for fe in frag.list.iter() {
+                //         if fe.snp_idx == node_snps[j] {
+                //             allele_pair[0] = fe.p;
+                //         } else if fe.snp_idx == node_snps[j + 1] {
+                //             allele_pair[1] = fe.p;
+                //         }
+                //     }
+                //     if haplotype_pair[0] * haplotype_pair[1] != allele_pair[0] * allele_pair[1] { continue; }
+                //     if !graph.contains_edge(node_snps[j], node_snps[j + 1]) {
+                //         graph.add_edge(node_snps[j], node_snps[j + 1], vec![k]);    // weight is a vector of fragment index, which is covered by the edge
+                //     } else {
+                //         graph.edge_weight_mut(node_snps[j], node_snps[j + 1]).unwrap().push(k);
+                //     }
+                // }
+                for j0 in 0..node_snps.len() {
+                    for j1 in 0..node_snps.len() {
+                        if j0 == j1 { continue; }
+                        let haplotype_pair = [self.candidate_snps[node_snps[j0]].haplotype, self.candidate_snps[node_snps[j1]].haplotype];
+                        let mut allele_pair = [0, 0];
+                        for fe in frag.list.iter() {
+                            if fe.snp_idx == node_snps[j0] {
+                                allele_pair[0] = fe.p;
+                            } else if fe.snp_idx == node_snps[j1] {
+                                allele_pair[1] = fe.p;
+                            }
                         }
-                    }
-                    if haplotype_pair[0] * haplotype_pair[1] != allele_pair[0] * allele_pair[1] { continue; }
-                    if !graph.contains_edge(node_snps[j], node_snps[j + 1]) {
-                        graph.add_edge(node_snps[j], node_snps[j + 1], vec![k]);    // weight is a vector of fragment index, which is covered by the edge
-                    } else {
-                        graph.edge_weight_mut(node_snps[j], node_snps[j + 1]).unwrap().push(k);
+                        if haplotype_pair[0] * haplotype_pair[1] != allele_pair[0] * allele_pair[1] { continue; }
+                        if !graph.contains_edge(node_snps[j0], node_snps[j1]) {
+                            graph.add_edge(node_snps[j0], node_snps[j1], vec![k]);    // weight is a vector of fragment index, which is covered by the edge
+                        } else {
+                            graph.edge_weight_mut(node_snps[j0], node_snps[j1]).unwrap().push(k);
+                        }
                     }
                 }
             }
         }
-        let low_w_edges: Vec<(usize, usize)> = graph.all_edges()
-            .filter(|&edge| edge.2.len() < 2)
-            .map(|edge| (edge.0, edge.1))
-            .collect();
-
-        for edge in low_w_edges.iter() {
-            graph.remove_edge(edge.0, edge.1);
-        }
+        // let low_w_edges: Vec<(usize, usize)> = graph.all_edges()
+        //     .filter(|&edge| edge.2.len() < 2)
+        //     .map(|edge| (edge.0, edge.1))
+        //     .collect();
+        //
+        // for edge in low_w_edges.iter() {
+        //     graph.remove_edge(edge.0, edge.1);
+        // }
 
         let scc = kosaraju_scc(&graph);
         // println!("{:?}", scc);
