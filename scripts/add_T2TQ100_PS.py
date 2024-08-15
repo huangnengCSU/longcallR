@@ -11,9 +11,11 @@ def parse_args():
 
     return parser.parse_args()
 
+
 def add_ps_tag_to_header(vcf):
     # Add the PS tag to the FORMAT field of the VCF header
     vcf.header.formats.add("PS", 1, "String", "Phase set")
+
 
 def transform_records(input_vcf, output_vcf):
     vcf = pysam.VariantFile(input_vcf)
@@ -23,6 +25,7 @@ def transform_records(input_vcf, output_vcf):
     out_vcf = pysam.VariantFile(output_vcf, 'w', header=vcf.header)
     for record in vcf:
         chr = record.chrom
+        chr = chr.replace("chr", "")
         record.samples[0]['PS'] = chr
         out_vcf.write(record)
 
