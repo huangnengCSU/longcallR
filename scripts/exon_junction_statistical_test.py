@@ -220,8 +220,8 @@ class AseEvent:
     def __init__(self, chr, start, end, exon_or_junction, gene_id, phase_set, hap1_absent, hap1_present, hap2_absent,
                  hap2_present, p_value):
         self.chr = chr
-        self.start = start  # bed format, 0-based, start-inclusive
-        self.end = end  # bed format, 0-based, end-exclusive
+        self.start = start  # 1-based, inclusive
+        self.end = end  # 1-based, inclusive
         self.gene_id = gene_id
         self.exon_or_junction = exon_or_junction
         self.phase_set = phase_set
@@ -233,10 +233,11 @@ class AseEvent:
 
     @staticmethod
     def __header__():
-        return ("#chr\tstart\tend\tgene_id\tExon/Junction\tphase_set\thap1_absent\thap1_present\thap2_absent\thap2_present\tp_value")
+        return ("#gene_id\tregion\tExon/Junction\tphase_set\thap1_absent\thap1_present\thap2_absent\thap2_present\tp_value")
 
     def __str__(self):
-        return (f"{self.chr}\t{self.start}\t{self.end}\t{self.gene_id}\t{self.exon_or_junction}\t{self.phase_set}\t{self.hap1_absent}\t{self.hap1_present}\t{self.hap2_absent}\t{self.hap2_present}\t{self.p_value}")
+        return (f"{self.gene_id}\t{self.chr}:{self.start}-{self.end}\t{self.exon_or_junction}\t{self.phase_set}\t"
+                f"{self.hap1_absent}\t{self.hap1_present}\t{self.hap2_absent}\t{self.hap2_present}\t{self.p_value}")
 
 
 def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, absent_reads, present_reads, reads_tags,
@@ -278,7 +279,7 @@ def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, abse
         oddsratio, pvalue = fisher_exact(table)
         if pvalue < p_value_threshold:
             if exon_or_junction == 0:
-                event = AseEvent(chr, start - 1, end, 'Exon', gene_id, phase_set,
+                event = AseEvent(chr, start, end, 'Exon', gene_id, phase_set,
                                  hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
                                  hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue)
                 ase_events.append(event)
@@ -287,7 +288,7 @@ def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, abse
                 #     f"{hap_present_counts[phase_set][1]} present; H2: {hap_absent_counts[phase_set][2]} absent, "
                 #     f"{hap_present_counts[phase_set][2]} present; p-value: {pvalue}")
             elif exon_or_junction == 1:
-                event = AseEvent(chr, start - 1, end, 'Junction', gene_id, phase_set,
+                event = AseEvent(chr, start, end, 'Junction', gene_id, phase_set,
                                  hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
                                  hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue)
                 ase_events.append(event)
