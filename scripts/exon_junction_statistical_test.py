@@ -130,6 +130,9 @@ def parse_reads_from_alignment(bam_file, chr, start_pos, end_pos):
     samfile = pysam.AlignmentFile(bam_file, "rb")
     fetch_start = start_pos - 1  # 0-based, start-inclusive
     fetch_end = end_pos  # 0-based, end-exclusive
+    contigs = samfile.references
+    if chr not in contigs:
+        return reads_positions, reads_exons, reads_junctions, reads_tags
     for read in samfile.fetch(chr, fetch_start, fetch_end):
         # read is not phased, ignore
         if not read.has_tag("PS") or not read.get_tag("HP"):
