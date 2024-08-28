@@ -71,7 +71,7 @@ def binary_search_snp(query_position, variants_list):
 def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_threshold):
     variants = load_all_variants(vcf_file)
     fout = open(output_file, "w")
-    fout.write("#Gene_id\tGene_name\tEvent\tExon/Junction\tsQTL\tDistance\n")
+    fout.write("#Gene_id\tGene_name\tEvent\tExon/Junction\tP_value\tsQTL\tDistance\n")
     with open(ase_event_file) as f:
         for line in f:
             if line.startswith("#"):
@@ -79,6 +79,7 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
             parts = line.strip().split("\t")
             gene_id, gene_name = parts[0], parts[1]
             exon_junction = parts[3]
+            pvalue = float(parts[10])
             event = parts[2]
             chr = event.split(":")[0]
             start_pos, end_pos = map(int, event.split(":")[1].split("-"))
@@ -93,8 +94,8 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
                 hit_variant = variant_e
                 distance = abs(variant_e.pos - end_pos)
             if distance <= sQTL_dist_threshold:
-                # print(f"Gene: {gene_id} ({gene_name}), Event: {event} ({exon_junction}), sQTL: {hit_variant.chr}:{hit_variant.pos}, distance: {distance}")
-                fout.write(f"{gene_id}\t{gene_name}\t{event}\t{exon_junction}\t{hit_variant.chr}:{hit_variant.pos}\t{distance}\n")
+                # print(f"Gene: {gene_id} ({gene_name}), Event: {event} ({exon_junction}) P_value: {pvalue}, sQTL: {hit_variant.chr}:{hit_variant.pos}, distance: {distance}")
+                fout.write(f"{gene_id}\t{gene_name}\t{event}\t{exon_junction}\t{pvalue}\t{hit_variant.chr}:{hit_variant.pos}\t{distance}\n")
     fout.close()
 
 
