@@ -1,6 +1,7 @@
 import argparse
 import concurrent.futures
 import gzip
+import math
 from collections import defaultdict
 
 import pysam
@@ -221,8 +222,7 @@ def check_absent_present(start_pos, end_pos, exon_or_junction, reads_positions, 
 
 class AseEvent:
     def __init__(self, chr, start, end, exon_or_junction, novel, gene_id, phase_set, hap1_absent, hap1_present,
-                 hap2_absent,
-                 hap2_present, p_value):
+                 hap2_absent, hap2_present, p_value, sor, hap1_ratio, hap2_ratio):
         self.chr = chr
         self.start = start  # 1-based, inclusive
         self.end = end  # 1-based, inclusive
@@ -235,20 +235,33 @@ class AseEvent:
         self.hap2_absent = hap2_absent
         self.hap2_present = hap2_present
         self.p_value = p_value
+        self.sor = sor
+        self.hap1_ratio = hap1_ratio
+        self.hap2_ratio = hap2_ratio
 
     @staticmethod
     def __header__():
         return (
-            "#gene_id\tregion\tExon/Junction\tnovel\tphase_set\thap1_absent\thap1_present\thap2_absent\thap2_present\tp_value")
+            "#gene_id\tregion\tExon/Junction\tnovel\tphase_set\thap1_absent\thap1_present\thap2_absent\thap2_present\tp_value\tSOR\tH1_Ratio\tH2_Ratio")
 
     def __str__(self):
         return (
             f"{self.gene_id}\t{self.chr}:{self.start}-{self.end}\t{self.exon_or_junction}\t{self.novel}\t{self.phase_set}\t"
-            f"{self.hap1_absent}\t{self.hap1_present}\t{self.hap2_absent}\t{self.hap2_present}\t{self.p_value}")
+            f"{self.hap1_absent}\t{self.hap1_present}\t{self.hap2_absent}\t{self.hap2_present}\t{self.p_value}\t{self.sor}\t{self.hap1_ratio}\t{self.hap2_ratio}")
 
 
-def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, novel, absent_reads, present_reads,
-                                reads_tags, p_value_threshold=0.05):
+def calc_sor(hap1_absent, hap1_present, hap2_absent, hap2_present):
+    R = (hap1_absent * hap2_present + 1e-9) / (hap1_present * hap2_absent + 1e-9)
+    R_inverse = 1 / R
+    sum = R + R_inverse
+    SOR = math.log(sum)
+    hap1_Ratio = min(hap1_absent, hap1_present) / (max(hap1_absent, hap1_present) + 1e-9)
+    hap2_Ratio = min(hap2_absent, hap2_present) / (max(hap2_absent, hap2_present) + 1e-9)
+    return SOR, hap1_Ratio, hap2_Ratio
+
+
+def haplotype_event_test(gene_id, chr, start, end, exon_or_junction, novel, absent_reads, present_reads,
+                                reads_tags, p_value_threshold, sor_threshold):
     """
     Perform Fisher's exact test to determine if the haplotype distribution is significantly different between absent and present reads.
     :param gene_id:
@@ -284,11 +297,15 @@ def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, nove
         table = [[hap_absent_counts[phase_set][1], hap_absent_counts[phase_set][2]],
                  [hap_present_counts[phase_set][1], hap_present_counts[phase_set][2]]]
         oddsratio, pvalue = fisher_exact(table)
-        if pvalue < p_value_threshold:
+        sor, hap1_ratio, hap2_ratio = calc_sor(hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
+                                               hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2])
+        ## High SOR + Low hap1_Ratio or hap2_Ratio: Strong evidence of haplotype specific.
+        if pvalue < p_value_threshold and (hap1_ratio < sor_threshold or hap2_ratio < sor_threshold):
             if exon_or_junction == 0:
                 event = AseEvent(chr, start, end, 'Exon', novel, gene_id, phase_set,
                                  hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
-                                 hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue)
+                                 hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue, sor,
+                                 hap1_ratio, hap2_ratio)
                 ase_events.append(event)
                 # print(
                 #     f"event:{gene_id}, exon, {chr}:{start}-{end}, PS: {phase_set}, H1: {hap_absent_counts[phase_set][1]} absent, "
@@ -297,7 +314,8 @@ def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, nove
             elif exon_or_junction == 1:
                 event = AseEvent(chr, start, end, 'Junc', novel, gene_id, phase_set,
                                  hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
-                                 hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue)
+                                 hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue, sor,
+                                 hap1_ratio, hap2_ratio)
                 ase_events.append(event)
                 # print(
                 #     f"event:{gene_id}, junction, {chr}:{start}-{end}, PS: {phase_set}, H1: {hap_absent_counts[phase_set][1]} absent, "
@@ -306,7 +324,8 @@ def haplotype_event_fisher_test(gene_id, chr, start, end, exon_or_junction, nove
     return ase_events
 
 
-def analyze_gene(gene_id, annotation_exons, annotation_junctions, region, bam_file, min_count, p_value_threshold):
+def analyze_gene(gene_id, annotation_exons, annotation_junctions, region, bam_file, min_count, p_value_threshold,
+                 sor_threshold):
     chr = region["chr"]
     start = region["start"]
     end = region["end"]
@@ -334,8 +353,8 @@ def analyze_gene(gene_id, annotation_exons, annotation_junctions, region, bam_fi
         novel_exon = (chr, exon_start, exon_end) not in gene_exon_set
         absences, presents = check_absent_present(exon_start, exon_end, 0, reads_positions, reads_exons,
                                                   reads_introns)
-        ase_events = haplotype_event_fisher_test(gene_id, chr, exon_start, exon_end, 0, novel_exon,
-                                                 absences, presents, reads_tags, p_value_threshold)
+        ase_events = haplotype_event_test(gene_id, chr, exon_start, exon_end, 0, novel_exon,
+                                                 absences, presents, reads_tags, p_value_threshold, sor_threshold)
         gene_ase_events.extend(ase_events)
 
     # Analyze junction regions
@@ -345,20 +364,21 @@ def analyze_gene(gene_id, annotation_exons, annotation_junctions, region, bam_fi
         novel_junction = (chr, junction_start, junction_end) not in gene_junction_set
         absences, presents = check_absent_present(junction_start, junction_end, 1, reads_positions,
                                                   reads_exons, reads_introns)
-        ase_events = haplotype_event_fisher_test(gene_id, chr, junction_start, junction_end, 1,
-                                                 novel_junction, absences, presents, reads_tags, p_value_threshold)
+        ase_events = haplotype_event_test(gene_id, chr, junction_start, junction_end, 1,
+                                                 novel_junction, absences, presents, reads_tags, p_value_threshold,
+                                                 sor_threshold)
         gene_ase_events.extend(ase_events)
 
     return gene_ase_events
 
 
-def analyze(annotation_file, bam_file, output_file, min_count, threads, p_value_threshold):
+def analyze(annotation_file, bam_file, output_file, min_count, threads, p_value_threshold, sor_threshold):
     all_ase_events = []
     anno_gene_regions, anno_exon_regions, anno_intron_regions = get_gene_regions(annotation_file)
 
     # Prepare data for multiprocessing
     gene_data_list = [(gene_id, anno_exon_regions[gene_id], anno_intron_regions[gene_id], region, bam_file, min_count,
-                       p_value_threshold) for gene_id, region in anno_gene_regions.items()]
+                       p_value_threshold, sor_threshold) for gene_id, region in anno_gene_regions.items()]
 
     # Use ProcessPoolExecutor for multiprocessing
     with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
@@ -383,6 +403,8 @@ if __name__ == "__main__":
     parse.add_argument("-o", "--output_file", help="Output file", required=True)
     parse.add_argument("-t", "--threads", help="Number of threads", default=1, type=int)
     parse.add_argument("-s", "--min_sup", help="Minimum support of phased reads for exon or junction", default=10)
-    parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=0.05)
+    parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=1e-10)
+    parse.add_argument("sor_threshold", help="SOR threshold for ASE event", default=0.05)
     args = parse.parse_args()
-    analyze(args.annotation_file, args.bam_file, args.output_file, args.min_sup, args.threads, args.p_value_threshold)
+    analyze(args.annotation_file, args.bam_file, args.output_file, args.min_sup, args.threads, args.p_value_threshold,
+            args.sor_threshold)
