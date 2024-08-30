@@ -68,34 +68,39 @@ def binary_search_snp(query_position, variants_list):
     return variants_list[left] if left_dist < right_dist else variants_list[right]
 
 
-def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_threshold):
+def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_threshold, sor_threshold):
     variants = load_all_variants(vcf_file)
     fout = open(output_file, "w")
-    fout.write("#Gene_id\tGene_name\tEvent\tExon/Junction\tP_value\tsQTL\tDistance\n")
+    fout.write(
+        "#Gene_id\tGene_name\tEvent\tExon/Junction\tHap1_absent\tHap1_present\tHap2_absent\tHap2_present\tP_value\tSOR\tsQTL\tDistance\n")
     with open(ase_event_file) as f:
         for line in f:
             if line.startswith("#"):
                 continue
             parts = line.strip().split("\t")
-            gene_id, gene_name = parts[0], parts[1]
-            exon_junction = parts[3]
-            pvalue = float(parts[10])
-            event = parts[2]
-            chr = event.split(":")[0]
-            start_pos, end_pos = map(int, event.split(":")[1].split("-"))
-            if len(variants[chr]) == 0:
-                continue
-            variant_s = binary_search_snp(start_pos, variants[chr])
-            variant_e = binary_search_snp(end_pos, variants[chr])
-            if abs(variant_s.pos - start_pos) < abs(variant_e.pos - end_pos):
-                hit_variant = variant_s
-                distance = abs(variant_s.pos - start_pos)
-            else:
-                hit_variant = variant_e
-                distance = abs(variant_e.pos - end_pos)
-            if distance <= sQTL_dist_threshold:
-                # print(f"Gene: {gene_id} ({gene_name}), Event: {event} ({exon_junction}) P_value: {pvalue}, sQTL: {hit_variant.chr}:{hit_variant.pos}, distance: {distance}")
-                fout.write(f"{gene_id}\t{gene_name}\t{event}\t{exon_junction}\t{pvalue}\t{hit_variant.chr}:{hit_variant.pos}\t{distance}\n")
+            sor = float(parts[11])
+            if sor >= sor_threshold:
+                gene_id, gene_name = parts[0], parts[1]
+                exon_junction = parts[3]
+                pvalue = float(parts[10])
+                hap1_absent, hap1_present, hap2_absent, hap2_present = map(int, parts[6:10])
+                event = parts[2]
+                chr = event.split(":")[0]
+                start_pos, end_pos = map(int, event.split(":")[1].split("-"))
+                if len(variants[chr]) == 0:
+                    continue
+                variant_s = binary_search_snp(start_pos, variants[chr])
+                variant_e = binary_search_snp(end_pos, variants[chr])
+                if abs(variant_s.pos - start_pos) < abs(variant_e.pos - end_pos):
+                    hit_variant = variant_s
+                    distance = abs(variant_s.pos - start_pos)
+                else:
+                    hit_variant = variant_e
+                    distance = abs(variant_e.pos - end_pos)
+                if distance <= sQTL_dist_threshold:
+                    fout.write(f"{gene_id}\t{gene_name}\t{event}\t{exon_junction}\t"
+                               f"{hap1_absent}\t{hap1_present}\t{hap2_absent}\t{hap2_present}"
+                               f"\t{pvalue}\t{sor}\t{hit_variant.chr}:{hit_variant.pos}\t{distance}\n")
     fout.close()
 
 
@@ -105,5 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--ase", type=str, required=True, help="ASE event file")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("-d", "--distance", type=int, default=5, help="sQTL distance threshold")
+    parser.add_argument("--sor_threshold", type=float, default=3.0,
+                        help="SOR threshold for detecting sQTLs, higher values are more stringent")
     args = parser.parse_args()
-    find_candidate_sQTL(args.vcf, args.ase, args.output, args.distance)
+    find_candidate_sQTL(args.vcf, args.ase, args.output, args.distance, args.sor_threshold)
