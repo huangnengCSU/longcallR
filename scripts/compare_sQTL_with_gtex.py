@@ -37,6 +37,7 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
     """Load candidate sQTL database."""
     total_sQTL_cnt = 0
     hit_sQTL_cnt = 0
+    found_sQTL = defaultdict(int)
     with open(candidate_sQTL_file) as f:
         next(f)
         for line in f:
@@ -45,10 +46,14 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
             gene_name = fields[1]
             sQTL = fields[10]
             if sQTL in gtex_sQTL[gene_id]:
-                hit_sQTL_cnt += 1
+                found_sQTL[sQTL] += 1
             else:
+                found_sQTL[sQTL] += 0
                 print(f"Missed sQTL: {gene_id}, {gene_name}, {sQTL}")
-            total_sQTL_cnt += 1
+    for sqtl, hit in found_sQTL.items():
+        if hit > 0:
+            hit_sQTL_cnt += 1
+        total_sQTL_cnt += 1
     print(f"Total sQTL: {total_sQTL_cnt}, Hit sQTL: {hit_sQTL_cnt}")
     return total_sQTL_cnt, hit_sQTL_cnt
 
