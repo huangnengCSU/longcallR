@@ -57,15 +57,19 @@ def get_gene_regions(annotation_file):
 
             if feature_type == "gene":
                 gene_id = attr_dict["gene_id"]
+                gene_type = attr_dict["gene_type"]
                 try:
                     gene_name = attr_dict["gene_name"]
                 except KeyError:
                     gene_name = "."  # Use a placeholder if gene name is not available
-                process_gene(parts, gene_id, gene_name)
+                if gene_type!="processed_pseudogene":
+                    process_gene(parts, gene_id, gene_name)
             elif feature_type == "exon":
+                gene_type = attr_dict["gene_type"]
                 transcript_id = attr_dict["transcript_id"]
                 gene_id = attr_dict["gene_id"]
-                process_exon(parts, gene_id, transcript_id)
+                if gene_type != "processed_pseudogene":
+                    process_exon(parts, gene_id, transcript_id)
 
     open_func = gzip.open if annotation_file.endswith(".gz") else open
     file_type = "gff3" if ".gff3" in annotation_file else "gtf"
@@ -192,7 +196,6 @@ def cluster_junctions(reads_junctions, min_count=10):
 def check_absent_present(start_pos, end_pos, exon_or_junction, reads_positions, reads_exons, reads_junctions):
     """
     Find the reads where an exon or junction is absent or present.
-    :param chr:
     :param start_pos: 1-based, start-inclusive
     :param end_pos: 1-based, end-inclusive
     :param exon_or_junction: 0 for exon, 1 for junction
