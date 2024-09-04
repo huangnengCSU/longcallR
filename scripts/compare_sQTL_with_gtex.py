@@ -16,21 +16,22 @@ def load_gtex_sQTL_database(gtex_sQTL_files):
             open_func = open
             mode = 'r'  # Read mode for regular files
 
-        with open_func(gtex_sQTL_file, mode) as f:
+        # Open the file with error handling for encoding issues
+        with open_func(gtex_sQTL_file, mode, encoding='utf-8', errors='replace') as f:
             next(f)  # Skip header
             for line in f:
                 fields = line.strip().split('\t')
-                gene_name = fields[1]
-                variant_chr = fields[13]
-                variant_pos = int(fields[14])
-                gtex_sQTL[gene_name].add(f"{variant_chr}:{variant_pos}")
+                variant_chr = fields[0].split('_')[0]
+                variant_pos = int(fields[0].split('_')[1])
+                gene_id = fields[1].split(':')[-1].split('.')[0]  # use gene_id main part
+                gtex_sQTL[gene_id].add(f"{variant_chr}:{variant_pos}")
     return gtex_sQTL
 
 
 def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
     gtex_sQTL_files = []
     for fname in os.listdir(gtex_sQTL_folder):
-        if "sgenes" in fname:
+        if "sqtl_signifpairs" in fname:
             gtex_sQTL_files.append(os.path.join(gtex_sQTL_folder, fname))
     gtex_sQTL = load_gtex_sQTL_database(gtex_sQTL_files)
     """Load candidate sQTL database."""
@@ -40,10 +41,13 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
         next(f)
         for line in f:
             fields = line.strip().split('\t')
+            gene_id = fields[0].split('.')[0]  # use gene_id main part
             gene_name = fields[1]
-            sQTL = fields[5]
-            if sQTL in gtex_sQTL[gene_name]:
+            sQTL = fields[10]
+            if sQTL in gtex_sQTL[gene_id]:
                 hit_sQTL_cnt += 1
+            else:
+                print(f"Missed sQTL: {gene_id}, {gene_name}, {sQTL}")
             total_sQTL_cnt += 1
     print(f"Total sQTL: {total_sQTL_cnt}, Hit sQTL: {hit_sQTL_cnt}")
     return total_sQTL_cnt, hit_sQTL_cnt
