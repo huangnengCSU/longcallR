@@ -62,7 +62,7 @@ def get_gene_regions(annotation_file):
                     gene_name = attr_dict["gene_name"]
                 except KeyError:
                     gene_name = "."  # Use a placeholder if gene name is not available
-                if gene_type!="processed_pseudogene":
+                if gene_type != "processed_pseudogene":
                     process_gene(parts, gene_id, gene_name)
             elif feature_type == "exon":
                 gene_type = attr_dict["gene_type"]
@@ -209,6 +209,8 @@ def check_absent_present(start_pos, end_pos, exon_or_junction, reads_positions, 
     for read_name, (read_start, read_end) in reads_positions.items():
         if read_start > start_pos or read_end < end_pos:
             continue
+        # if read_start > end_pos or read_end < start_pos:
+        #     continue
         if exon_or_junction == 0:
             present = False
             for exon_start, exon_end in reads_exons[read_name]:
@@ -337,22 +339,22 @@ def analyze_gene(gene_id, gene_name, annotation_exons, annotation_junctions, reg
 
     # get all exons and junctions
     gene_exon_set = set()
-    for transcript_id, exons in annotation_exons.items():
-        for exon in exons:
+    for transcript_id, anno_exons in annotation_exons.items():
+        for exon in anno_exons:
             gene_exon_set.add(exon)
     gene_junction_set = set()
-    for transcript_id, junctions in annotation_junctions.items():
-        for junction in junctions:
+    for transcript_id, anno_junctions in annotation_junctions.items():
+        for junction in anno_junctions:
             gene_junction_set.add(junction)
 
     # Extract relevant reads and regions
     reads_positions, reads_exons, reads_introns, reads_tags = parse_reads_from_alignment(bam_file, chr, start, end)
-    exons = cluster_exons(reads_exons, min_count)
-    junctions = cluster_junctions(reads_introns, min_count)
+    read_clustered_exons = cluster_exons(reads_exons, min_count)
+    read_clustered_junctions = cluster_junctions(reads_introns, min_count)
 
     gene_ase_events = []
     # Analyze exon regions
-    for exon in exons:
+    for exon in read_clustered_exons:
         exon_start = exon[0]
         exon_end = exon[1]
         novel_exon = (chr, exon_start, exon_end) not in gene_exon_set
@@ -363,7 +365,7 @@ def analyze_gene(gene_id, gene_name, annotation_exons, annotation_junctions, reg
         gene_ase_events.extend(ase_events)
 
     # Analyze junction regions
-    for junction in junctions:
+    for junction in read_clustered_junctions:
         junction_start = junction[0]
         junction_end = junction[1]
         novel_junction = (chr, junction_start, junction_end) not in gene_junction_set
