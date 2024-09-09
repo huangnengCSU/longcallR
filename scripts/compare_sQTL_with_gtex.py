@@ -7,6 +7,7 @@ from collections import defaultdict
 def load_gtex_sQTL_database(gtex_sQTL_files):
     """Load GTEx sQTL database."""
     gtex_sQTL = defaultdict(set)
+    gtex_sQTL_pvalues = defaultdict(list)
 
     for gtex_sQTL_file in gtex_sQTL_files:
         if gtex_sQTL_file.endswith('.gz'):
@@ -18,14 +19,17 @@ def load_gtex_sQTL_database(gtex_sQTL_files):
 
         # Open the file with error handling for encoding issues
         with open_func(gtex_sQTL_file, mode, encoding='utf-8', errors='replace') as f:
+            tissue_name = os.path.basename(gtex_sQTL_file).split('.')[0]
             next(f)  # Skip header
             for line in f:
                 fields = line.strip().split('\t')
                 variant_chr = fields[0].split('_')[0]
                 variant_pos = int(fields[0].split('_')[1])
                 gene_id = fields[1].split(':')[-1].split('.')[0]  # use gene_id main part
+                pval_nominal = float(fields[6])
                 gtex_sQTL[gene_id].add(f"{variant_chr}:{variant_pos}")
-    return gtex_sQTL
+                gtex_sQTL_pvalues[f"{gene_id}:{variant_chr}:{variant_pos}"].append((tissue_name, pval_nominal))
+    return gtex_sQTL, gtex_sQTL_pvalues
 
 
 def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
@@ -33,11 +37,10 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
     for fname in os.listdir(gtex_sQTL_folder):
         if "sqtl_signifpairs" in fname:
             gtex_sQTL_files.append(os.path.join(gtex_sQTL_folder, fname))
-    gtex_sQTL = load_gtex_sQTL_database(gtex_sQTL_files)
+    gtex_sQTL, gtex_sQTL_pvalues = load_gtex_sQTL_database(gtex_sQTL_files)
     """Load candidate sQTL database."""
-    total_sQTL_cnt = 0
-    hit_sQTL_cnt = 0
-    found_sQTL = defaultdict(int)
+    all_sQTL = set()
+    hit_sQTL = set()
     with open(candidate_sQTL_file) as f:
         next(f)
         for line in f:
@@ -45,17 +48,17 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
             gene_id = fields[0].split('.')[0]  # use gene_id main part
             gene_name = fields[1]
             sQTL = fields[10]
+            pval = float(fields[8])
             if sQTL in gtex_sQTL[gene_id]:
-                found_sQTL[sQTL] += 1
-            else:
-                found_sQTL[sQTL] += 0
-                print(f"Missed sQTL: {gene_id}, {gene_name}, {sQTL}")
-    for sqtl, hit in found_sQTL.items():
-        if hit > 0:
-            hit_sQTL_cnt += 1
-        total_sQTL_cnt += 1
-    print(f"Total sQTL: {total_sQTL_cnt}, Hit sQTL: {hit_sQTL_cnt}")
-    return total_sQTL_cnt, hit_sQTL_cnt
+                hit_sQTL.add(sQTL)
+                print(f"Hit sQTL: {gene_id}, {gene_name}, {sQTL}, {pval}")
+                for tissue, pval_nominal in gtex_sQTL_pvalues[f"{gene_id}:{sQTL}"]:
+                    print(f"  GTEx sQTL: {tissue}, {pval_nominal}")
+            # else:
+            #     print(f"Missed sQTL: {gene_id}, {gene_name}, {sQTL}")
+            all_sQTL.add(sQTL)
+    print(f"Total sQTL: {len(all_sQTL)}, Hit sQTL: {len(hit_sQTL)}")
+    return all_sQTL, hit_sQTL
 
 
 if __name__ == "__main__":
