@@ -47,8 +47,8 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
             fields = line.strip().split('\t')
             gene_id = fields[0].split('.')[0]  # use gene_id main part
             gene_name = fields[1]
-            sQTL = fields[10]
-            pval = float(fields[8])
+            sQTL = fields[11]
+            pval = float(fields[9])
             if sQTL in gtex_sQTL[gene_id]:
                 hit_sQTL.add(sQTL)
                 print(f"Hit sQTL: {gene_id}, {gene_name}, {sQTL}, {pval}")
