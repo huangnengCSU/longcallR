@@ -72,7 +72,7 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
     variants = load_all_variants(vcf_file)
     fout = open(output_file, "w")
     fout.write(
-        "#Gene_id\tGene_name\tStrand\tEvent\tExon/Junction\tHap1_absent\tHap1_present\tHap2_absent\tHap2_present\tP_value\tSOR\tsQTL\tDistance\tRef\tAlt\n")
+        "#Gene_id\tGene_name\tStrand\tEvent\tExon/Junction\tNovel\tHap1_absent\tHap1_present\tHap2_absent\tHap2_present\tP_value\tSOR\tsQTL\tDistance\tRef\tAlt\n")
     with open(ase_event_file) as f:
         for line in f:
             if line.startswith("#"):
@@ -82,6 +82,7 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
             if sor >= sor_threshold:
                 gene_id, gene_name, gene_strand = parts[0], parts[1], parts[2]
                 exon_junction = parts[4]
+                novel = parts[5]
                 pvalue = float(parts[11])
                 hap1_absent, hap1_present, hap2_absent, hap2_present = map(int, parts[7:11])
                 event = parts[3]
@@ -98,9 +99,10 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
                     hit_variant = variant_e
                     distance = abs(variant_e.pos - end_pos)
                 if distance <= sQTL_dist_threshold:
-                    fout.write(f"{gene_id}\t{gene_name}\t{gene_strand}\t{event}\t{exon_junction}\t"
+                    fout.write(f"{gene_id}\t{gene_name}\t{gene_strand}\t{event}\t{exon_junction}\t{novel}\t"
                                f"{hap1_absent}\t{hap1_present}\t{hap2_absent}\t{hap2_present}"
-                               f"\t{pvalue}\t{sor}\t{hit_variant.chr}:{hit_variant.pos}\t{distance}\t{hit_variant.ref_allele}\t{hit_variant.alt_allele}\n")
+                               f"\t{pvalue}\t{sor}\t{hit_variant.chr}:{hit_variant.pos}\t{distance}"
+                               f"\t{hit_variant.ref_allele}\t{hit_variant.alt_allele}\n")
     fout.close()
 
 
