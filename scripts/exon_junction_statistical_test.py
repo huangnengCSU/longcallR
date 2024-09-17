@@ -150,9 +150,14 @@ def parse_reads_from_alignment(bam_file, chr, start_pos, end_pos):
         return reads_positions, reads_exons, reads_junctions, reads_tags
     for read in samfile.fetch(chr, fetch_start, fetch_end):
         # read is not phased, ignore
-        if not read.has_tag("PS") or not read.get_tag("HP"):
+        # if not read.has_tag("PS") or not read.has_tag("HP"):
+        #     continue
+        if not read.has_tag("HP"):
             continue
-        PS_tag = read.get_tag("PS")
+        if read.has_tag("PS"):
+            PS_tag = read.get_tag("PS")
+        else:
+            PS_tag = "."
         HP_tag = read.get_tag("HP")
         reads_tags[read.query_name] = {"PS": PS_tag, "HP": HP_tag}
         # get read start position and end position, 1-based, start-inclusive, end-inclusive
@@ -303,11 +308,14 @@ def haplotype_event_test(gene_id, gene_name, gene_strand, chr, start, end, exon_
         hap_present_counts[phase_set][hap] += 1
     all_phase_sets = set(hap_absent_counts.keys()).union(set(hap_present_counts.keys()))
     for phase_set in all_phase_sets:
+        # if phase_set == ".":
+        #     continue
         ## if not exist, set 0
-        hap_absent_counts[phase_set][1] = hap_absent_counts[phase_set].get(1, 0)
-        hap_absent_counts[phase_set][2] = hap_absent_counts[phase_set].get(2, 0)
-        hap_present_counts[phase_set][1] = hap_present_counts[phase_set].get(1, 0)
-        hap_present_counts[phase_set][2] = hap_present_counts[phase_set].get(2, 0)
+        # take phased reads without phase set into account
+        hap_absent_counts[phase_set][1] = hap_absent_counts[phase_set].get(1, 0) + hap_absent_counts["."].get(1, 0)
+        hap_absent_counts[phase_set][2] = hap_absent_counts[phase_set].get(2, 0) + hap_absent_counts["."].get(2, 0)
+        hap_present_counts[phase_set][1] = hap_present_counts[phase_set].get(1, 0) + hap_present_counts["."].get(1, 0)
+        hap_present_counts[phase_set][2] = hap_present_counts[phase_set].get(2, 0) + hap_present_counts["."].get(2, 0)
         table = np.array([[hap_absent_counts[phase_set][1], hap_absent_counts[phase_set][2]],
                           [hap_present_counts[phase_set][1], hap_present_counts[phase_set][2]]])
         ## Fisher's exact test
