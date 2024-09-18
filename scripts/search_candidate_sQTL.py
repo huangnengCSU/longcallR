@@ -73,15 +73,23 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
     fout = open(output_file, "w")
     fout.write("#Junction\tStrand\tJunction_set\tPhase_set\tHap1_absent\tHap1_present\tHap2_absent\tHap2_present"
                "\tP_value\tSOR\tNovel\tGene_names\tsQTL\tDistance\tRef\tAlt\n")
+    junctions_events = defaultdict(list)
     with open(ase_event_file) as f:
         for line in f:
             if line.startswith("#"):
                 continue
             parts = line.strip().split("\t")
-            junction, strand, junction_set, phase_set, hap1_absent, hap1_present, hap2_absent, hap2_present, pvalue, sor, novel, gene_names = parts
+            (junction, strand, junction_set, phase_set, hap1_absent, hap1_present, hap2_absent, hap2_present, pvalue,
+             sor, novel, gene_names) = parts
+            junctions_events[junction_set].append((junction, strand, junction_set, phase_set, hap1_absent, hap1_present,
+                                                   hap2_absent, hap2_present, pvalue, sor, novel, gene_names))
+    for junction_set in junctions_events.keys():
+        sqtl_candidates = {}  # key: sQTL, value: (pvalue, sor)
+        for event in junctions_events[junction_set]:
+            (junction, strand, junction_set, phase_set, hap1_absent, hap1_present, hap2_absent, hap2_present, pvalue,
+             sor, novel, gene_names) = event
             chr = junction.split(":")[0]
             start_pos, end_pos = map(int, junction.split(":")[1].split("-"))
-
             if len(variants[chr]) == 0:
                 continue
             variant_s = binary_search_snp(start_pos, variants[chr])
@@ -93,10 +101,22 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
                 hit_variant = variant_e
                 distance = abs(variant_e.pos - end_pos)
             if distance <= sQTL_dist_threshold:
-                fout.write(f"{junction}\t{strand}\t{junction_set}\t{phase_set}\t{hap1_absent}\t{hap1_present}\t"
-                           f"{hap2_absent}\t{hap2_present}\t{pvalue}\t{sor}\t{novel}\t{gene_names}\t"
-                           f"{hit_variant.chr}:{hit_variant.pos}\t{distance}\t{hit_variant.ref_allele}\t"
-                           f"{hit_variant.alt_allele}\n")
+                sqtl_candidates[hit_variant] = (float(pvalue), float(sor))
+        if len(sqtl_candidates) == 0:
+            continue
+        sqtl_candidates = sorted(sqtl_candidates.items(), key=lambda x: x[1][0])  # Sort by p-value
+        best_variant = sqtl_candidates[0][0]
+        for event in junctions_events[junction_set]:
+            (junction, strand, junction_set, phase_set, hap1_absent, hap1_present, hap2_absent, hap2_present, pvalue,
+             sor, novel, gene_names) = event
+            start_pos, end_pos = map(int, junction.split(":")[1].split("-"))
+            left_distance = abs(best_variant.pos - start_pos)
+            right_distance = abs(best_variant.pos - end_pos)
+            distance = min(left_distance, right_distance)
+            fout.write(f"{junction}\t{strand}\t{junction_set}\t{phase_set}\t{hap1_absent}\t{hap1_present}\t"
+                       f"{hap2_absent}\t{hap2_present}\t{pvalue}\t{sor}\t{novel}\t{gene_names}\t"
+                       f"{best_variant.chr}:{best_variant.pos}\t{distance}\t{best_variant.ref_allele}\t"
+                       f"{best_variant.alt_allele}\n")
     fout.close()
 
 
