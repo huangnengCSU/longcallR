@@ -8,6 +8,7 @@ import networkx as nx
 import numpy as np
 import pysam
 from scipy.stats import fisher_exact, power_divergence
+from intervaltree import IntervalTree
 
 
 def get_gene_regions(annotation_file):
@@ -359,8 +360,8 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_thresh
     return events
 
 
-def analyze_gene(gene_name, gene_strand, annotation_junctions, gene_region, bam_file, min_count, p_value_threshold,
-                 sor_threshold):
+def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, bam_file, min_count,
+                 p_value_threshold, sor_threshold):
     chr = gene_region["chr"]
     start = gene_region["start"]
     end = gene_region["end"]
@@ -368,10 +369,37 @@ def analyze_gene(gene_name, gene_strand, annotation_junctions, gene_region, bam_
     for transcript_id, anno_junctions in annotation_junctions.items():
         for anno_junc in anno_junctions:
             gene_junction_set.add(anno_junc)
+    gene_exon_set = set()
+    for transcript_id, anno_exons in annotation_exons.items():
+        for anno_exon in anno_exons:
+            gene_exon_set.add(anno_exon)
 
     # Extract relevant reads and regions
     reads_positions, reads_exons, reads_introns, reads_tags = parse_reads_from_alignment(bam_file, chr, start, end)
     junctions_clusters, read_junctions = cluster_junctions_connected_components(reads_introns, min_count)
+
+    # filter reads which have no overlapped exons with current gene exons
+    intervalt = IntervalTree()
+    for anno_exon in gene_exon_set:
+        exon_start, exon_end = anno_exon[1:3]
+        intervalt.addi(exon_start, exon_end + 1)  # interval is half-open, left inclusive, right exclusive
+
+    reads_to_remove = []
+    for qname, read_exons in reads_exons.items():
+        overlapped = False
+        for (exon_start, exon_end) in read_exons:
+            if bool(intervalt.overlap(exon_start, exon_end + 1)):
+                overlapped = True
+                break
+        if not overlapped:
+            reads_to_remove.append(qname)
+
+    # Remove reads after collecting them
+    for qname in reads_to_remove:
+        del reads_positions[qname]
+        del reads_exons[qname]
+        del reads_introns[qname]
+        del reads_tags[qname]
 
     gene_ase_events = []
 
@@ -399,9 +427,9 @@ def analyze(annotation_file, bam_file, output_file, min_count, threads, p_value_
         annotation_file)
 
     # Prepare data for multiprocessing
-    gene_data_list = [(anno_gene_names[gene_id], anno_gene_strands[gene_id], anno_intron_regions[gene_id], gene_region,
-                       bam_file, min_count, p_value_threshold, sor_threshold) for gene_id, gene_region in
-                      anno_gene_regions.items()]
+    gene_data_list = [(anno_gene_names[gene_id], anno_gene_strands[gene_id], anno_exon_regions[gene_id],
+                       anno_intron_regions[gene_id], gene_region, bam_file, min_count, p_value_threshold, sor_threshold)
+                      for gene_id, gene_region in anno_gene_regions.items()]
 
     # Use ProcessPoolExecutor for multiprocessing
     with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
