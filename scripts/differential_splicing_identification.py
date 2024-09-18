@@ -451,6 +451,8 @@ def analyze(annotation_file, bam_file, output_file, min_count, threads, p_value_
                         tmp_event.hap2_present = event.hap2_present
                         tmp_event.phase_set = event.phase_set
                     tmp_event.gene_names.extend(event.gene_names)
+                    if not event.novel:
+                        tmp_event.novel = event.novel
                 else:
                     all_ase_events[(event.chr, event.start, event.end)] = event
 
