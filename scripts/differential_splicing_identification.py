@@ -307,7 +307,7 @@ def calc_sor(hap1_absent, hap1_present, hap2_absent, hap2_present):
     return SOR
 
 
-def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_threshold):
+def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_threshold, sor_threshold):
     """
     Perform Fisher's exact test to determine if the haplotype distribution is significantly different between absent and present reads.
     :param absent_reads:
@@ -352,14 +352,15 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_thresh
         sor = calc_sor(hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
                        hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2])
 
-        if pvalue < p_value_threshold:
+        if pvalue < p_value_threshold and sor >= sor_threshold:
             event = (phase_set, hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
                      hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue, sor)
             events.append(event)
     return events
 
 
-def analyze_gene(gene_name, gene_strand, annotation_junctions, gene_region, bam_file, min_count, p_value_threshold):
+def analyze_gene(gene_name, gene_strand, annotation_junctions, gene_region, bam_file, min_count, p_value_threshold,
+                 sor_threshold):
     chr = gene_region["chr"]
     start = gene_region["start"]
     end = gene_region["end"]
@@ -384,7 +385,7 @@ def analyze_gene(gene_name, gene_strand, annotation_junctions, gene_region, bam_
             junction_end = read_junc[1]
             novel = (chr, junction_start, junction_end) not in gene_junction_set
             absences, presents = check_absent_present(junction_start, junction_end, reads_positions, reads_introns)
-            test_results = haplotype_event_test(absences, presents, reads_tags, p_value_threshold)
+            test_results = haplotype_event_test(absences, presents, reads_tags, p_value_threshold, sor_threshold)
             for event in test_results:
                 (phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor) = event
                 gene_ase_events.append(AseEvent(chr, junction_start, junction_end, novel, gene_name, gene_strand,
@@ -392,14 +393,15 @@ def analyze_gene(gene_name, gene_strand, annotation_junctions, gene_region, bam_
     return gene_ase_events
 
 
-def analyze(annotation_file, bam_file, output_file, min_count, threads, p_value_threshold):
+def analyze(annotation_file, bam_file, output_file, min_count, threads, p_value_threshold, sor_threshold):
     all_ase_events = {}  # key: (chr, start, end), value: AseEvent
     anno_gene_regions, anno_gene_names, anno_gene_strands, anno_exon_regions, anno_intron_regions = get_gene_regions(
         annotation_file)
 
     # Prepare data for multiprocessing
     gene_data_list = [(anno_gene_names[gene_id], anno_gene_strands[gene_id], anno_intron_regions[gene_id], gene_region,
-                       bam_file, min_count, p_value_threshold) for gene_id, gene_region in anno_gene_regions.items()]
+                       bam_file, min_count, p_value_threshold, sor_threshold) for gene_id, gene_region in
+                      anno_gene_regions.items()]
 
     # Use ProcessPoolExecutor for multiprocessing
     with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
@@ -437,7 +439,12 @@ if __name__ == "__main__":
     parse.add_argument("-b", "--bam_file", help="BAM file", required=True)
     parse.add_argument("-o", "--output_file", help="Output file", required=True)
     parse.add_argument("-t", "--threads", help="Number of threads", default=1, type=int)
-    parse.add_argument("-s", "--min_sup", help="Minimum support of phased reads for exon or junction", default=10)
-    parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=1e-10)
+    parse.add_argument("-s", "--min_sup", help="Minimum support of phased reads for exon or junction", default=10,
+                       type=int)
+    parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=1e-10,
+                       type=float)
+    parse.add_argument("-s", "--sor_threshold", help="SOR threshold for filtering, higher value is more stringent",
+                       default=3.0, type=float)
     args = parse.parse_args()
-    analyze(args.annotation_file, args.bam_file, args.output_file, args.min_sup, args.threads, args.p_value_threshold)
+    analyze(args.annotation_file, args.bam_file, args.output_file, args.min_sup, args.threads, args.p_value_threshold,
+            args.sor_threshold)
