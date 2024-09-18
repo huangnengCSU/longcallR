@@ -6,8 +6,8 @@ from collections import defaultdict
 
 def load_gtex_sQTL_database(gtex_sQTL_files):
     """Load GTEx sQTL database."""
-    gtex_sQTL = defaultdict(set)
-    gtex_sQTL_pvalues = defaultdict(list)
+    gtex_sQTL = set()
+    gtex_sQTL_pvalues = {}
 
     for gtex_sQTL_file in gtex_sQTL_files:
         if gtex_sQTL_file.endswith('.gz'):
@@ -28,18 +28,13 @@ def load_gtex_sQTL_database(gtex_sQTL_files):
                 intron_chr, intron_s, intron_e = fields[1].split(':')[:3]
                 intron_s = int(intron_s) + 1
                 intron_e = int(intron_e) - 1
-                gene_id = fields[1].split(':')[-1].split('.')[0]  # use gene_id main part
                 pval_nominal = float(fields[6])
-                gtex_sQTL[gene_id].add(
-                    f"{variant_chr}:{variant_pos}:{intron_s}:{intron_e}")  # chr:pos:intron_start:intron_end
-                gtex_sQTL[gene_id].add(f"{variant_chr}:{variant_pos}:{intron_s}")  # chr:pos:intron_start
-                gtex_sQTL[gene_id].add(f"{variant_chr}:{variant_pos}:{intron_e}")  # chr:pos:intron_end
-                gtex_sQTL_pvalues[f"{gene_id}:{variant_chr}:{variant_pos}:{intron_s}:{intron_e}"].append(
-                    (tissue_name, pval_nominal))
-                gtex_sQTL_pvalues[f"{gene_id}:{variant_chr}:{variant_pos}:{intron_s}"].append(
-                    (tissue_name, pval_nominal))
-                gtex_sQTL_pvalues[f"{gene_id}:{variant_chr}:{variant_pos}:{intron_e}"].append(
-                    (tissue_name, pval_nominal))
+                gtex_sQTL.add(f"{variant_chr}:{variant_pos}:{intron_s}:{intron_e}")  # chr:pos:intron_start:intron_end
+                gtex_sQTL.add(f"{variant_chr}:{variant_pos}:{intron_s}")  # chr:pos:intron_start
+                gtex_sQTL.add(f"{variant_chr}:{variant_pos}:{intron_e}")  # chr:pos:intron_end
+                gtex_sQTL_pvalues[f"{variant_chr}:{variant_pos}:{intron_s}:{intron_e}"] = (tissue_name, pval_nominal)
+                gtex_sQTL_pvalues[f"{variant_chr}:{variant_pos}:{intron_s}"] = (tissue_name, pval_nominal)
+                gtex_sQTL_pvalues[f"{variant_chr}:{variant_pos}:{intron_e}"] = (tissue_name, pval_nominal)
     return gtex_sQTL, gtex_sQTL_pvalues
 
 
@@ -50,44 +45,34 @@ def evaluate_candidate_sQTL(candidate_sQTL_file, gtex_sQTL_folder):
             gtex_sQTL_files.append(os.path.join(gtex_sQTL_folder, fname))
     gtex_sQTL, gtex_sQTL_pvalues = load_gtex_sQTL_database(gtex_sQTL_files)
     """Load candidate sQTL database."""
-    all_sQTL = set()
-    double_hit_sQTL = set()
-    one_side_hit_sQTL = set()
+    all_junctions = set()
+    hit_junctions = set()
+    junctions_sQTLs = defaultdict(list)  # key: junction_set, value: (sQTL, junction_start, junction_end)
     with open(candidate_sQTL_file) as f:
         next(f)
         for line in f:
             fields = line.strip().split('\t')
-            if fields[4] == "Exon" or fields[5] == "True":
+            (junction, strand, junction_set, phase_set, hap1_absent, hap1_present, hap2_absent, hap2_present, pvalue,
+             sor, novel, gene_names, sQTL, distance, ref_allele, alt_allele) = fields
+            if novel == "True":
                 continue
-            junc_s, junc_e = fields[3].split(":")[1].split("-")
-            gene_id = fields[0].split('.')[0]  # use gene_id main part
-            gene_name = fields[1]
-            sQTL = fields[12] + ":" + junc_s + ":" + junc_e
-            sQTL_left = fields[12] + ":" + junc_s
-            sQTL_right = fields[12] + ":" + junc_e
-            pval = float(fields[10])
-            if sQTL in gtex_sQTL[gene_id]:
-                double_hit_sQTL.add(sQTL)
-                print(f"Hit sQTL: {gene_id}, {gene_name}, {sQTL}, {pval}")
-                for tissue, pval_nominal in gtex_sQTL_pvalues[f"{gene_id}:{sQTL}"]:
-                    print(f"  GTEx sQTL: {tissue}, {pval_nominal}")
-            elif sQTL_left in gtex_sQTL[gene_id]:
-                one_side_hit_sQTL.add(sQTL_left)
-                print(f"Hit sQTL: {gene_id}, {gene_name}, {sQTL_left}, {pval}")
-                for tissue, pval_nominal in gtex_sQTL_pvalues[f"{gene_id}:{sQTL_left}"]:
-                    print(f"  GTEx sQTL: {tissue}, {pval_nominal}")
-            elif sQTL_right in gtex_sQTL[gene_id]:
-                one_side_hit_sQTL.add(sQTL_right)
-                print(f"Hit sQTL: {gene_id}, {gene_name}, {sQTL_right}, {pval}")
-                for tissue, pval_nominal in gtex_sQTL_pvalues[f"{gene_id}:{sQTL_right}"]:
-                    print(f"  GTEx sQTL: {tissue}, {pval_nominal}")
-            # else:
-            #     print(f"Missed sQTL: {gene_id}, {gene_name}, {sQTL}")
-            all_sQTL.add(sQTL)
-    hit_sQTL = double_hit_sQTL.union(one_side_hit_sQTL)
-    print(f"Total sQTL: {len(all_sQTL)}, Hit sQTL: {len(hit_sQTL)}, Double hit sQTL: {len(double_hit_sQTL)}, "
-          f"One side hit sQTL: {len(one_side_hit_sQTL)}")
-    return all_sQTL, hit_sQTL, double_hit_sQTL, one_side_hit_sQTL
+            junc_s, junc_e = junction.split(":")[1].split("-")
+            junctions_sQTLs[junction_set].append((sQTL, int(junc_s), int(junc_e)))
+    for junction_set in junctions_sQTLs.keys():
+        found = False
+        for (sQTL, junc_s, junc_e) in junctions_sQTLs[junction_set]:
+            query_both_sides = f"{sQTL}:{junc_s}:{junc_e}"
+            query_left = f"{sQTL}:{junc_s}"
+            query_right = f"{sQTL}:{junc_e}"
+            if query_both_sides in gtex_sQTL or query_left in gtex_sQTL or query_right in gtex_sQTL:
+                found = True
+        for (sQTL, junc_s, junc_e) in junctions_sQTLs[junction_set]:
+            chr = sQTL.split(":")[0]
+            if found:
+                hit_junctions.add(f"{chr}:{junc_s}-{junc_e}")
+            all_junctions.add(f"{chr}:{junc_s}-{junc_e}")
+    print(f"Total junctions: {len(all_junctions)}, Hit junctions: {len(hit_junctions)}")
+    return all_junctions, hit_junctions
 
 
 if __name__ == "__main__":
