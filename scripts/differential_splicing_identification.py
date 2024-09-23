@@ -550,7 +550,7 @@ if __name__ == "__main__":
     parse.add_argument("-b", "--bam_file", help="BAM file", required=True)
     parse.add_argument("-o", "--output_file", help="Output file", required=True)
     parse.add_argument("-t", "--threads", help="Number of threads", default=1, type=int)
-    parse.add_argument("-s", "--min_sup", help="Minimum support of phased reads for exon or junction", default=10,
+    parse.add_argument("-m", "--min_sup", help="Minimum support of phased reads for exon or junction", default=10,
                        type=int)
     parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=1e-15,
                        type=float)
