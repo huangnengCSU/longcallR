@@ -243,6 +243,85 @@ def cluster_junctions_connected_components(reads_junctions, min_count=10):
     return junctions_clusters, junctions
 
 
+def cluster_junctions_exons_connected_components(reads_junctions, reads_exons, min_count=10):
+    junctions_clusters = []
+    junctions = {}  # key: (start, end), value: count
+
+    # Count occurrences of each junction region
+    for read_name, junction_regions in reads_junctions.items():
+        for junction_region in junction_regions:
+            junctions[junction_region] = junctions.get(junction_region, 0) + 1
+
+    # Remove junctions with count less than min_count
+    junctions = {k: v for k, v in junctions.items() if v >= min_count}
+
+    # Count occurrences of each exon region
+    exons = {}  # key: (start, end), value: count
+    for read_name, exon_regions in reads_exons.items():
+        if len(exon_regions) == 0:
+            pass
+        # single exon
+        if len(exon_regions) == 1:
+            pass
+        # two exons
+        if len(exon_regions) == 2:
+            pass
+        # more than two exons
+        if len(exon_regions) > 2:
+            for i, exon_region in enumerate(exon_regions):
+                if i == 0 or i == len(exon_regions) - 1:
+                    continue
+                exons[exon_region] = exons.get(exon_region, 0) + 1
+
+    # Remove exons with count less than min_count
+    exons = {k: v for k, v in exons.items() if v >= min_count}
+
+    # Create a graph
+    G = nx.Graph()
+
+    # Add nodes for each junction
+    for junction in junctions.keys():
+        G.add_node((junction[0], junction[1], "junction"))  # "junction = (intron_start, intron_end)"
+
+    # Add nodes for each exon
+    for exon in exons.keys():
+        G.add_node((exon[0] - 1, exon[1] + 1, "exon"))  # "exon = (exon_start-1, exon_end+1)"
+
+    # Add edges between overlapping junctions (sharing start or end positions)
+    junction_list = [(junction[0], junction[1], "junction") for junction in list(junctions.keys())]
+    # need to connected exon and junction, but exon and junction have one base difference
+    exon_list = [(exon[0] - 1, exon[1] + 1, "exon") for exon in list(exons.keys())]
+    merged_list = junction_list + exon_list
+    for i in range(len(merged_list)):
+        for j in range(i + 1, len(merged_list)):
+            start1, end1, type1 = merged_list[i]
+            start2, end2, type2 = merged_list[j]
+
+            # Check if they share a start or end position
+            if type1 == type2:
+                # junction-junction or exon-exon should share the donor or acceptor site
+                if start1 == start2 or end1 == end2:
+                    G.add_edge(merged_list[i], merged_list[j])
+            else:
+                # junction-exon or exon-junction should connect to each other
+                if start1 == end2 or end1 == start2:
+                    G.add_edge(merged_list[i], merged_list[j])
+
+    # Find connected components
+    connected_components = list(nx.connected_components(G))
+
+    # Collect the clusters of junctions
+    for component in connected_components:
+        clu = []
+        for node in component:
+            if node[2] == "junction":
+                clu.append((node[0], node[1]))
+        if len(clu) > 0:
+            junctions_clusters.append(clu)
+
+    return junctions_clusters, junctions
+
+
 def check_absent_present(start_pos, end_pos, reads_positions, reads_junctions):
     """
     Find the reads where an exon or junction is absent or present.
@@ -308,13 +387,12 @@ def calc_sor(hap1_absent, hap1_present, hap2_absent, hap2_present):
     return SOR
 
 
-def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_threshold, sor_threshold):
+def haplotype_event_test(absent_reads, present_reads, reads_tags):
     """
     Perform Fisher's exact test to determine if the haplotype distribution is significantly different between absent and present reads.
     :param absent_reads:
     :param present_reads:
     :param reads_tags:
-    :param p_value_threshold:
     :return:
     """
     events = []
@@ -330,9 +408,8 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_thresh
         hap_present_counts[phase_set][hap] += 1
     all_phase_sets = set(hap_absent_counts.keys()).union(set(hap_present_counts.keys()))
     for phase_set in all_phase_sets:
-        # if phase_set == ".":
-        #     continue
-        ## if not exist, set 0
+        if phase_set == ".":
+            continue
         # take phased reads without phase set into account
         hap_absent_counts[phase_set][1] = hap_absent_counts[phase_set].get(1, 0) + hap_absent_counts["."].get(1, 0)
         hap_absent_counts[phase_set][2] = hap_absent_counts[phase_set].get(2, 0) + hap_absent_counts["."].get(2, 0)
@@ -352,11 +429,9 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags, p_value_thresh
         ## Calculate SOR, refer to GATK AS_StrandOddsRatio, https://gatk.broadinstitute.org/hc/en-us/articles/360037224532-AS-StrandOddsRatio
         sor = calc_sor(hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
                        hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2])
-
-        if pvalue < p_value_threshold and sor >= sor_threshold:
-            event = (phase_set, hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
-                     hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue, sor)
-            events.append(event)
+        event = (phase_set, hap_absent_counts[phase_set][1], hap_present_counts[phase_set][1],
+                 hap_absent_counts[phase_set][2], hap_present_counts[phase_set][2], pvalue, sor)
+        events.append(event)
     return events
 
 
@@ -376,7 +451,9 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
 
     # Extract relevant reads and regions
     reads_positions, reads_exons, reads_introns, reads_tags = parse_reads_from_alignment(bam_file, chr, start, end)
-    junctions_clusters, read_junctions = cluster_junctions_connected_components(reads_introns, min_count)
+    # junctions_clusters, read_junctions = cluster_junctions_connected_components(reads_introns, min_count)
+    junctions_clusters, read_junctions = cluster_junctions_exons_connected_components(reads_introns, reads_exons,
+                                                                                      min_count)
 
     # filter reads which have no overlapped exons with current gene exons
     intervalt = IntervalTree()
@@ -413,11 +490,15 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
             junction_end = read_junc[1]
             novel = (chr, junction_start, junction_end) not in gene_junction_set
             absences, presents = check_absent_present(junction_start, junction_end, reads_positions, reads_introns)
-            test_results = haplotype_event_test(absences, presents, reads_tags, p_value_threshold, sor_threshold)
+            test_results = haplotype_event_test(absences, presents, reads_tags)
             for event in test_results:
                 (phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor) = event
-                gene_ase_events.append(AseEvent(chr, junction_start, junction_end, novel, gene_name, gene_strand,
-                                                junction_set, phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor))
+                if pvalue == 0:
+                    gene_ase_events.append(AseEvent(chr, junction_start, junction_end, novel, gene_name, gene_strand,
+                                                    junction_set, phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor))
+                elif pvalue < p_value_threshold and sor >= sor_threshold:
+                    gene_ase_events.append(AseEvent(chr, junction_start, junction_end, novel, gene_name, gene_strand,
+                                                    junction_set, phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor))
     return gene_ase_events
 
 
