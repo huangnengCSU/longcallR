@@ -552,10 +552,10 @@ if __name__ == "__main__":
     parse.add_argument("-t", "--threads", help="Number of threads", default=1, type=int)
     parse.add_argument("-s", "--min_sup", help="Minimum support of phased reads for exon or junction", default=10,
                        type=int)
-    parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=1e-10,
+    parse.add_argument("-p", "--p_value_threshold", help="P-value threshold for Fisher's exact test", default=1e-15,
                        type=float)
     parse.add_argument("-s", "--sor_threshold", help="SOR threshold for filtering, higher value is more stringent",
-                       default=3.0, type=float)
+                       default=2.0, type=float)
     args = parse.parse_args()
     analyze(args.annotation_file, args.bam_file, args.output_file, args.min_sup, args.threads, args.p_value_threshold,
             args.sor_threshold)
