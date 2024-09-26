@@ -110,9 +110,12 @@ def find_candidate_sQTL(vcf_file, ase_event_file, output_file, sQTL_dist_thresho
             (junction, strand, junction_set, phase_set, hap1_absent, hap1_present, hap2_absent, hap2_present, pvalue,
              sor, novel, gene_names) = event
             start_pos, end_pos = map(int, junction.split(":")[1].split("-"))
-            left_distance = abs(best_variant.pos - start_pos)
-            right_distance = abs(best_variant.pos - end_pos)
-            distance = min(left_distance, right_distance)
+            left_distance = start_pos - best_variant.pos  # Exon>0, Intron<=0
+            right_distance = best_variant.pos - end_pos  # Exon>0, Intron<=0
+            if abs(left_distance) < abs(right_distance):
+                distance = left_distance
+            else:
+                distance = right_distance
             fout.write(f"{junction}\t{strand}\t{junction_set}\t{phase_set}\t{hap1_absent}\t{hap1_present}\t"
                        f"{hap2_absent}\t{hap2_present}\t{pvalue}\t{sor}\t{novel}\t{gene_names}\t"
                        f"{best_variant.chr}:{best_variant.pos}\t{distance}\t{best_variant.ref_allele}\t"
