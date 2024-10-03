@@ -127,8 +127,6 @@ def parse_reads_from_alignment(bam_file, chr, start_pos, end_pos):
                 pass
         return overlap_length
 
-    reads_exons = {}
-    reads_junctions = {}
     reads_positions = {}  # 1-based, start-inclusive, end-inclusive
     reads_tags = {}  # key: read name, value: {"PS": phase set, "HP": haplotype}
     samfile = pysam.AlignmentFile(bam_file, "rb")
@@ -136,7 +134,7 @@ def parse_reads_from_alignment(bam_file, chr, start_pos, end_pos):
     fetch_end = end_pos  # 0-based, end-exclusive
     contigs = samfile.references
     if chr not in contigs:
-        return reads_positions, reads_exons, reads_junctions, reads_tags
+        return reads_positions, reads_tags
     for read in samfile.fetch(chr, fetch_start, fetch_end):
         # read is not phased, ignore
         # if not read.has_tag("PS") or not read.has_tag("HP"):
