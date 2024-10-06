@@ -267,9 +267,9 @@ def multiple_processes_run(bam_file, vcf_file, annotation_file, assignment_file,
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
     with open(output_file, "w") as f:
-        f.write("Gene\tASE P-value\tRef reads\tAlt reads\n")
+        f.write("Gene\tRef\tAlt\tP-value\n")
         for gene_id, gene_name, p_value, ref_reads, alt_reads in results:
-            f.write(f"{gene_name}\t{p_value}\t{ref_reads}\t{alt_reads}\n")
+            f.write(f"{gene_name}\t{ref_reads}\t{alt_reads}\t{p_value}\n")
 
 
 if __name__ == "__main__":
