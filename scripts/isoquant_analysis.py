@@ -254,7 +254,7 @@ def analyze_tpm(assignment_file, annotation_file, bam_file, gene_types, assignme
     gene_tpm_writer = open(output_gene_tpm, "w")
     gene_tpm_writer.write("Gene\tTPM\tHap1_TPM\tHap2_TPM\n")
     transcript_tpm_writer = open(output_transcript_tpm, "w")
-    transcript_tpm_writer.write("Isoform\tTPM\tHap1_TPM\tHap2_TPM\n")
+    transcript_tpm_writer.write("Isoform\tTPM\tHap1_TPM\tHap2_TPM\tHap1_reads\tHap2_reads\tP-value\n")
     for gene_id, isoform_records in isoquant_read_assignment.items():
         if gene_id not in gene_regions:
             continue
@@ -274,10 +274,12 @@ def analyze_tpm(assignment_file, annotation_file, bam_file, gene_types, assignme
             tpm = transcript_tpm.get(isoform_id, 0)
             if h1_cnt + h2_cnt == 0:
                 h1_tpm, h2_tpm = 0, 0
+                pvalue = 1.0
             else:
                 h1_tpm = h1_cnt / (h1_cnt + h2_cnt) * tpm
                 h2_tpm = h2_cnt / (h1_cnt + h2_cnt) * tpm
-            transcript_tpm_writer.write(f"{isoform_id}\t{tpm}\t{h1_tpm}\t{h2_tpm}\n")
+                pvalue = binomtest(h1_cnt, h1_cnt + h2_cnt, 0.5, alternative='two-sided').pvalue
+            transcript_tpm_writer.write(f"{isoform_id}\t{tpm}\t{h1_tpm}\t{h2_tpm}\t{h1_cnt}\t{h2_cnt}\t{pvalue}\n")
         h1_cnt = gene_dict[1]
         h2_cnt = gene_dict[2]
         tpm = gene_tpm.get(gene_id, 0)
