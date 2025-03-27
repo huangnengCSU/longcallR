@@ -305,7 +305,7 @@ pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i
         std::cmp::Ordering::Less => -1,
     };
     assert!(flag >= 0, "Error: new haplotag decrease the probability. {} -> {}", pre_logp, logp);
-    return flag;
+    flag
 }
 
 pub fn check_new_haplotype_genotype(snpfrag: &SNPFrag, updated_haplotype_genotype: &HashMap<usize, (i32, i32)>) -> i32 {
@@ -668,6 +668,9 @@ impl SNPFrag {
             .filter(|fragment| fragment.for_phasing)
             .for_each(|fragment| {
                 fragment.haplotag = if rng.gen::<f64>() < 0.5 { -1 } else { 1 };
+                if fragment.read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460"{
+                    println!("{}:{}", fragment.read_id, fragment.haplotag);
+                }
             });
     }
 
@@ -950,7 +953,7 @@ impl SNPFrag {
             }
         }
         let prob = cal_overall_probability(&self);
-        return prob;
+        prob
     }
 
     fn check_local_optimal_configuration(&self, used_for_haplotype_genotype: bool, used_for_haplotag: bool) {
@@ -1362,6 +1365,6 @@ impl SNPFrag {
             self.fragments[*k].haplotag = *h;
         }
         let prob = cal_overall_probability(&self);
-        return prob;
+        prob
     }
 }

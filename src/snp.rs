@@ -22,8 +22,24 @@ pub struct AlleleClass {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct ReferenceAllele {
+    pub base: char,
+    pub frequency: f32,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AlternateAllele {
+    pub num: u32, // 1 or 2
+    pub base: [char; 2],
+    pub frequency: [f32; 2],
+    pub count: [u32; 2],
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct CandidateSNP {
-    pub chromosome: Vec<u8>,
+    // pub chromosome: Vec<u8>,
+    pub chromosome: String,
     pub pos: i64,
     // position on the reference, 0-based
     pub alleles: [char; 2],
@@ -31,7 +47,7 @@ pub struct CandidateSNP {
     pub allele_freqs: [f32; 2],
     // major and minor allele frequencies
     pub reference: char,
-    pub alt_allele_fraction: f32,
+    pub alt_allele_fraction: [f32; 2],
     pub depth: u32,
     pub variant_type: i32,
     // 0: homo ref, 1: heterozygous SNP, 2: homozygous SNP, 3: triallelic SNP
@@ -113,25 +129,29 @@ impl LD_Pair {
         // set minimum covered reads
         // if ((x11 < 2.0 || x22 < 2.0) && (x21 < 2.0 || x12 < 2.0)) || (sum < 4.0) { return 0.0; }
 
-        if sum == 0.0 { return 0.0; }
-        AB = AB / sum;    // P(AB)
-        Ab = Ab / sum;    // P(Ab)
-        aB = aB / sum;    // P(aB)
-        ab = ab / sum;    // P(ab)
+        if sum == 0.0 {
+            return 0.0;
+        }
+        AB = AB / sum; // P(AB)
+        Ab = Ab / sum; // P(Ab)
+        aB = aB / sum; // P(aB)
+        ab = ab / sum; // P(ab)
 
-        pA = AB + Ab;    // P(A)
-        pa = aB + ab;    // P(a)
-        pB = AB + aB;    // P(B)
-        pb = Ab + ab;    // P(b)
+        pA = AB + Ab; // P(A)
+        pa = aB + ab; // P(a)
+        pB = AB + aB; // P(B)
+        pb = Ab + ab; // P(b)
 
-        let mut d = AB - pA * pB;  // D= P(AB) - P(A)P(B)
-        let p = pA * (1.0 - pA) * pB * (1.0 - pB);  // P(A)*(1-P(A))*P(B)*(1-P(B))
-        if pA == 1.0 && pB == 1.0 { return 1.0; }
+        let mut d = AB - pA * pB; // D= P(AB) - P(A)P(B)
+        let p = pA * (1.0 - pA) * pB * (1.0 - pB); // P(A)*(1-P(A))*P(B)*(1-P(B))
+        if pA == 1.0 && pB == 1.0 {
+            return 1.0;
+        }
         if p == 0.0 {
             // println!("AB: {}, Ab: {}, aB: {}, ab: {}", AB, Ab, aB, ab);
             return 0.0;
         }
-        let r2 = d * d / p;   // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
+        let r2 = d * d / p; // r2 == 0, no correlation, r2 == 1, perfect positive correlation, r2 == -1. perfect negative correlation
         return r2;
     }
 
@@ -208,8 +228,8 @@ pub struct Fragment {
     // haplotype assignment of the fragment, 0,1,2. 0: unassigned, 1: hap1, 2: hap2
     pub assignment_score: f64,
     // probability of the haplotype assignment
-    pub exons: Vec<Exon>,
-    // exons of the read on the reference, 0-based, [start, end)
+    // pub exons: Vec<Exon>,
+    // // exons of the read on the reference, 0-based, [start, end)
     pub num_hete_links: u32,
     // number of linked heterozygous snps in the fragment
     pub for_phasing: bool,

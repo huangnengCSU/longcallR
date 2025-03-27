@@ -1,39 +1,41 @@
 use std::collections::HashMap;
 
-use clap::{ArgAction, Parser, ValueEnum};
+use crate::thread::run;
+use crate::util::*;
+use clap::{ArgAction, Parser};
 use rand::seq::SliceRandom;
 use rust_htslib::bam::Read;
+use rust_lapper::Interval;
 
-use crate::thread::multithread_phase_haplotag;
-use crate::util::*;
-
-mod snp;
-mod util;
-mod snpfrags;
-mod somatic;
-mod exon;
-mod thread;
-mod vcf;
 mod candidate;
+mod exon;
 mod fragment;
 mod phase;
+mod snp;
+mod snpfrags;
+mod somatic;
+mod thread;
+mod util;
+mod vcf;
+
+mod constants {
+    pub const MAX_BASE_QUALITY: u8 = 30;
+}
+
+pub static VALID_ALLELES: &[char] = &['A', 'C', 'G', 'T', 'a', 'c', 'g', 't'];
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Preset {
-    hifi_isoseq,
-    // PacBio HiFi, both strand
-    hifi_masseq,
-    // PacBio IsoSeq, transcript strand
-    ont_cdna,
-    // Oxford Nanopore, both strand
-    ont_drna, // direct RNA, transcript strand
+    HifiIsoseq, // PacBio HiFi, both strand
+    HifiMasseq, // PacBio IsoSeq, transcript strand
+    OntCdna,    // Oxford Nanopore, both strand
+    OntDrna,    // Oxford Nanopore direct RNA, transcript strand
 }
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum Platform {
-    hifi,
-    // PacBio long-read RNA sequencing
-    ont, // Oxford Nanopore long-read RNA sequencing
+    Hifi, // PacBio long-read RNA sequencing
+    Ont,  // Oxford Nanopore long-read RNA sequencing
 }
 
 #[derive(Parser, Debug)]
@@ -99,10 +101,13 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     min_baseq: u8,
 
+    /// Max sequence divergence
+    #[arg(long, default_value_t = 0.05)]
+    divergence: f32,
+
     // /// threshold for differental average base quality of two alleles
     // #[arg(long, default_value_t = 10)]
     // diff_baseq: u8,
-
     /// Minimum allele frequency for candidate SNPs
     #[arg(long, default_value_t = 0.20)]
     min_allele_freq: f32,
@@ -110,7 +115,6 @@ struct Args {
     // /// Minimum support number for each allele
     // #[arg(long, default_value_t = 2)]
     // min_allele_cnt: u32,
-
     /// Minimum allele frequency for candidate SNPs include intron
     #[arg(long, default_value_t = 0.0)]
     min_allele_freq_include_intron: f32,
@@ -118,7 +122,6 @@ struct Args {
     // /// Minimum allele frequency for homozygous SNPs
     // #[arg(long, default_value_t = 0.75)]
     // min_homozygous_freq: f32,
-
 
     // Minimum QUAL for candidate SNPs
     #[arg(long, default_value_t = 2)]
@@ -131,7 +134,6 @@ struct Args {
     // /// Minimum variant quality for single snp and rna editing (higher than min_qual_for_candidate)
     // #[arg(long, default_value_t = 256)]
     // min_qual_for_singlesnp_rnaedit: u32,
-
     /// Whether to use strand bias to filter SNPs
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     use_strand_bias: bool,
@@ -159,7 +161,6 @@ struct Args {
     // /// threshold for differental average distance to read end of two alleles
     // #[arg(long, default_value_t = 200)]
     // diff_distance_to_read_end: i64,
-
     /// PolyA tail length threshold
     #[arg(long, default_value_t = 5)]
     polya_tail_length: u32,
@@ -175,7 +176,6 @@ struct Args {
     // /// Average dense distance
     // #[arg(long, default_value_t = 60.0)]
     // avg_dense_dist: f32,
-
     /// Minimum linked heterozygous snps for phasing
     #[arg(long, default_value_t = 2)]
     min_linkers: u32,
@@ -219,7 +219,6 @@ struct Args {
     // /// Allele-specific expression phase score cutoff
     // #[arg(long, default_value_t = 20.0)]
     // ase_ps_cutoff: f32,
-
     /// Somatic mutation allele fraction cutoff
     #[arg(long, default_value_t = 0.05)]
     somatic_allele_frac_cutoff: f32,
@@ -228,7 +227,6 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     somatic_allele_cnt_cutoff: u32,
 
-
     /// When set, do not output phased bam file.
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_bam_output: bool,
@@ -236,10 +234,43 @@ struct Args {
     // /// debug SNP
     // #[clap(long, action = ArgAction::SetTrue)]
     // debug_snp: bool,
-
     /// get blocks
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     debug_block: bool,
+}
+
+fn build_regions(
+    bam_path: &str,
+    ref_path: &str,
+    threads: usize,
+    input_region: Option<String>,
+    input_contigs: Option<Vec<String>>,
+    min_mapq: u8,
+    min_read_length: usize,
+    divergence: f32,
+    anno_path: Option<String>,
+) -> (Vec<Region>, HashMap<String, Vec<Interval<u32, u8>>>) {
+    let mut regions = if let Some(region_str) = input_region {
+        vec![Region::new(region_str.to_string())]
+    } else {
+        extract_isolated_regions_parallel(
+            bam_path,
+            ref_path,
+            threads,
+            input_contigs,
+            min_mapq,
+            min_read_length,
+            divergence,
+        )
+    };
+    let exon_regions = if let Some(anno_path_str) = anno_path {
+        let (anno_gene_regions, anno_exon_regions) = parse_annotation(anno_path_str);
+        regions = intersect_gene_regions(&regions, &anno_gene_regions, threads);
+        anno_exon_regions
+    } else {
+        HashMap::new()
+    };
+    (regions, exon_regions)
 }
 
 fn main() {
@@ -261,6 +292,7 @@ fn main() {
     let random_flip_fraction = arg.random_flip_fraction;
     let no_bam_output = arg.no_bam_output; // default=false
     let min_mapq = arg.min_mapq;
+    let divergence = arg.divergence;
     let min_baseq = arg.min_baseq;
     let min_qual = arg.min_qual;
     let strand_bias_threshold = arg.strand_bias_threshold;
@@ -285,10 +317,9 @@ fn main() {
     let mut min_depth = arg.min_depth;
     let mut read_assignment_cutoff = arg.read_assignment_cutoff;
 
-
     if preset.is_some() {
         match preset.unwrap() {
-            Preset::ont_cdna => {
+            Preset::OntCdna => {
                 min_depth = 10;
                 min_phase_score = 14.0;
                 read_assignment_cutoff = 0.15;
@@ -302,7 +333,7 @@ fn main() {
                 println!("Preset: ont-cdna");
             }
 
-            Preset::ont_drna => {
+            Preset::OntDrna => {
                 min_depth = 10;
                 min_phase_score = 14.0;
                 read_assignment_cutoff = 0.15;
@@ -316,7 +347,7 @@ fn main() {
                 println!("Preset: ont-drna");
             }
 
-            Preset::hifi_isoseq => {
+            Preset::HifiIsoseq => {
                 min_depth = 6;
                 min_phase_score = 11.0;
                 read_assignment_cutoff = 0.0;
@@ -330,7 +361,7 @@ fn main() {
                 println!("Preset: hifi-isoseq");
             }
 
-            Preset::hifi_masseq => {
+            Preset::HifiMasseq => {
                 min_depth = 6;
                 min_phase_score = 11.0;
                 read_assignment_cutoff = 0.0;
@@ -343,84 +374,64 @@ fn main() {
                 use_strand_bias = false;
                 println!("Preset: hifi-masseq");
             }
-
-            _ => {
-                panic!("Preset not supported");
-            }
         }
     }
 
     match platform {
-        Platform::hifi => {
+        Platform::Hifi => {
             println!("Platform: PacBio HiFi");
         }
-        Platform::ont => {
+        Platform::Ont => {
             println!("Platform: Oxford Nanopore");
-        }
-        _ => {
-            panic!("Platform not supported");
         }
     }
 
     if debug_block {
-        let mut regions = Vec::new();
-        if input_region.is_some() {
-            let region = Region::new(input_region.unwrap());
-            regions = vec![region];
-        } else {
-            regions = multithread_produce3(
-                bam_path.to_string().clone(),
-                ref_path.to_string().clone(),
-                threads,
-                input_contigs,
-                min_mapq,
-                min_read_length,
-            );
-        }
-
-        if anno_path.is_some() {
-            let (gene_regions, exon_regions) = parse_annotation(anno_path.unwrap());
-            regions = intersect_gene_regions(&regions, &gene_regions, threads);
-        }
+        let (regions, _) = build_regions(
+            bam_path,
+            ref_path,
+            threads,
+            input_region,
+            input_contigs,
+            min_mapq,
+            min_read_length,
+            divergence,
+            anno_path,
+        );
         for reg in regions.iter() {
             if reg.gene_id.is_none() {
                 println!("{}:{}-{}", reg.chr, reg.start, reg.end);
             } else {
-                println!("{}:{}-{} {:?}", reg.chr, reg.start, reg.end, reg.gene_id.clone().unwrap());
+                println!(
+                    "{}:{}-{} {:?}",
+                    reg.chr,
+                    reg.start,
+                    reg.end,
+                    reg.gene_id.clone().unwrap()
+                );
             }
         }
         return;
     }
 
-    let mut regions = Vec::new();
-    let mut exon_regions = HashMap::new();
-    if input_region.is_some() {
-        let region = Region::new(input_region.unwrap());
-        regions = vec![region];
-    } else {
-        // TODO: cut weak connected regions caused by alignment error to avoid too large regions
-        regions = multithread_produce3(
-            bam_path.to_string().clone(),
-            ref_path.to_string().clone(),
-            threads,
-            input_contigs,
-            min_mapq,
-            min_read_length,
-        );
-    }
+    let (regions, exon_regions) = build_regions(
+        bam_path,
+        ref_path,
+        threads,
+        input_region,
+        input_contigs,
+        min_mapq,
+        min_read_length,
+        divergence,
+        anno_path,
+    );
 
-    if anno_path.is_some() {
-        let (gene_regions_anno, exon_regions_anno) = parse_annotation(anno_path.unwrap());
-        regions = intersect_gene_regions(&regions, &gene_regions_anno, threads);
-        exon_regions = exon_regions_anno;
-    }
-
-    multithread_phase_haplotag(
-        bam_path.to_string().clone(),
-        ref_path.to_string().clone(),
-        input_vcf.clone(),
-        out_vcf.clone(),
-        out_bam.clone(),
+    run(
+        bam_path,
+        ref_path,
+        input_vcf,
+        out_vcf.as_str(),
+        out_bam.as_str(),
         threads,
         regions,
         exon_regions,
@@ -428,6 +439,7 @@ fn main() {
         max_iters,
         min_mapq,
         min_baseq,
+        divergence,
         min_allele_freq,
         min_qual,
         min_allele_freq_include_intron,
