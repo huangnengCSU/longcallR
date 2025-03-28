@@ -371,7 +371,7 @@ impl SNPFrag {
                 panic!("Error: genotype optimization failed. {},{},{},{}", q1, q2, q3, q4);
             }
 
-            if snp.pos == 1915453 {
+            if snp.pos == 63216714 {
                 println!("\nAssign SNP {}: q1:{}, q2:{}, q3:{}, q4:{}", snp.pos, q1, q2, q3, q4);
                 println!("delta_i:{}, eta_i:{}", delta_i, eta_i);
                 println!("sigma:{:?}", sigma);
