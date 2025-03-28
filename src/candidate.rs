@@ -61,7 +61,7 @@ impl SNPFrag {
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
             let bf = &pileup[bfidx];
-            if position == 1361381 {
+            if position == 63216714 {
                 println!("{:?}", bf);
             }
             if bf.i {
@@ -78,6 +78,9 @@ impl SNPFrag {
                 continue;
             }
             let total_allele_count = bf.get_allele_counts();
+            if position == 63216714 {
+                println!("total_allele_count: {:?}", total_allele_count);
+            }
             if total_allele_count < min_coverage || total_allele_count > max_coverage {
                 position += 1;
                 continue;
@@ -119,6 +122,16 @@ impl SNPFrag {
                 alternate_alleles.count[1] = allele2_cnt;
             }
 
+            if !VALID_ALLELES.contains(&reference_allele.base) {
+                position += 1;
+                continue;
+            }
+
+            if position == 63216714 {
+                println!("af: {:?}", alternate_alleles.frequency);
+                println!("number of alleles: {:?}", alternate_alleles.num);
+            }
+
             if alternate_alleles.num == 0 {
                 position += 1;
                 continue;
@@ -139,15 +152,20 @@ impl SNPFrag {
                 }
             }
 
-            if alternate_alleles.num == 1 && bf.d >= alternate_alleles.count[0] {
-                position += 1;
-                continue;
-            } else if alternate_alleles.num == 2 && bf.d >= alternate_alleles.count[1] {
+            // if alternate_alleles.num == 1 && bf.d >= alternate_alleles.count[0] {
+            //     position += 1;
+            //     continue;
+            // } else if alternate_alleles.num == 2 && bf.d >= alternate_alleles.count[0] {
+            //     position += 1;
+            //     continue;
+            // }
+
+            if bf.d >= alternate_alleles.count[0] {
                 position += 1;
                 continue;
             }
 
-            if position == 1361381 {
+            if position == 63216714 {
                 println!("{:?}", allele1_cnt + allele2_cnt);
                 println!("{:?}", bf.get_depth_include_intron());
             }
@@ -159,7 +177,7 @@ impl SNPFrag {
                 continue;
             }
 
-            if position == 1361381 {
+            if position == 63216714 {
                 println!("{:?}", reference_allele);
                 println!("{:?}", alternate_alleles);
             }
@@ -344,6 +362,10 @@ impl SNPFrag {
                 candidate_snp.genotype = 1;
             }
 
+            if position == 63216714 {
+                println!("{:?}", candidate_snp);
+            }
+
             // Low QUAL sites are filtered out
             if variant_quality < min_variant_qual as f64 {
                 position += 1;
@@ -399,7 +421,7 @@ impl SNPFrag {
                 }
                 candidate_snp.hom_var = true;
                 candidate_snp.for_phasing = true;
-                if position == 1915453 {
+                if position == 63216714 {
                     println!("{:?}", candidate_snp);
                 }
                 self.candidate_snps.push(candidate_snp);
@@ -414,7 +436,7 @@ impl SNPFrag {
                     candidate_snp.genotype = -1;
                     candidate_snp.hom_var = true;
                     candidate_snp.for_phasing = true;
-                    if position == 1915453 {
+                    if position == 63216714 {
                         println!("{:?}", candidate_snp);
                     }
                     self.candidate_snps.push(candidate_snp);
@@ -425,7 +447,7 @@ impl SNPFrag {
                 if alternate_alleles.num == 1 {
                     candidate_snp.het_var = true;
                     candidate_snp.for_phasing = true;
-                    if position == 1915453 {
+                    if position == 63216714 {
                         println!("{:?}", candidate_snp);
                     }
                     self.candidate_snps.push(candidate_snp);
