@@ -240,7 +240,17 @@ pub fn find_isolated_regions_with_depth(
     let mut depth_vec: Vec<u32> = vec![0; ref_len as usize];
     let mut bam: bam::IndexedReader = bam::IndexedReader::from_path(bam_path).unwrap();
     // let header = bam.header().clone();
-    bam.fetch(chr).unwrap();
+    match bam.fetch(chr) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!(
+                "Error fetching chromosome {}: {}. Skipping this chromosome.",
+                chr, e
+            );
+            return isolated_regions;
+        }
+    }
+    // bam.fetch(chr).unwrap();
     for r in bam.records() {
         let record = r.unwrap();
         if record.mapq() < min_mapq
@@ -260,7 +270,7 @@ pub fn find_isolated_regions_with_depth(
             }
             _ => {}
         }
-        
+
         let ref_start = record.reference_start(); // 0-based, left-closed
         let ref_end = record.reference_end(); // 0-based, right-open
         for i in ref_start..ref_end {
@@ -593,7 +603,7 @@ impl Profile {
             {
                 continue;
             }
-            
+
             match record.aux(b"de") {
                 Ok(Aux::Float(f)) => {
                     if f >= divergence {
@@ -602,7 +612,7 @@ impl Profile {
                 }
                 _ => {}
             }
-            
+
             // let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
             let seq = record.seq();
             let base_qual = record.qual();
@@ -650,7 +660,7 @@ impl Profile {
                             } else {
                                 MAX_BASE_QUALITY
                             };
-                            
+
                             let ref_base = self.freq_vec[pos_in_freq_vec as usize].ref_base;
                             // filter alternate allele near the splicing site
                             // if base != ref_base {
