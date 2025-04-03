@@ -6,6 +6,8 @@ use petgraph::graphmap::GraphMap;
 use petgraph::Undirected;
 use petgraph::visit::Bfs;
 use rand::Rng;
+use rand::{SeedableRng, seq::SliceRandom};
+use rand::rngs::StdRng;
 
 use crate::snpfrags::SNPFrag;
 
@@ -252,11 +254,13 @@ pub fn cal_phase_score_log(delta_i: i32, eta_i: i32, sigma: &Vec<i32>, ps: &Vec<
     return 1.0 - log_q1 / (log_q2 + log_q3);
 }
 
-pub fn cal_overall_probability(snpfrag: &SNPFrag) -> f64 {
+pub fn cal_overall_probability(snpfrag: &SNPFrag, apply_downsampling: bool) -> f64 {
     // calculate the log10 probability of the current configuration of sigma and delta
     let mut logp = 0.0;
     for k in 0..snpfrag.fragments.len() {
-        if !snpfrag.fragments[k].for_phasing || snpfrag.fragments[k].haplotag == 0 {
+        if !snpfrag.fragments[k].for_phasing 
+            || (apply_downsampling && !snpfrag.fragments[k].downsampled)
+            || snpfrag.fragments[k].haplotag == 0 {
             // unassigned fragment
             continue;
         }
@@ -271,7 +275,7 @@ pub fn cal_overall_probability(snpfrag: &SNPFrag) -> f64 {
     return logp;
 }
 
-pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i32>) -> i32 {
+pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i32>, apply_downsampling: bool) -> i32 {
     // updated_haplotag: the index of the fragments will be updated
     let mut logp = 0.0;
     let mut pre_logp = 0.0;
@@ -280,7 +284,8 @@ pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i
         let mut eta: Vec<i32> = Vec::new();
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
-        if snpfrag.fragments[*k].haplotag == 0 {
+        if snpfrag.fragments[*k].haplotag == 0 
+            || (apply_downsampling && !snpfrag.fragments[*k].downsampled) {
             continue;
         }
         for fe in snpfrag.fragments[*k].list.iter() {
@@ -308,7 +313,7 @@ pub fn check_new_haplotag(snpfrag: &SNPFrag, updated_haplotag: &HashMap<usize, i
     flag
 }
 
-pub fn check_new_haplotype_genotype(snpfrag: &SNPFrag, updated_haplotype_genotype: &HashMap<usize, (i32, i32)>) -> i32 {
+pub fn check_new_haplotype_genotype(snpfrag: &SNPFrag, updated_haplotype_genotype: &HashMap<usize, (i32, i32)>, apply_downsampling: bool) -> i32 {
     let mut logp = 0.0;
     let mut pre_logp = 0.0;
     for (i, h) in updated_haplotype_genotype.iter() {
@@ -318,7 +323,9 @@ pub fn check_new_haplotype_genotype(snpfrag: &SNPFrag, updated_haplotype_genotyp
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
         for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
-            if !snpfrag.fragments[*k].for_phasing || snpfrag.fragments[*k].haplotag == 0 {
+            if !snpfrag.fragments[*k].for_phasing
+                || (apply_downsampling && !snpfrag.fragments[*k].downsampled)
+                || snpfrag.fragments[*k].haplotag == 0 {
                 continue;
             }
             for fe in snpfrag.fragments[*k].list.iter() {
@@ -347,7 +354,7 @@ pub fn check_new_haplotype_genotype(snpfrag: &SNPFrag, updated_haplotype_genotyp
     return flag;
 }
 
-pub fn check_block_new_haplotype_haplotag(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize, i32>, updated_haplotag: &HashMap<usize, i32>) -> i32 {
+pub fn check_block_new_haplotype_haplotag(snpfrag: &SNPFrag, updated_haplotype: &HashMap<usize, i32>, updated_haplotag: &HashMap<usize, i32>, apply_downsampling: bool) -> i32 {
     let mut logp = 0.0;
     let mut pre_logp = 0.0;
     for (i, h) in updated_haplotype.iter() {
@@ -358,7 +365,8 @@ pub fn check_block_new_haplotype_haplotag(snpfrag: &SNPFrag, updated_haplotype: 
         let mut ps: Vec<i32> = Vec::new();
         let mut probs: Vec<f64> = Vec::new();
         for k in snpfrag.candidate_snps[*i].snp_cover_fragments.iter() {
-            if snpfrag.fragments[*k].haplotag == 0 {
+            if snpfrag.fragments[*k].haplotag == 0 
+                || (apply_downsampling && !snpfrag.fragments[*k].downsampled){
                 continue;
             }
             for fe in snpfrag.fragments[*k].list.iter() {
@@ -685,6 +693,16 @@ impl SNPFrag {
         }
     }
 
+    pub unsafe fn downsample_fragments(&mut self, downsample_depth: u32, seed: u64) {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut shuffled_indices = (0..self.fragments.len()).collect::<Vec<usize>>();
+        shuffled_indices.shuffle(&mut rng);
+        let selected_indices = shuffled_indices.into_iter().take(downsample_depth as usize).collect::<Vec<usize>>();
+        for i in selected_indices.iter() {
+            self.fragments[*i].downsampled = true;
+        }
+    }
+
     // pub fn get_ld_blocks(&mut self, ld_weight_threshold: u32) -> (HashMap<[usize; 2], (i32, f32)>, GraphMap<usize, i32, Undirected>) {
     //     let mut ld_idxes: Vec<usize> = Vec::new();
     //     for ti in 0..self.candidate_snps.len() {
@@ -792,7 +810,7 @@ impl SNPFrag {
     // }
 
 
-    pub fn cross_optimize(&mut self, conserved_snps: &HashSet<usize>, keep_conserved: bool, with_genotype: bool) -> f64 {
+    pub fn cross_optimize(&mut self, conserved_snps: &HashSet<usize>, keep_conserved: bool, with_genotype: bool, apply_downsampling: bool) -> f64 {
         // Iteration:
         //     1. evaluate the assignment of each read based on the current SNP haplotype.
         //     2. evaluate the SNP haplotype based on the read assignment.
@@ -807,7 +825,9 @@ impl SNPFrag {
             // optimize sigma
             let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
             for k in 0..self.fragments.len() {
-                if !self.fragments[k].for_phasing || self.fragments[k].haplotag == 0 {
+                if !self.fragments[k].for_phasing
+                    || (apply_downsampling && !self.fragments[k].downsampled)
+                    || self.fragments[k].haplotag == 0 {
                     continue;
                 }
                 let sigma_k = self.fragments[k].haplotag;
@@ -837,7 +857,7 @@ impl SNPFrag {
                 }
             }
 
-            let check_val = check_new_haplotag(&self, &tmp_haplotag);
+            let check_val = check_new_haplotag(&self, &tmp_haplotag, apply_downsampling);
             assert!(check_val >= 0, "Error: check new haplotag: {:?}", self.candidate_snps);
             for (k, h) in tmp_haplotag.iter() {
                 // when prob is equal, we still perform the flip to avoid bug of underflow
@@ -849,7 +869,7 @@ impl SNPFrag {
                 haplotag_increase = true;
                 haplotype_genotype_increase = true;
             }
-            self.check_local_optimal_configuration(false, true);
+            self.check_local_optimal_configuration(false, true, apply_downsampling);
 
             // optimize delta
             let mut tmp_haplotype_genotype: HashMap<usize, (i32, i32)> = HashMap::new();
@@ -864,7 +884,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[i].snp_cover_fragments.iter() {
-                    if !self.fragments[*k].for_phasing || self.fragments[*k].haplotag == 0 {
+                    if !self.fragments[*k].for_phasing 
+                        || (apply_downsampling && !self.fragments[*k].downsampled)
+                        || self.fragments[*k].haplotag == 0 {
                         continue;
                     }
                     // k is fragment index
@@ -919,7 +941,7 @@ impl SNPFrag {
                     }
                 }
             }
-            let check_val = check_new_haplotype_genotype(&self, &tmp_haplotype_genotype);
+            let check_val = check_new_haplotype_genotype(&self, &tmp_haplotype_genotype, apply_downsampling);
             assert!(check_val >= 0, "Error: check new haplotype: {:?}", self.candidate_snps);
             for (idx, hap) in tmp_haplotype_genotype.iter() {
                 // when prob is equal, we still perform the flip to avoid bug of underflow
@@ -952,15 +974,17 @@ impl SNPFrag {
                 break;
             }
         }
-        let prob = cal_overall_probability(&self);
+        let prob = cal_overall_probability(&self, apply_downsampling);
         prob
     }
 
-    fn check_local_optimal_configuration(&self, used_for_haplotype_genotype: bool, used_for_haplotag: bool) {
+    fn check_local_optimal_configuration(&self, used_for_haplotype_genotype: bool, used_for_haplotag: bool, apply_downsampling: bool) {
         // check sigma
         if used_for_haplotag {
             for k in 0..self.fragments.len() {
-                if !self.fragments[k].for_phasing || self.fragments[k].haplotag == 0 {
+                if !self.fragments[k].for_phasing
+                    || (apply_downsampling && !self.fragments[k].downsampled)
+                    || self.fragments[k].haplotag == 0 {
                     continue;
                 }
                 let sigma_k = self.fragments[k].haplotag;
@@ -996,7 +1020,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[i].snp_cover_fragments.iter() {
-                    if !self.fragments[*k].for_phasing || self.fragments[*k].haplotag == 0 {
+                    if !self.fragments[*k].for_phasing
+                        || (apply_downsampling && !self.fragments[*k].downsampled)
+                        || self.fragments[*k].haplotag == 0 {
                         continue;
                     }
                     // k is fragment index
@@ -1061,7 +1087,7 @@ impl SNPFrag {
         }
     }
 
-    pub fn phase(&mut self, ld_weight_threshold: u32, max_enum_snps: usize, random_flip_fraction: f32, max_iters: i32) {
+    pub fn phase(&mut self, ld_weight_threshold: u32, max_enum_snps: usize, random_flip_fraction: f32, max_iters: i32, apply_downsampling: bool) {
         let mut largest_prob = f64::NEG_INFINITY;
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();
@@ -1090,7 +1116,7 @@ impl SNPFrag {
                     self.init_assignment();
                     self.init_genotype();
                 }
-                let prob = self.cross_optimize(&conserved_snps, false, true);
+                let prob = self.cross_optimize(&conserved_snps, false, true, apply_downsampling);
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -1106,14 +1132,14 @@ impl SNPFrag {
                 self.init_genotype();
                 self.init_assignment();
             }
-            let prob = self.cross_optimize(&conserved_snps, true, false);
+            let prob = self.cross_optimize(&conserved_snps, true, false, apply_downsampling);
             if prob > largest_prob {
                 largest_prob = prob;
                 self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
             }
             self.load_best_configuration(&best_haplotype, &best_haplotag, &best_genotype);
 
-            let prob = self.cross_optimize_by_block();
+            let prob = self.cross_optimize_by_block(apply_downsampling);
             if prob > largest_prob {
                 largest_prob = prob;
                 self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -1185,7 +1211,7 @@ impl SNPFrag {
                         }
                     }
                 }
-                let prob = self.cross_optimize(&conserved_snps, false, false);
+                let prob = self.cross_optimize(&conserved_snps, false, false, apply_downsampling);
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -1201,7 +1227,7 @@ impl SNPFrag {
                     }
                 }
 
-                let prob = self.cross_optimize(&conserved_snps, false, false);
+                let prob = self.cross_optimize(&conserved_snps, false, false, apply_downsampling);
                 if prob > largest_prob {
                     largest_prob = prob;
                     self.save_best_configuration(&mut best_haplotype, &mut best_haplotag, &mut best_genotype);
@@ -1272,7 +1298,7 @@ impl SNPFrag {
         // println!("largest_prob: {}", largest_prob);
     }
 
-    pub fn cross_optimize_by_block(&mut self) -> f64 {
+    pub fn cross_optimize_by_block(&mut self, apply_downsampling: bool) -> f64 {
         // optimize delta
         let mut tmp_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut tmp_haplotag: HashMap<usize, i32> = HashMap::new();
@@ -1299,7 +1325,9 @@ impl SNPFrag {
                 let mut ps: Vec<i32> = Vec::new();
                 let mut probs: Vec<f64> = Vec::new();
                 for k in self.candidate_snps[*idx].snp_cover_fragments.iter() {
-                    if !self.fragments[*k].for_phasing || self.fragments[*k].haplotag == 0 {
+                    if !self.fragments[*k].for_phasing 
+                        || (apply_downsampling && !self.fragments[*k].downsampled)
+                        || self.fragments[*k].haplotag == 0 {
                         continue;
                     }
                     // k is fragment index
@@ -1364,7 +1392,7 @@ impl SNPFrag {
             // when prob is equal, we still perform the flip to avoid bug of underflow
             self.fragments[*k].haplotag = *h;
         }
-        let prob = cal_overall_probability(&self);
+        let prob = cal_overall_probability(&self, apply_downsampling);
         prob
     }
 }

@@ -192,6 +192,14 @@ struct Args {
     #[arg(long, default_value_t = 50000)]
     max_depth: u32,
 
+    /// Apply downsample
+    #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
+    downsample: bool,
+
+    /// Downsample depth
+    #[arg(long, default_value_t = 10000)]
+    downsample_depth: u32,
+
     /// Minimum read length to filter reads
     #[arg(long, default_value_t = 500)]
     min_read_length: usize,
@@ -301,6 +309,8 @@ fn main() {
     let window_size = arg.window_size;
     let polya_tail_length = arg.polya_tail_length;
     let max_depth = arg.max_depth;
+    let downsample = arg.downsample;
+    let downsample_depth = arg.downsample_depth;
     let min_read_length = arg.min_read_length;
     let imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
     let somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
@@ -448,6 +458,8 @@ fn main() {
         cover_strand_bias_threshold,
         min_depth,
         max_depth,
+        downsample,
+        downsample_depth,
         min_read_length,
         distance_to_splicing_site,
         window_size,

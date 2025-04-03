@@ -188,7 +188,7 @@ impl SNPFrag {
         // }
     }
 
-    pub fn eval_rna_edit_var_phase(&mut self, min_phase_score: f32) {
+    pub fn eval_rna_edit_var_phase(&mut self, min_phase_score: f32, apply_downsampling: bool) {
         for ti in self.edit_snps.iter() {
             let snp = &mut self.candidate_snps[*ti];
             if snp.snp_cover_fragments.len() == 0 {
@@ -209,6 +209,9 @@ impl SNPFrag {
             let mut hap2_reads_num = 0;
             for k in snp.snp_cover_fragments.iter() {
                 if !self.fragments[*k].for_phasing || self.fragments[*k].assignment == 0 || self.fragments[*k].num_hete_links < self.min_linkers {
+                    continue;
+                }
+                if apply_downsampling && !self.fragments[*k].downsampled {
                     continue;
                 }
                 for fe in self.fragments[*k].list.iter() {
@@ -277,7 +280,7 @@ impl SNPFrag {
         }
     }
 
-    pub fn assign_snp_haplotype_genotype(&mut self) {
+    pub fn assign_snp_haplotype_genotype(&mut self, apply_downsampling: bool) {
         // calculate phase score for each snp
         for ti in 0..self.candidate_snps.len() {
             let snp = &mut self.candidate_snps[ti];
@@ -311,6 +314,9 @@ impl SNPFrag {
             for k in snp.snp_cover_fragments.iter() {
                 // heterozygous use phased reads, otherwise use all reads
                 if !self.fragments[*k].for_phasing || self.fragments[*k].num_hete_links < self.min_linkers {
+                    continue;
+                }
+                if apply_downsampling && !self.fragments[*k].downsampled {
                     continue;
                 }
                 if snp.variant_type == 1 && self.fragments[*k].assignment == 0 {
@@ -454,7 +460,7 @@ impl SNPFrag {
         }
     }
 
-    pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64) -> HashMap<String, i32> {
+    pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64, apply_downsampling: bool) -> HashMap<String, i32> {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         for k in 0..self.fragments.len() {
             if self.fragments[k].read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460" || 
@@ -462,7 +468,8 @@ impl SNPFrag {
                 self.fragments[k].read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" {
                 println!("\nfragment: {:?}", self.fragments[k]);
             }
-            if !self.fragments[k].for_phasing { continue; }
+            if !self.fragments[k].for_phasing 
+                || (apply_downsampling && !self.fragments[k].downsampled) { continue; }
             let sigma_k = self.fragments[k].haplotag;
             let mut delta: Vec<i32> = Vec::new();
             let mut eta: Vec<i32> = Vec::new();

@@ -234,6 +234,8 @@ pub struct Fragment {
     // number of linked heterozygous snps in the fragment
     pub for_phasing: bool,
     // whether used in phasing
+    pub downsampled: bool,
+    // whether the fragment is downsampled
 }
 
 #[derive(Debug, Clone, Default)]

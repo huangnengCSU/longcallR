@@ -36,6 +36,8 @@ pub fn run(
     cover_strand_bias_threshold: f32,
     min_depth: u32,
     max_depth: u32,
+    downsample: bool,
+    downsample_depth: u32,
     min_read_length: usize,
     distance_to_splicing_site: u32,
     window_size: u32,
@@ -135,6 +137,7 @@ pub fn run(
                     somatic_allele_cnt_cutoff,
                 );
             }
+            println!("number of fragments: {:?}", snpfrag.fragments.len());
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(
                 &bam_file,
@@ -144,6 +147,21 @@ pub fn run(
                 min_read_length,
                 divergence,
             );
+            let apply_downsampling = downsample 
+                && downsample_depth > 0 
+                && snpfrag.fragments.len() >= downsample_depth as usize;
+            println!("apply downsampling: {:?}", apply_downsampling);
+            if apply_downsampling {
+                unsafe {
+                    snpfrag.downsample_fragments(downsample_depth, 2025);
+                }
+            }
+            // if snpfrag.fragments.len() >= downsample_depth as usize {
+            //     unsafe {
+            //         snpfrag.downsample_fragments(downsample_depth, 2025);
+            //     }
+            // }
+            println!("number of fragments: {:?}", snpfrag.fragments.len());
             // snpfrag.clean_fragments();
 
             unsafe {
@@ -151,17 +169,17 @@ pub fn run(
                 snpfrag.init_assignment();
             }
             // snpfrag.chain_phase(max_enum_snps);
-            snpfrag.phase(1, max_enum_snps, random_flip_fraction, max_iters);
+            snpfrag.phase(1, max_enum_snps, random_flip_fraction, max_iters, apply_downsampling);
             // let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-            snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-            snpfrag.assign_snp_haplotype_genotype();
+            snpfrag.assign_reads_haplotype(read_assignment_cutoff, apply_downsampling);
+            snpfrag.assign_snp_haplotype_genotype(apply_downsampling);
             // let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-            snpfrag.assign_reads_haplotype(read_assignment_cutoff);
-            snpfrag.assign_snp_haplotype_genotype();
+            snpfrag.assign_reads_haplotype(read_assignment_cutoff, apply_downsampling);
+            snpfrag.assign_snp_haplotype_genotype(apply_downsampling);
             // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
             // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
-            snpfrag.eval_rna_edit_var_phase(min_phase_score);
-            let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
+            snpfrag.eval_rna_edit_var_phase(min_phase_score, apply_downsampling);
+            let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff, false);
             // snpfrag.eval_hom_var_phase(min_phase_score);
             // assign phased fragments to somatic mutations and detect condifent somatic mutations
             // println!("somatic: {}", snpfrag.somatic_snps.len());
