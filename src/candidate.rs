@@ -533,8 +533,6 @@ impl SNPFrag {
                 candidate_snp.variant_quality = genotype_quality.quality as f64;
                 candidate_snp.genotype_quality = genotype_quality.quality as f64;
 
-                println!("cand: {:?}", candidate_snp);
-
                 // genotype: 0: 0|0, 1: 0|1, 2: 1|1, 3: 1|2
                 match genotype_quality.genotype {
                     0 => {
