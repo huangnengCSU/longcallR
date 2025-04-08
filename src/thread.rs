@@ -111,7 +111,7 @@ pub fn run(
             snpfrag.region = reg.clone();
             snpfrag.min_linkers = min_linkers;
             if input_vcf_file.clone().is_some() {
-                let chr_candidates_genotype_quality = candidates_genotype_quality.get(&reg.chr);
+                let chr_candidates_genotype_quality = candidates_genotype_quality.get(&reg.chr);    // 0-based
                 if let Some(chr_candidates_genotype_quality) = chr_candidates_genotype_quality {
                     snpfrag.import_external_candidates(
                         &profile,
@@ -137,7 +137,6 @@ pub fn run(
                     somatic_allele_cnt_cutoff,
                 );
             }
-            println!("number of fragments: {:?}", snpfrag.fragments.len());
             // TODO: for very high depth region, down-sampling the reads
             snpfrag.get_fragments(
                 &bam_file,
@@ -150,18 +149,18 @@ pub fn run(
             let apply_downsampling = downsample 
                 && downsample_depth > 0 
                 && snpfrag.fragments.len() >= downsample_depth as usize;
-            println!("apply downsampling: {:?}", apply_downsampling);
             if apply_downsampling {
                 unsafe {
                     snpfrag.downsample_fragments(downsample_depth, 2025);
                 }
             }
-            // if snpfrag.fragments.len() >= downsample_depth as usize {
-            //     unsafe {
-            //         snpfrag.downsample_fragments(downsample_depth, 2025);
-            //     }
-            // }
-            println!("number of fragments: {:?}", snpfrag.fragments.len());
+            if snpfrag.fragments.len() > 0 {
+                println!(
+                    "number of fragments: {:?} in {:?}, apply downsampling: {:?}", 
+                    snpfrag.fragments.len(),
+                    reg, 
+                    apply_downsampling);
+            }
             // snpfrag.clean_fragments();
 
             unsafe {

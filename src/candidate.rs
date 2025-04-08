@@ -61,9 +61,6 @@ impl SNPFrag {
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
             let bf = &pileup[bfidx];
-            if position == 63216714 {
-                println!("{:?}", bf);
-            }
             if bf.i {
                 continue;
             }
@@ -78,9 +75,6 @@ impl SNPFrag {
                 continue;
             }
             let total_allele_count = bf.get_allele_counts();
-            if position == 63216714 {
-                println!("total_allele_count: {:?}", total_allele_count);
-            }
             if total_allele_count < min_coverage || total_allele_count > max_coverage {
                 position += 1;
                 continue;
@@ -127,11 +121,6 @@ impl SNPFrag {
                 continue;
             }
 
-            if position == 63216714 {
-                println!("af: {:?}", alternate_alleles.frequency);
-                println!("number of alleles: {:?}", alternate_alleles.num);
-            }
-
             if alternate_alleles.num == 0 {
                 position += 1;
                 continue;
@@ -165,21 +154,11 @@ impl SNPFrag {
                 continue;
             }
 
-            if position == 63216714 {
-                println!("{:?}", allele1_cnt + allele2_cnt);
-                println!("{:?}", bf.get_depth_include_intron());
-            }
-
             if (allele1_cnt + allele2_cnt) as f32 / (bf.get_depth_include_intron() as f32)
                 < min_allele_freq_include_intron
             {
                 position += 1;
                 continue;
-            }
-
-            if position == 63216714 {
-                println!("{:?}", reference_allele);
-                println!("{:?}", alternate_alleles);
             }
 
             let allele1_quals: Vec<u8> = bf.get_allele_baseq(allele1);
@@ -362,10 +341,6 @@ impl SNPFrag {
                 candidate_snp.genotype = 1;
             }
 
-            if position == 63216714 {
-                println!("{:?}", candidate_snp);
-            }
-
             // Low QUAL sites are filtered out
             if variant_quality < min_variant_qual as f64 {
                 position += 1;
@@ -421,9 +396,6 @@ impl SNPFrag {
                 }
                 candidate_snp.hom_var = true;
                 candidate_snp.for_phasing = true;
-                if position == 63216714 {
-                    println!("{:?}", candidate_snp);
-                }
                 self.candidate_snps.push(candidate_snp);
                 self.homo_snps.push(self.candidate_snps.len() - 1);
                 position += 1;
@@ -436,9 +408,6 @@ impl SNPFrag {
                     candidate_snp.genotype = -1;
                     candidate_snp.hom_var = true;
                     candidate_snp.for_phasing = true;
-                    if position == 63216714 {
-                        println!("{:?}", candidate_snp);
-                    }
                     self.candidate_snps.push(candidate_snp);
                     self.homo_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
@@ -447,9 +416,6 @@ impl SNPFrag {
                 if alternate_alleles.num == 1 {
                     candidate_snp.het_var = true;
                     candidate_snp.for_phasing = true;
-                    if position == 63216714 {
-                        println!("{:?}", candidate_snp);
-                    }
                     self.candidate_snps.push(candidate_snp);
                     self.het_snps.push(self.candidate_snps.len() - 1);
                     position += 1;
@@ -546,10 +512,10 @@ impl SNPFrag {
             }
             let (allele1, allele1_cnt, allele2, allele2_cnt) =
                 bf.get_two_major_alleles(bf.ref_base);
-            if chr_candidates_genotype_quality.contains_key(&(position as usize + 1)) {
+            if chr_candidates_genotype_quality.contains_key(&(position as usize)) {
                 let ref_pos = position as usize; // 0-based
                 let ref_base = ref_seq[ref_pos] as char;
-                let genotype_quality = chr_candidates_genotype_quality.get(&(ref_pos + 1)).unwrap();
+                let genotype_quality = chr_candidates_genotype_quality.get(&(ref_pos)).unwrap();
                 if genotype_quality.quality < min_variant_qual {
                     position += 1;
                     continue;
@@ -566,6 +532,8 @@ impl SNPFrag {
                 candidate_snp.depth = total_allele_count;
                 candidate_snp.variant_quality = genotype_quality.quality as f64;
                 candidate_snp.genotype_quality = genotype_quality.quality as f64;
+
+                println!("cand: {:?}", candidate_snp);
 
                 // genotype: 0: 0|0, 1: 0|1, 2: 1|1, 3: 1|2
                 match genotype_quality.genotype {

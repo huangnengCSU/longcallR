@@ -194,17 +194,9 @@ impl SNPFrag {
                 }
             }
 
-            if fragment.read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" {
-                println!("\nInit fragment: {:?}", fragment);
-            }
-
             // if truncation_flag && truncation_end - truncation_start > 0 {
             //     truncation_regions.push((truncation_start, truncation_end));
             // }
-
-            if fragment.read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" {
-                println!("\nModified fragment: {:?}", fragment);
-            }
 
             // remove frag_elem which is in truncated regions from fragment.list
             // fragment.list.retain(|frag_elem| {

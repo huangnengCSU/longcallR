@@ -192,6 +192,14 @@ struct Args {
     #[arg(long, default_value_t = 50000)]
     max_depth: u32,
 
+    /// Truncate extremely high coverage region
+    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    truncation: bool,
+
+    /// coverage for truncation
+    #[arg(long, default_value_t = 200000)]
+    truncation_coverage: u32,
+
     /// Apply downsample
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     downsample: bool,
@@ -256,6 +264,8 @@ fn build_regions(
     min_mapq: u8,
     min_read_length: usize,
     divergence: f32,
+    truncation: bool,
+    truncation_coverage: u32,
     anno_path: Option<String>,
 ) -> (Vec<Region>, HashMap<String, Vec<Interval<u32, u8>>>) {
     let mut regions = if let Some(region_str) = input_region {
@@ -269,6 +279,8 @@ fn build_regions(
             min_mapq,
             min_read_length,
             divergence,
+            truncation,
+            truncation_coverage,
         )
     };
     let exon_regions = if let Some(anno_path_str) = anno_path {
@@ -309,6 +321,8 @@ fn main() {
     let window_size = arg.window_size;
     let polya_tail_length = arg.polya_tail_length;
     let max_depth = arg.max_depth;
+    let truncation = arg.truncation;
+    let truncation_coverage = arg.truncation_coverage;
     let downsample = arg.downsample;
     let downsample_depth = arg.downsample_depth;
     let min_read_length = arg.min_read_length;
@@ -406,17 +420,20 @@ fn main() {
             min_mapq,
             min_read_length,
             divergence,
+            truncation,
+            truncation_coverage,
             anno_path,
         );
         for reg in regions.iter() {
             if reg.gene_id.is_none() {
-                println!("{}:{}-{}", reg.chr, reg.start, reg.end);
+                println!("{}:{}-{} {}", reg.chr, reg.start, reg.end, reg.max_coverage.unwrap());
             } else {
                 println!(
-                    "{}:{}-{} {:?}",
+                    "{}:{}-{} {} {:?}",
                     reg.chr,
                     reg.start,
                     reg.end,
+                    reg.max_coverage.unwrap(),
                     reg.gene_id.clone().unwrap()
                 );
             }
@@ -433,6 +450,8 @@ fn main() {
         min_mapq,
         min_read_length,
         divergence,
+        truncation,
+        truncation_coverage,
         anno_path,
     );
 

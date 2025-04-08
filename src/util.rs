@@ -25,6 +25,8 @@ pub struct Region {
     // 1-based, inclusive
     pub(crate) end: u32,
     // 1-based, exclusive
+    pub(crate) max_coverage: Option<u32>,
+    // max coverage of this region
     pub(crate) gene_id: Option<String>,
     // if load annotation, this field will tell which gene this region covers. Multiple gene separated by comma
 }
@@ -38,6 +40,7 @@ impl Region {
                 chr,
                 start: 0,
                 end: 0,
+                max_coverage: Some(0),
                 gene_id: None,
             }
         } else if region.contains(":") && region.contains("-") {
@@ -46,13 +49,15 @@ impl Region {
             let pos_vec: Vec<&str> = region_vec[1].split("-").collect();
             let start = pos_vec[0].parse::<u32>().unwrap();
             let end = pos_vec[1].parse::<u32>().unwrap();
+            let max_coverage = 0;
             let gene_id = None;
             assert!(start <= end);
             return Region {
-                chr,
-                start,
-                end,
-                gene_id,
+                chr: chr,
+                start: start,
+                end: end,
+                max_coverage: Some(max_coverage),
+                gene_id: gene_id,
             };
         } else {
             panic!("region format error!");
@@ -235,6 +240,8 @@ pub fn find_isolated_regions_with_depth(
     min_mapq: u8,
     min_read_length: usize,
     divergence: f32,
+    truncation: bool,
+    truncation_coverage: u32,
 ) -> Vec<Region> {
     let mut isolated_regions: Vec<Region> = Vec::new();
     let mut depth_vec: Vec<u32> = vec![0; ref_len as usize];
@@ -279,8 +286,12 @@ pub fn find_isolated_regions_with_depth(
     }
     let mut region_start = -1;
     let mut region_end = -1;
+    let mut max_coverage = 0;
     for i in 0..ref_len {
-        if depth_vec[i as usize] == 0 {
+        if depth_vec[i as usize] > max_coverage {
+            max_coverage = depth_vec[i as usize];
+        }
+        if (depth_vec[i as usize] == 0) || (truncation && depth_vec[i as usize] > truncation_coverage) {
             if region_end > region_start {
                 assert!(region_start >= 0);
                 assert!(region_end >= 0);
@@ -288,10 +299,12 @@ pub fn find_isolated_regions_with_depth(
                     chr: chr.to_string(),
                     start: (region_start + 1) as u32,
                     end: (region_end + 2) as u32,
+                    max_coverage: Some(max_coverage),
                     gene_id: None,
                 });
                 region_start = -1;
                 region_end = -1;
+                max_coverage = 0;
             }
         } else {
             if region_start == -1 {
@@ -307,6 +320,7 @@ pub fn find_isolated_regions_with_depth(
             chr: chr.to_string(),
             start: (region_start + 1) as u32,
             end: (region_end + 2) as u32,
+            max_coverage: Some(max_coverage),
             gene_id: None,
         });
         // region_start = -1;
@@ -372,6 +386,7 @@ pub fn parse_annotation(
                         chr: seqname.clone(),
                         start,
                         end: end + 1,
+                        max_coverage: Some(0),
                         gene_id: Some(gene_id.clone()),
                     });
                 } else if top.end < end + 1 {
@@ -391,6 +406,7 @@ pub fn parse_annotation(
                     chr: seqname.clone(),
                     start,
                     end: end + 1,
+                    max_coverage: Some(0),
                     gene_id: Option::from(gene_id.clone()),
                 });
             }
@@ -460,6 +476,7 @@ pub fn lapper_intervals(
                 chr: q.chr.clone(),
                 start: intersected_start as u32,
                 end: intersected_end as u32,
+                max_coverage: Some(q.max_coverage.unwrap()),
                 gene_id: Option::from(h_gene),
             });
         }
@@ -513,6 +530,8 @@ pub fn extract_isolated_regions_parallel(
     min_mapq: u8,
     min_read_length: usize,
     divergence: f32,
+    truncation: bool,
+    truncation_coverage: u32,
 ) -> Vec<Region> {
     let results: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let pool = rayon::ThreadPoolBuilder::new()
@@ -541,6 +560,8 @@ pub fn extract_isolated_regions_parallel(
                     min_mapq,
                     min_read_length,
                     divergence,
+                    truncation,
+                    truncation_coverage,
                 ));
         });
     });

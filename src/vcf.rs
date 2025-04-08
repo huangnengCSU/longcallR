@@ -406,7 +406,7 @@ pub fn get_genotype_quality_phase_from_vcf(
         let record = result.unwrap();
         let rid = record.rid().unwrap();
         let chr = std::str::from_utf8(record.header().rid2name(rid).unwrap()).unwrap();
-        let pos = record.pos();
+        let pos = record.pos(); // 0-based position
         let qual = record.qual();
         let mut phased = false;
         let sample_count = usize::try_from(record.sample_count()).unwrap();

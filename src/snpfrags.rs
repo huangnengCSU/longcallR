@@ -377,16 +377,6 @@ impl SNPFrag {
                 panic!("Error: genotype optimization failed. {},{},{},{}", q1, q2, q3, q4);
             }
 
-            if snp.pos == 63216714 {
-                println!("\nAssign SNP {}: q1:{}, q2:{}, q3:{}, q4:{}", snp.pos, q1, q2, q3, q4);
-                println!("delta_i:{}, eta_i:{}", delta_i, eta_i);
-                println!("sigma:{:?}", sigma);
-                println!("sigma_reads:{:?}", sigma_reads);
-                println!("ps:{:?}", ps);
-                println!("probs:{:?}", probs);
-                println!("{:?}", snp);
-            }
-
             if snp.genotype != 0 {
                 snp.non_selected = true;
                 continue;
@@ -463,11 +453,6 @@ impl SNPFrag {
     pub fn assign_reads_haplotype(&mut self, read_assignment_cutoff: f64, apply_downsampling: bool) -> HashMap<String, i32> {
         let mut read_assignments: HashMap<String, i32> = HashMap::new();
         for k in 0..self.fragments.len() {
-            if self.fragments[k].read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460" || 
-                self.fragments[k].read_id == "m84036_230523_222603_s1/56563284/ccs/9046_10471" || 
-                self.fragments[k].read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" {
-                println!("\nfragment: {:?}", self.fragments[k]);
-            }
             if !self.fragments[k].for_phasing 
                 || (apply_downsampling && !self.fragments[k].downsampled) { continue; }
             let sigma_k = self.fragments[k].haplotag;
@@ -477,11 +462,6 @@ impl SNPFrag {
             let mut probs: Vec<f64> = Vec::new();
             for fe in self.fragments[k].list.iter() {
                 // if fe.phase_site == false { continue; }
-                if self.fragments[k].read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460" ||
-                    self.fragments[k].read_id == "m84036_230523_222603_s1/56563284/ccs/9046_10471" ||
-                    self.fragments[k].read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" {
-                    println!("\nFragElem: {:?}",self.candidate_snps[fe.snp_idx]);
-                }
                 if self.candidate_snps[fe.snp_idx].for_phasing == false { continue; }
                 if self.candidate_snps[fe.snp_idx].haplotype == 0 { continue; }
                 if self.candidate_snps[fe.snp_idx].genotype != 0 { continue; }
@@ -490,11 +470,6 @@ impl SNPFrag {
                 probs.push(fe.prob);
                 delta.push(self.candidate_snps[fe.snp_idx].haplotype);
                 eta.push(self.candidate_snps[fe.snp_idx].genotype);
-            }
-            if self.fragments[k].read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/56563284/ccs/9046_10471" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" {
-                println!("\n{:?}:{:?}",self.fragments[k].read_id, delta);
             }
             if sigma_k == 0 {
                 // unasigned haplotag, cluster the read into unknown group
@@ -514,10 +489,6 @@ impl SNPFrag {
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
                     continue;
-                }
-
-                if self.fragments[k].read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460"{
-                    println!("\nq:{}, qn:{}, diff:{}", q, qn, (q - qn).abs());
                 }
 
                 if (q - qn).abs() >= read_assignment_cutoff {
@@ -552,17 +523,6 @@ impl SNPFrag {
                     self.fragments[k].assignment_score = 0.0;
                     read_assignments.insert(self.fragments[k].read_id.clone(), 0);
                 }
-            }
-            if self.fragments[k].read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/56563284/ccs/9046_10471" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/215351954/ccs/3973_5699" || 
-                self.fragments[k].read_id == "m84036_230523_222603_s1/110823490/ccs/5669_7401" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/257035485/ccs/3243_5258" || 
-                self.fragments[k].read_id == "m84036_230523_222603_s1/71045637/ccs/2686_4703" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/132912932/ccs/1625_5860" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/96274485/ccs/5146_7534" ||
-                self.fragments[k].read_id == "m84036_230523_222603_s1/43188877/ccs/1184_4068" {
-                println!("\nassigned fragment: {:?}", self.fragments[k]);
             }
         }
         read_assignments

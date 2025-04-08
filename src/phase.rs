@@ -676,9 +676,6 @@ impl SNPFrag {
             .filter(|fragment| fragment.for_phasing)
             .for_each(|fragment| {
                 fragment.haplotag = if rng.gen::<f64>() < 0.5 { -1 } else { 1 };
-                if fragment.read_id == "m84036_230523_222603_s1/229245044/ccs/5821_7460"{
-                    println!("{}:{}", fragment.read_id, fragment.haplotag);
-                }
             });
     }
 
