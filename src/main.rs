@@ -66,7 +66,7 @@ struct Args {
     contigs: Option<Vec<String>>,
 
     /// Input vcf file
-    #[arg(long)]
+    #[arg(short = 'v', long)]
     input_vcf: Option<String>,
 
     /// Number of threads [Default: 1]
@@ -149,7 +149,7 @@ struct Args {
     #[arg(long)]
     max_depth: Option<u32>,
 
-    /// Truncate extremely high coverage region
+    /// When set, apply truncation of high coverage regions
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     truncation: bool,
 
@@ -157,7 +157,7 @@ struct Args {
     #[arg(long)]
     truncation_coverage: Option<u32>,
 
-    /// Apply downsample
+    /// When set, allow downsampling of high coverage regions
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     downsample: bool,
 
@@ -185,9 +185,9 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_bam_output: bool,
 
-    /// get blocks
+    /// When set, show blocks information.
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
-    debug_block: bool,
+    get_blocks: bool,
 }
 
 fn build_regions(
@@ -240,7 +240,7 @@ fn main() {
     let input_contigs = arg.contigs;
     let preset = arg.preset;
 
-    let debug_block = arg.debug_block;
+    let get_blocks = arg.get_blocks;
     let no_bam_output = arg.no_bam_output;
     let downsample = arg.downsample;
     let truncation = arg.truncation;
@@ -404,7 +404,7 @@ fn main() {
         }
     }
 
-    if debug_block {
+    if get_blocks {
         let (regions, _) = build_regions(
             bam_path,
             ref_path,
