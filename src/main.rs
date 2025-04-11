@@ -69,187 +69,122 @@ struct Args {
     #[arg(long)]
     input_vcf: Option<String>,
 
-    /// Number of threads, default 1
-    #[arg(short = 't', long, default_value_t = 1)]
-    threads: usize,
+    /// Number of threads [Default: 1]
+    #[arg(short = 't', long)]
+    threads: Option<usize>,
 
-    /// Platform for sequencing reads, choices: hifi, ont
+    /// Preset of parameters, choices: hifi-isoseq, hifi-masseq, ont-cdna, ont-drna
     #[arg(short = 'p', long)]
-    platform: Platform,
+    preset: Preset,
 
-    /// Preset of parameters, valid choices: Preset
+    /// Maximum number of iteration for phasing [Default: 100]
     #[arg(long)]
-    preset: Option<Preset>,
+    max_iters: Option<i32>,
 
-    /// Maximum number of iteration for phasing
-    #[arg(long, default_value_t = 100)]
-    max_iters: i32,
+    /// Maximum number of SNPs for enumerate haplotypes [Default: 10]
+    #[arg(long)]
+    max_enum_snps: Option<usize>,
 
-    /// Maximum number of SNPs for enumerate haplotypes
-    #[arg(long, default_value_t = 10)]
-    max_enum_snps: usize,
+    /// Random flip fraction for snps and fragments [Default: 0.2]
+    #[arg(long)]
+    random_flip_fraction: Option<f32>,
 
-    /// Random flip fraction for snps and fragments
-    #[arg(long, default_value_t = 0.2)]
-    random_flip_fraction: f32,
+    /// Minimum mapping quality for reads [Default: 20]
+    #[arg(long)]
+    min_mapq: Option<u8>,
 
-    /// Minimum mapping quality for reads
-    #[arg(long, default_value_t = 20)]
-    min_mapq: u8,
+    /// Minimim base quality for allele calling [Default: 10]
+    #[arg(long)]
+    min_baseq: Option<u8>,
 
-    /// Minimim base quality for allele
-    #[arg(long, default_value_t = 10)]
-    min_baseq: u8,
+    /// Max sequence divergence for valid reads [Default: 0.05]
+    #[arg(long)]
+    divergence: Option<f32>,
 
-    /// Max sequence divergence
-    #[arg(long, default_value_t = 0.05)]
-    divergence: f32,
+    /// Minimum allele frequency for candidate SNPs [Default: 0.20]
+    #[arg(long)]
+    min_allele_freq: Option<f32>,
 
-    // /// threshold for differental average base quality of two alleles
-    // #[arg(long, default_value_t = 10)]
-    // diff_baseq: u8,
-    /// Minimum allele frequency for candidate SNPs
-    #[arg(long, default_value_t = 0.20)]
-    min_allele_freq: f32,
+    /// Minimum allele frequency for candidate SNPs include intron [Default: 0.0]
+    #[arg(long)]
+    min_allele_freq_include_intron: Option<f32>,
 
-    // /// Minimum support number for each allele
-    // #[arg(long, default_value_t = 2)]
-    // min_allele_cnt: u32,
-    /// Minimum allele frequency for candidate SNPs include intron
-    #[arg(long, default_value_t = 0.0)]
-    min_allele_freq_include_intron: f32,
+    /// Minimum QUAL for candidate SNPs [Default: 2]
+    #[arg(long)]
+    min_qual: Option<u32>,
 
-    // /// Minimum allele frequency for homozygous SNPs
-    // #[arg(long, default_value_t = 0.75)]
-    // min_homozygous_freq: f32,
+    /// Whether to use strand bias to filter SNPs [Default: false]
+    #[arg(long)]
+    strand_bias: Option<bool>,
 
-    // Minimum QUAL for candidate SNPs
-    #[arg(long, default_value_t = 2)]
-    min_qual: u32,
+    /// Ignore bases within distance to read end [Default: 20]
+    #[arg(long)]
+    distance_to_read_end: Option<u32>,
 
-    // /// Minimum variant quality for candidate SNPs
-    // #[arg(long, default_value_t = 200)]
-    // min_qual_for_candidate: u32,
+    /// PolyA tail length threshold for filtering [Default: 5]
+    #[arg(long)]
+    polya_tail_length: Option<u32>,
 
-    // /// Minimum variant quality for single snp and rna editing (higher than min_qual_for_candidate)
-    // #[arg(long, default_value_t = 256)]
-    // min_qual_for_singlesnp_rnaedit: u32,
-    /// Whether to use strand bias to filter SNPs
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    use_strand_bias: bool,
+    /// Dense window size for candidate SNPs [Default: 500]
+    #[arg(long)]
+    dense_win_size: Option<u32>,
 
-    /// Variants strand bias threshold to filter SNPs, most of the variant allele appear on one strand
-    #[arg(long, default_value_t = 0.9)]
-    strand_bias_threshold: f32,
+    /// Minimum dense cnt for candidate SNPs [Default: 5]
+    #[arg(long)]
+    min_dense_cnt: Option<u32>,
 
-    /// Cover reads strand bias threshold to filter SNPs
-    #[arg(long, default_value_t = 0.9)]
-    cover_strand_bias_threshold: f32,
+    /// Minimum linked heterozygous snps for phasing [Default: 1]
+    #[arg(long)]
+    min_linkers: Option<u32>,
 
-    /// Ignore with distance to splicing site
-    #[arg(long, default_value_t = 20)]
-    distance_to_splicing_site: u32,
+    /// Minimum phase score to filter SNPs [Default: 8.0]
+    #[arg(long)]
+    min_phase_score: Option<f32>,
 
-    /// Window size for local error rate
-    #[arg(long, default_value_t = 3)]
-    window_size: u32,
+    /// Minimum depth to filter SNPs [Default: 10]
+    #[arg(long)]
+    min_depth: Option<u32>,
 
-    /// Ignore with distance to read end
-    #[arg(long, default_value_t = 20)]
-    distance_to_read_end: u32,
-
-    // /// threshold for differental average distance to read end of two alleles
-    // #[arg(long, default_value_t = 200)]
-    // diff_distance_to_read_end: i64,
-    /// PolyA tail length threshold
-    #[arg(long, default_value_t = 5)]
-    polya_tail_length: u32,
-
-    /// Dense window size
-    #[arg(long, default_value_t = 500)]
-    dense_win_size: u32,
-
-    /// Minimum dense cnt
-    #[arg(long, default_value_t = 5)]
-    min_dense_cnt: u32,
-
-    // /// Average dense distance
-    // #[arg(long, default_value_t = 60.0)]
-    // avg_dense_dist: f32,
-    /// Minimum linked heterozygous snps for phasing
-    #[arg(long, default_value_t = 2)]
-    min_linkers: u32,
-
-    /// Minimum phase score to filter SNPs
-    #[arg(long, default_value_t = 8.0)]
-    min_phase_score: f32,
-
-    /// Minimum depth to filter SNPs
-    #[arg(long, default_value_t = 10)]
-    min_depth: u32,
-
-    /// Maximum depth to filter SNPs
-    #[arg(long, default_value_t = 50000)]
-    max_depth: u32,
+    /// Maximum depth to filter SNPs [Default: 50000]
+    #[arg(long)]
+    max_depth: Option<u32>,
 
     /// Truncate extremely high coverage region
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     truncation: bool,
 
-    /// coverage for truncation
-    #[arg(long, default_value_t = 200000)]
-    truncation_coverage: u32,
+    /// coverage for truncation [Default: 200000]
+    #[arg(long)]
+    truncation_coverage: Option<u32>,
 
     /// Apply downsample
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     downsample: bool,
 
-    /// Downsample depth
-    #[arg(long, default_value_t = 10000)]
-    downsample_depth: u32,
+    /// Downsample depth [Default: 10000]
+    #[arg(long)]
+    downsample_depth: Option<u32>,
 
-    /// Minimum read length to filter reads
-    #[arg(long, default_value_t = 500)]
-    min_read_length: usize,
+    /// Minimum read length to filter reads [Default: 500]
+    #[arg(long)]
+    min_read_length: Option<usize>,
 
-    /// Read assignment cutoff, the read is phased only if the probability of assignment P(hap1)-P(hap2) > cutoff or P(hap2)-P(hap1) > cutoff
-    #[arg(long, default_value_t = 0.15)]
-    read_assignment_cutoff: f64,
+    /// Minimum absolute difference |p(h1) - p(h2)| to consider assignment legal [Default: 0.15]
+    #[arg(long)]
+    min_read_assignment_diff: Option<f64>,
 
-    /// Imbalance allele expression cutoff, allele1 / allele2 > cutoff or allele2 / allele1 > cutoff.
-    #[arg(long, default_value_t = 2.0)]
-    imbalance_allele_expression_cutoff: f32,
+    /// Somatic mutation allele fraction cutoff [Default: 0.05]
+    #[arg(long)]
+    somatic_allele_frac_cutoff: Option<f32>,
 
-    // /// Allele-specific expression allele fraction cutoff
-    // #[arg(long, default_value_t = 0.10)]
-    // ase_allele_frac_cutoff: f32,
-
-    // /// Allele-specific expression allele count cutoff
-    // #[arg(long, default_value_t = 2)]
-    // ase_allele_cnt_cutoff: u32,
-
-    // /// Allele-specific expression phased read count cutoff
-    // #[arg(long, default_value_t = 10)]
-    // ase_ps_read_cutoff: u32,
-
-    // /// Allele-specific expression phase score cutoff
-    // #[arg(long, default_value_t = 20.0)]
-    // ase_ps_cutoff: f32,
-    /// Somatic mutation allele fraction cutoff
-    #[arg(long, default_value_t = 0.05)]
-    somatic_allele_frac_cutoff: f32,
-
-    /// Somatic mutation allele count cutoff
-    #[arg(long, default_value_t = 10)]
-    somatic_allele_cnt_cutoff: u32,
+    /// Somatic mutation allele count cutoff [Default: 10]
+    #[arg(long)]
+    somatic_allele_cnt_cutoff: Option<u32>,
 
     /// When set, do not output phased bam file.
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_bam_output: bool,
 
-    // /// debug SNP
-    // #[clap(long, action = ArgAction::SetTrue)]
-    // debug_snp: bool,
     /// get blocks
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     debug_block: bool,
@@ -303,110 +238,169 @@ fn main() {
     let input_vcf = arg.input_vcf;
     let input_region = arg.region;
     let input_contigs = arg.contigs;
-    let threads = arg.threads;
-    let debug_block = arg.debug_block;
     let preset = arg.preset;
-    let platform = arg.platform;
-    let max_iters = arg.max_iters;
-    let max_enum_snps = arg.max_enum_snps;
-    let random_flip_fraction = arg.random_flip_fraction;
-    let no_bam_output = arg.no_bam_output; // default=false
-    let min_mapq = arg.min_mapq;
-    let divergence = arg.divergence;
-    let min_baseq = arg.min_baseq;
-    let min_qual = arg.min_qual;
-    let strand_bias_threshold = arg.strand_bias_threshold;
-    let cover_strand_bias_threshold = arg.cover_strand_bias_threshold;
-    let distance_to_splicing_site = arg.distance_to_splicing_site;
-    let window_size = arg.window_size;
-    let polya_tail_length = arg.polya_tail_length;
-    let max_depth = arg.max_depth;
-    let truncation = arg.truncation;
-    let truncation_coverage = arg.truncation_coverage;
-    let downsample = arg.downsample;
-    let downsample_depth = arg.downsample_depth;
-    let min_read_length = arg.min_read_length;
-    let imbalance_allele_expression_cutoff = arg.imbalance_allele_expression_cutoff;
-    let somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
-    let somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
 
+    let debug_block = arg.debug_block;
+    let no_bam_output = arg.no_bam_output;
+    let downsample = arg.downsample;
+    let truncation = arg.truncation;
+
+    let mut platform = Platform::Hifi;
+    let mut min_depth = arg.min_depth;
+    let mut min_phase_score = arg.min_phase_score;
+    let mut read_assignment_cutoff = arg.min_read_assignment_diff;
+    let mut min_linkers = arg.min_linkers;
     let mut min_allele_freq = arg.min_allele_freq;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
-    let mut use_strand_bias = arg.use_strand_bias;
     let mut distance_to_read_end = arg.distance_to_read_end;
     let mut dense_win_size = arg.dense_win_size;
     let mut min_dense_cnt = arg.min_dense_cnt;
-    let mut min_linkers = arg.min_linkers;
-    let mut min_phase_score = arg.min_phase_score;
-    let mut min_depth = arg.min_depth;
-    let mut read_assignment_cutoff = arg.read_assignment_cutoff;
+    let mut strand_bias = arg.strand_bias;
 
-    if preset.is_some() {
-        match preset.unwrap() {
-            Preset::OntCdna => {
-                min_depth = 10;
-                min_phase_score = 14.0;
-                read_assignment_cutoff = 0.15;
-                min_linkers = 1;
-                min_allele_freq = 0.20;
-                min_allele_freq_include_intron = 0.05;
-                distance_to_read_end = 20;
-                dense_win_size = 500;
-                min_dense_cnt = 5;
-                use_strand_bias = true;
-                println!("Preset: ont-cdna");
-            }
 
-            Preset::OntDrna => {
-                min_depth = 10;
-                min_phase_score = 14.0;
-                read_assignment_cutoff = 0.15;
-                min_linkers = 2;
-                min_allele_freq = 0.20;
-                min_allele_freq_include_intron = 0.05;
-                distance_to_read_end = 20;
-                dense_win_size = 500;
-                min_dense_cnt = 5;
-                use_strand_bias = false;
-                println!("Preset: ont-drna");
-            }
 
-            Preset::HifiIsoseq => {
-                min_depth = 6;
-                min_phase_score = 11.0;
-                read_assignment_cutoff = 0.0;
-                min_linkers = 1;
-                min_allele_freq = 0.15;
-                min_allele_freq_include_intron = 0.0;
-                distance_to_read_end = 40;
-                dense_win_size = 100;
-                min_dense_cnt = 5;
-                use_strand_bias = true;
-                println!("Preset: hifi-isoseq");
-            }
+    let mut threads = arg.threads;
+    let mut max_iters = arg.max_iters;
+    let mut max_enum_snps = arg.max_enum_snps;
+    let mut random_flip_fraction = arg.random_flip_fraction;
+    let mut min_mapq = arg.min_mapq;
+    let mut divergence = arg.divergence;
+    let mut min_baseq = arg.min_baseq;
+    let mut min_qual = arg.min_qual;
+    let mut polya_tail_length = arg.polya_tail_length;
+    let mut max_depth = arg.max_depth;
+    let mut truncation_coverage = arg.truncation_coverage;
+    let mut downsample_depth = arg.downsample_depth;
+    let mut min_read_length = arg.min_read_length;
+    let mut somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
+    let mut somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
 
-            Preset::HifiMasseq => {
-                min_depth = 6;
-                min_phase_score = 11.0;
-                read_assignment_cutoff = 0.0;
-                min_linkers = 1;
-                min_allele_freq = 0.15;
-                min_allele_freq_include_intron = 0.0;
-                distance_to_read_end = 40;
-                dense_win_size = 100;
-                min_dense_cnt = 5;
-                use_strand_bias = false;
-                println!("Preset: hifi-masseq");
-            }
+
+
+
+    match preset {
+        Preset::OntCdna => {
+            platform = Platform::Ont;
+            min_depth  = Option::from(arg.min_depth.unwrap_or(10));
+            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(14.0));
+            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.15));
+            min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
+            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
+            distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
+            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
+            strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
+
+            threads = Option::from(arg.threads.unwrap_or(1));
+            max_iters = Option::from(arg.max_iters.unwrap_or(100));
+            max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
+            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
+            min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
+            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
+            min_qual = Option::from(arg.min_qual.unwrap_or(2));
+            polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
+            max_depth = Option::from(arg.max_depth.unwrap_or(50000));
+            truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
+            downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
+            min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
+            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            println!("Preset: ont-cdna");
         }
-    }
 
-    match platform {
-        Platform::Hifi => {
-            println!("Platform: PacBio HiFi");
+        Preset::OntDrna => {
+            platform = Platform::Ont;
+            min_depth  = Option::from(arg.min_depth.unwrap_or(10));
+            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(14.0));
+            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.15));
+            min_linkers = Option::from(arg.min_linkers.unwrap_or(2));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
+            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
+            distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
+            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
+            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+
+            threads = Option::from(arg.threads.unwrap_or(1));
+            max_iters = Option::from(arg.max_iters.unwrap_or(100));
+            max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
+            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
+            min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
+            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
+            min_qual = Option::from(arg.min_qual.unwrap_or(2));
+            polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
+            max_depth = Option::from(arg.max_depth.unwrap_or(50000));
+            truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
+            downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
+            min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
+            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            println!("Preset: ont-drna");
         }
-        Platform::Ont => {
-            println!("Platform: Oxford Nanopore");
+
+        Preset::HifiIsoseq => {
+            platform = Platform::Hifi;
+            min_depth  = Option::from(arg.min_depth.unwrap_or(6));
+            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(11.0));
+            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
+            min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
+            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
+            distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
+            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
+            strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
+
+            threads = Option::from(arg.threads.unwrap_or(1));
+            max_iters = Option::from(arg.max_iters.unwrap_or(100));
+            max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
+            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
+            min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
+            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
+            min_qual = Option::from(arg.min_qual.unwrap_or(2));
+            polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
+            max_depth = Option::from(arg.max_depth.unwrap_or(50000));
+            truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
+            downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
+            min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
+            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            println!("Preset: hifi-isoseq");
+        }
+
+        Preset::HifiMasseq => {
+            platform = Platform::Hifi;
+            min_depth  = Option::from(arg.min_depth.unwrap_or(6));
+            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(11.0));
+            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
+            min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
+            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
+            distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
+            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
+            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+
+            threads = Option::from(arg.threads.unwrap_or(1));
+            max_iters = Option::from(arg.max_iters.unwrap_or(100));
+            max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
+            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
+            min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
+            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
+            min_qual = Option::from(arg.min_qual.unwrap_or(2));
+            polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
+            max_depth = Option::from(arg.max_depth.unwrap_or(50000));
+            truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
+            downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
+            min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
+            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            println!("Preset: hifi-masseq");
         }
     }
 
@@ -414,19 +408,25 @@ fn main() {
         let (regions, _) = build_regions(
             bam_path,
             ref_path,
-            threads,
+            threads.unwrap(),
             input_region,
             input_contigs,
-            min_mapq,
-            min_read_length,
-            divergence,
+            min_mapq.unwrap(),
+            min_read_length.unwrap(),
+            divergence.unwrap(),
             truncation,
-            truncation_coverage,
+            truncation_coverage.unwrap(),
             anno_path,
         );
         for reg in regions.iter() {
             if reg.gene_id.is_none() {
-                println!("{}:{}-{} {}", reg.chr, reg.start, reg.end, reg.max_coverage.unwrap());
+                println!(
+                    "{}:{}-{} {}",
+                    reg.chr,
+                    reg.start,
+                    reg.end,
+                    reg.max_coverage.unwrap()
+                );
             } else {
                 println!(
                     "{}:{}-{} {} {:?}",
@@ -444,14 +444,14 @@ fn main() {
     let (regions, exon_regions) = build_regions(
         bam_path,
         ref_path,
-        threads,
+        threads.unwrap(),
         input_region,
         input_contigs,
-        min_mapq,
-        min_read_length,
-        divergence,
+        min_mapq.unwrap(),
+        min_read_length.unwrap(),
+        divergence.unwrap(),
         truncation,
-        truncation_coverage,
+        truncation_coverage.unwrap(),
         anno_path,
     );
 
@@ -461,39 +461,34 @@ fn main() {
         input_vcf,
         out_vcf.as_str(),
         out_bam.as_str(),
-        threads,
+        threads.unwrap(),
         regions,
         exon_regions,
         &platform,
-        max_iters,
-        min_mapq,
-        min_baseq,
-        divergence,
-        min_allele_freq,
-        min_qual,
-        min_allele_freq_include_intron,
-        use_strand_bias,
-        strand_bias_threshold,
-        cover_strand_bias_threshold,
-        min_depth,
-        max_depth,
+        max_iters.unwrap(),
+        min_mapq.unwrap(),
+        min_baseq.unwrap(),
+        divergence.unwrap(),
+        min_allele_freq.unwrap(),
+        min_qual.unwrap(),
+        min_allele_freq_include_intron.unwrap(),
+        strand_bias.unwrap(),
+        min_depth.unwrap(),
+        max_depth.unwrap(),
         downsample,
-        downsample_depth,
-        min_read_length,
-        distance_to_splicing_site,
-        window_size,
-        distance_to_read_end,
-        polya_tail_length,
-        dense_win_size,
-        min_dense_cnt,
-        min_linkers,
-        min_phase_score,
-        max_enum_snps,
-        random_flip_fraction,
-        read_assignment_cutoff,
-        imbalance_allele_expression_cutoff,
+        downsample_depth.unwrap(),
+        min_read_length.unwrap(),
+        distance_to_read_end.unwrap(),
+        polya_tail_length.unwrap(),
+        dense_win_size.unwrap(),
+        min_dense_cnt.unwrap(),
+        min_linkers.unwrap(),
+        min_phase_score.unwrap(),
+        max_enum_snps.unwrap(),
+        random_flip_fraction.unwrap(),
+        read_assignment_cutoff.unwrap(),
         no_bam_output,
-        somatic_allele_frac_cutoff,
-        somatic_allele_cnt_cutoff,
+        somatic_allele_frac_cutoff.unwrap(),
+        somatic_allele_cnt_cutoff.unwrap(),
     );
 }
