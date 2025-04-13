@@ -172,8 +172,15 @@ pub fn run(
             snpfrag.assign_snp_haplotype_genotype(apply_downsampling);
             // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
             // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
-            snpfrag.eval_rna_edit_var_phase(min_phase_score, apply_downsampling);
+
+            // Evaluate RNA editing sites and low allele fraction variants using a relaxed phase score threshold.
+            // This step reinserts these candidates into the phasing process to ensure that phase sites are properly updated.
+            // Without this, the subsequent `assign_reads_haplotype` call would be ineffective, as it depends on an up-to-date set of phase sites.
+            snpfrag.eval_rna_edit_var_phase(min_phase_score - 3.0, apply_downsampling);
+            snpfrag.eval_low_frac_var_phase(min_phase_score - 3.0, apply_downsampling);
             let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff, false);
+            snpfrag.assign_snp_haplotype_genotype(false);
+
             // snpfrag.eval_hom_var_phase(min_phase_score);
             // assign phased fragments to somatic mutations and detect condifent somatic mutations
             // println!("somatic: {}", snpfrag.somatic_snps.len());
