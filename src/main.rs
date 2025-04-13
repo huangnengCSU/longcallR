@@ -248,7 +248,7 @@ fn main() {
     let mut platform = Platform::Hifi;
     let mut min_depth = arg.min_depth;
     let mut min_phase_score = arg.min_phase_score;
-    let mut read_assignment_cutoff = arg.min_read_assignment_diff;
+    let mut min_read_assignment_diff = arg.min_read_assignment_diff;
     let mut min_linkers = arg.min_linkers;
     let mut min_allele_freq = arg.min_allele_freq;
     let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
@@ -282,10 +282,10 @@ fn main() {
         Preset::OntCdna => {
             platform = Platform::Ont;
             min_depth  = Option::from(arg.min_depth.unwrap_or(10));
-            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(14.0));
-            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.15));
+            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
+            min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
-            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.10));
             min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
@@ -297,7 +297,7 @@ fn main() {
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
             random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
-            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
             min_qual = Option::from(arg.min_qual.unwrap_or(2));
             polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
@@ -313,10 +313,10 @@ fn main() {
         Preset::OntDrna => {
             platform = Platform::Ont;
             min_depth  = Option::from(arg.min_depth.unwrap_or(10));
-            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(14.0));
-            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.15));
-            min_linkers = Option::from(arg.min_linkers.unwrap_or(2));
-            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
+            min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
+            min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
+            min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.10));
             min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
@@ -328,7 +328,7 @@ fn main() {
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
             random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
-            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
             min_qual = Option::from(arg.min_qual.unwrap_or(2));
             polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
@@ -345,7 +345,7 @@ fn main() {
             platform = Platform::Hifi;
             min_depth  = Option::from(arg.min_depth.unwrap_or(6));
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(11.0));
-            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
+            min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
             min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
@@ -359,7 +359,7 @@ fn main() {
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
             random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
-            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
             min_qual = Option::from(arg.min_qual.unwrap_or(2));
             polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
@@ -376,7 +376,7 @@ fn main() {
             platform = Platform::Hifi;
             min_depth  = Option::from(arg.min_depth.unwrap_or(6));
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(11.0));
-            read_assignment_cutoff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
+            min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
             min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
@@ -390,7 +390,7 @@ fn main() {
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
             random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
-            divergence = Option::from(arg.divergence.unwrap_or(0.05));
+            divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
             min_qual = Option::from(arg.min_qual.unwrap_or(2));
             polya_tail_length = Option::from(arg.polya_tail_length.unwrap_or(5));
@@ -486,7 +486,7 @@ fn main() {
         min_phase_score.unwrap(),
         max_enum_snps.unwrap(),
         random_flip_fraction.unwrap(),
-        read_assignment_cutoff.unwrap(),
+        min_read_assignment_diff.unwrap(),
         no_bam_output,
         somatic_allele_frac_cutoff.unwrap(),
         somatic_allele_cnt_cutoff.unwrap(),
