@@ -285,7 +285,7 @@ fn main() {
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
-            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.10));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
             min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
@@ -316,7 +316,7 @@ fn main() {
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
-            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.10));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
             min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
