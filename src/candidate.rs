@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use petgraph::{algo::kosaraju_scc, graphmap::GraphMap, Undirected};
 use rust_lapper::{Interval, Lapper};
+use statrs::distribution::{Binomial, DiscreteCDF};
 
 use crate::snp::{AlternateAllele, Block, CandidateSNP, ReferenceAllele};
 use crate::snpfrags::SNPFrag;
@@ -31,6 +32,18 @@ fn cal_strand_odds_ratio(ref_fw: i32, ref_rv: i32, alt_fw: i32, alt_rv: i32) -> 
     let alt_ratio = f32::min(x10, x11) / f32::max(x10, x11);
     let strand_odds_ratio = f32::ln(symmetrical_ratio) + f32::ln(ref_ratio) - f32::ln(alt_ratio);
     strand_odds_ratio
+}
+
+fn binomial_two_tailed(successes: u64, trials: u64, p: f64) -> f64 {
+    let binom = Binomial::new(p, trials).unwrap();
+
+    if successes == 0 {
+        2.0 * binom.cdf(0)
+    } else if successes == trials {
+        2.0 * (1.0 - binom.cdf(trials - 1))
+    } else {
+        2.0 * f64::min(binom.cdf(successes), 1.0 - binom.cdf(successes - 1))
+    }
 }
 
 lazy_static! {
@@ -201,6 +214,22 @@ impl SNPFrag {
                 if sor > *SOR_THRESHOLD {
                     position += 1;
                     continue;
+                }
+                if alternate_alleles.num == 1 {
+                    let [alt_fw, alt_rv] = bf.get_allele_base_strands(alternate_alleles.base[0]);
+                    // less than 30x, use binomial test
+                    if alt_fw + alt_rv <= 30 {
+                        let p = binomial_two_tailed(alt_fw as u64, (alt_fw + alt_rv) as u64, 0.5);
+                        if p < 0.05 {
+                            position += 1;
+                            continue;
+                        }
+                    }
+                    // alternative allele only occurs on one strand
+                    if alt_fw * alt_rv == 0 {
+                        position += 1;
+                        continue;
+                    }
                 }
             }
 

@@ -23,6 +23,7 @@ petgraph = "0.6.4"
 itertools = "0.11.0"
 noodles-vcf = "0.60.0"
 lazy_static = "1.4.0"
+statrs = "0.16"
 
 [profile.release]
 #debug = true
