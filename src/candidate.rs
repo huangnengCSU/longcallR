@@ -352,7 +352,8 @@ impl SNPFrag {
             let reverse_transcript_cnt = bf.transcript_strands[1];
             if reference_allele.base == 'A'
                 && alternate_alleles.base[0] == 'G'
-                && (forward_transcript_cnt > reverse_transcript_cnt * 2)
+                && (forward_transcript_cnt > reverse_transcript_cnt * 2
+                    || (forward_transcript_cnt == 0 && reverse_transcript_cnt == 0))  // sometimes for missing `ts` tag
                 && candidate_snp.variant_type != 2
             {
                 candidate_snp.rna_editing = true;
@@ -364,7 +365,8 @@ impl SNPFrag {
             }
             if reference_allele.base == 'T'
                 && alternate_alleles.base[0] == 'C'
-                && (reverse_transcript_cnt > forward_transcript_cnt * 2)
+                && (reverse_transcript_cnt > forward_transcript_cnt * 2
+                    || (forward_transcript_cnt == 0 && reverse_transcript_cnt == 0))  // sometimes for missing `ts` tag
                 && candidate_snp.variant_type != 2
             {
                 candidate_snp.rna_editing = true;
