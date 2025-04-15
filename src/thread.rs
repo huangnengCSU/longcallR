@@ -93,12 +93,14 @@ pub fn run(
                     return;
                 }
             }
+            let mut filtered_reads: Vec<String> = Vec::new();
             profile.fill_data_into_freq_vec(
                 bam_file,
                 &reg,
                 ref_seq,
                 &exon_region_vec,
                 intron_filter,
+                &mut filtered_reads,
                 platform,
                 min_mapq,
                 min_read_length,
@@ -142,6 +144,7 @@ pub fn run(
                 &bam_file,
                 &reg,
                 ref_seq,
+                &filtered_reads,
                 min_mapq,
                 min_read_length,
                 divergence,

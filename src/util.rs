@@ -625,6 +625,7 @@ impl Profile {
         ref_seq: &Vec<u8>,
         exon_region_vec: &Vec<Interval<u32, u8>>,
         intron_filter: bool,
+        filtered_reads: &mut Vec<String>,
         platform: &Platform,
         min_mapq: u8,
         min_read_length: usize,
@@ -674,7 +675,6 @@ impl Profile {
                 _ => {}
             }
 
-            // let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
             let seq = record.seq();
             let base_qual = record.qual();
             let strand = if record.strand() == Forward { 0 } else { 1 };
@@ -746,6 +746,8 @@ impl Profile {
                     }
                 }
                 if entire_intron_read {
+                    let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+                    filtered_reads.push(qname);
                     continue;
                 }
             }

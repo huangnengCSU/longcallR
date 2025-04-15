@@ -12,6 +12,7 @@ impl SNPFrag {
         bam_path: &str,
         region: &Region,
         ref_seq: &Vec<u8>,
+        filtered_reads: &Vec<String>,
         min_mapq: u8,
         min_read_length: usize,
         divergence: f32,
@@ -29,13 +30,18 @@ impl SNPFrag {
             if result.is_err() {
                 panic!("BAM parsing failed...");
             }
-            // TODO: filtering unmapped, secondary, supplementary reads?
             if record.mapq() < min_mapq
                 || record.seq_len() < min_read_length
                 || record.is_unmapped()
                 || record.is_secondary()
                 || record.is_supplementary()
             {
+                continue;
+            }
+            
+            // filter out the reads in filtered_reads
+            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
+            if filtered_reads.contains(&qname) {
                 continue;
             }
 
@@ -52,7 +58,6 @@ impl SNPFrag {
             if pos > self.candidate_snps.last().unwrap().pos {
                 continue;
             }
-            let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
             let cigar = record.cigar();
             let seq = record.seq().as_bytes();
             let strand = if record.strand() == Forward { 0 } else { 1 };
