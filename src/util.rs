@@ -291,7 +291,9 @@ pub fn find_isolated_regions_with_depth(
         if depth_vec[i as usize] > max_coverage {
             max_coverage = depth_vec[i as usize];
         }
-        if (depth_vec[i as usize] == 0) || (truncation && depth_vec[i as usize] > truncation_coverage) {
+        if (depth_vec[i as usize] == 0)
+            || (truncation && depth_vec[i as usize] > truncation_coverage)
+        {
             if region_end > region_start {
                 assert!(region_start >= 0);
                 assert!(region_end >= 0);
@@ -359,13 +361,16 @@ pub fn parse_annotation(
             if !gene_regions.contains_key(&seqname) {
                 gene_regions.insert(seqname.clone(), VecDeque::new());
             }
-            for subpart in parts[8].trim_end().split(";").collect::<Vec<&str>>() {
-                if subpart.starts_with("gene_id") {
-                    gene_id = subpart.replace("gene_id=", ""); // gff3 format
+            for subpart in parts[8].trim_end().split(';') {
+                let trimmed = subpart.trim();
+                if trimmed.starts_with("gene_id=") {
+                    // GFF3 format: gene_id=ENSG...
+                    gene_id = trimmed["gene_id=".len()..].to_string();
                     break;
-                }
-                if subpart.starts_with("gene_id") {
-                    gene_id = subpart.replace("gene_id ", "").replace("\"", ""); // gtf format
+                } else if trimmed.starts_with("gene_id ") {
+                    // GTF format: gene_id "ENSG..."
+                    let without_prefix = &trimmed["gene_id ".len()..];
+                    gene_id = without_prefix.trim_matches('"').to_string();
                     break;
                 }
             }
@@ -412,13 +417,16 @@ pub fn parse_annotation(
             }
         } else if feature == "CDS" {
             let mut exon_gene_id = String::new();
-            for subpart in parts[8].trim_end().split(";").collect::<Vec<&str>>() {
-                if subpart.starts_with("gene_id") {
-                    exon_gene_id = subpart.replace("gene_id=", ""); // gff3 format
+            for subpart in parts[8].trim_end().split(';') {
+                let trimmed = subpart.trim();
+                if trimmed.starts_with("gene_id=") {
+                    // GFF3 format: gene_id=ENSG...
+                    exon_gene_id = trimmed["gene_id=".len()..].to_string();
                     break;
-                }
-                if subpart.starts_with("gene_id") {
-                    exon_gene_id = subpart.replace("gene_id ", "").replace("\"", ""); // gtf format
+                } else if trimmed.starts_with("gene_id ") {
+                    // GTF format: gene_id "ENSG..."
+                    let without_prefix = &trimmed["gene_id ".len()..];
+                    exon_gene_id = without_prefix.trim_matches('"').to_string();
                     break;
                 }
             }
@@ -446,6 +454,7 @@ pub fn parse_annotation(
 pub fn lapper_intervals(
     query_regions: &Vec<Region>,
     target_regions: &VecDeque<Region>,
+    merge: bool,
 ) -> Vec<Region> {
     let mut result_regions = Vec::new();
     let mut invs: Vec<Interval<usize, String>> = Vec::new();
@@ -463,22 +472,44 @@ pub fn lapper_intervals(
             stop: q.end as usize,
             val: 0,
         };
-        for h_inv in interval_tree.find(q.start as usize, q.end as usize) {
-            let intersected_start = q_inv.start.max(h_inv.start);
-            let intersected_end = q_inv.stop.min(h_inv.stop);
-            let h_gene = h_inv.val.clone();
-            assert!(
-                intersected_start < intersected_end,
-                "Error: intersected_start >= intersected_end, query:{:?}",
-                q_inv
-            );
-            result_regions.push(Region {
+        if merge {
+            for h_inv in interval_tree.find(q.start as usize, q.end as usize) {
+                let intersected_start = q_inv.start.max(h_inv.start);
+                let intersected_end = q_inv.stop.min(h_inv.stop);
+                let h_gene = h_inv.val.clone();
+                assert!(
+                    intersected_start < intersected_end,
+                    "Error: intersected_start >= intersected_end, query:{:?}",
+                    q_inv
+                );
+                result_regions.push(Region {
+                    chr: q.chr.clone(),
+                    start: intersected_start as u32,
+                    end: intersected_end as u32,
+                    max_coverage: Some(q.max_coverage.unwrap()),
+                    gene_id: Option::from(h_gene),
+                });
+            }
+        } else {
+            let mut gene_ids: Vec<String> = Vec::new();
+            for h_inv in interval_tree.find(q.start as usize, q.end as usize) {
+                let intersected_start = q_inv.start.max(h_inv.start);
+                let intersected_end = q_inv.stop.min(h_inv.stop);
+                let h_gene = h_inv.val.clone();
+                assert!(
+                    intersected_start < intersected_end,
+                    "Error: intersected_start >= intersected_end, query:{:?}",
+                    q_inv
+                );
+                gene_ids.push(h_gene);
+            }
+            result_regions.push(Region{
                 chr: q.chr.clone(),
-                start: intersected_start as u32,
-                end: intersected_end as u32,
+                start: q.start,
+                end: q.end,
                 max_coverage: Some(q.max_coverage.unwrap()),
-                gene_id: Option::from(h_gene),
-            });
+                gene_id: Some(gene_ids.join(",")),
+            })
         }
     }
     result_regions
@@ -488,6 +519,7 @@ pub fn intersect_gene_regions(
     alignment_regions: &Vec<Region>,
     gene_regions: &HashMap<String, VecDeque<Region>>,
     thread_size: usize,
+    merge: bool,
 ) -> Vec<Region> {
     let intersected_regions: Mutex<Vec<Region>> = Mutex::new(Vec::new());
     let mut region_map = HashMap::new();
@@ -511,6 +543,7 @@ pub fn intersect_gene_regions(
                 let chr_intersected_region = lapper_intervals(
                     region_map.get(*ctg).unwrap(),
                     gene_regions.get(*ctg).unwrap(),
+                    merge
                 );
                 for region in chr_intersected_region {
                     intersected_regions.lock().unwrap().push(region);
