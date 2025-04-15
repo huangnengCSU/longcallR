@@ -77,6 +77,14 @@ struct Args {
     #[arg(short = 'p', long)]
     preset: Preset,
 
+    /// When set, apply filtering of reads entirely within introns
+    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    intron_filter: bool,
+
+    /// When set, only call SNPs in exons
+    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    exon_only: bool,
+
     /// Maximum number of iteration for phasing [Default: 100]
     #[arg(long)]
     max_iters: Option<i32>,
@@ -202,6 +210,8 @@ fn build_regions(
     truncation: bool,
     truncation_coverage: u32,
     anno_path: Option<String>,
+    intron_filter: bool,
+    exon_only: bool,
 ) -> (Vec<Region>, HashMap<String, Vec<Interval<u32, u8>>>) {
     let mut regions = if let Some(region_str) = input_region {
         vec![Region::new(region_str.to_string())]
@@ -218,14 +228,20 @@ fn build_regions(
             truncation_coverage,
         )
     };
-    let exon_regions = if let Some(anno_path_str) = anno_path {
-        let (anno_gene_regions, anno_exon_regions) = parse_annotation(anno_path_str);
-        regions = intersect_gene_regions(&regions, &anno_gene_regions, threads);
-        anno_exon_regions
+    let (anno_gene_regions, anno_exon_regions) = if let Some(anno_path_str) = anno_path.clone() {
+        parse_annotation(anno_path_str)
     } else {
-        HashMap::new()
+        (HashMap::new(), HashMap::new())
     };
-    (regions, exon_regions)
+    if exon_only {
+        // divided region into multiple regions overlapped with gene regions
+        regions = intersect_gene_regions(&regions, &anno_gene_regions, threads, true);
+    }
+    if intron_filter {
+        // only get the overlapped gene ids for the region, do not divide the region
+        regions = intersect_gene_regions(&regions, &anno_gene_regions, threads, false);
+    }
+    (regions, anno_exon_regions)
 }
 
 fn main() {
@@ -244,6 +260,8 @@ fn main() {
     let no_bam_output = arg.no_bam_output;
     let downsample = arg.downsample;
     let truncation = arg.truncation;
+    let intron_filter = arg.intron_filter;
+    let exon_only = arg.exon_only;
 
     let mut platform = Platform::Hifi;
     let mut min_depth = arg.min_depth;
@@ -256,8 +274,6 @@ fn main() {
     let mut dense_win_size = arg.dense_win_size;
     let mut min_dense_cnt = arg.min_dense_cnt;
     let mut strand_bias = arg.strand_bias;
-
-
 
     let mut threads = arg.threads;
     let mut max_iters = arg.max_iters;
@@ -275,18 +291,16 @@ fn main() {
     let mut somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
     let mut somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
 
-
-
-
     match preset {
         Preset::OntCdna => {
             platform = Platform::Ont;
-            min_depth  = Option::from(arg.min_depth.unwrap_or(10));
+            min_depth = Option::from(arg.min_depth.unwrap_or(10));
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
-            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
+            min_allele_freq_include_intron =
+                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(10));
@@ -305,19 +319,21 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_frac_cutoff =
+                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
             somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: ont-cdna");
         }
 
         Preset::OntDrna => {
             platform = Platform::Ont;
-            min_depth  = Option::from(arg.min_depth.unwrap_or(10));
+            min_depth = Option::from(arg.min_depth.unwrap_or(10));
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
-            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
+            min_allele_freq_include_intron =
+                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(10));
@@ -336,19 +352,21 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_frac_cutoff =
+                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
             somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: ont-drna");
         }
 
         Preset::HifiIsoseq => {
             platform = Platform::Hifi;
-            min_depth  = Option::from(arg.min_depth.unwrap_or(6));
+            min_depth = Option::from(arg.min_depth.unwrap_or(6));
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(11.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
-            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
+            min_allele_freq_include_intron =
+                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
@@ -367,19 +385,21 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_frac_cutoff =
+                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
             somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: hifi-isoseq");
         }
 
         Preset::HifiMasseq => {
             platform = Platform::Hifi;
-            min_depth  = Option::from(arg.min_depth.unwrap_or(6));
+            min_depth = Option::from(arg.min_depth.unwrap_or(6));
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(11.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
-            min_allele_freq_include_intron = Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
+            min_allele_freq_include_intron =
+                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
@@ -398,7 +418,8 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff = Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
+            somatic_allele_frac_cutoff =
+                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
             somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: hifi-masseq");
         }
@@ -417,6 +438,8 @@ fn main() {
             truncation,
             truncation_coverage.unwrap(),
             anno_path,
+            intron_filter,
+            exon_only,
         );
         for reg in regions.iter() {
             if reg.gene_id.is_none() {
@@ -441,6 +464,16 @@ fn main() {
         return;
     }
 
+    // check if set intron_filter, anno_path should be set
+    if intron_filter && anno_path.is_none() {
+        panic!("intron_filter is set, but annotation file is not provided");
+    }
+
+    // check if set exon_only, anno_path should be set
+    if exon_only && anno_path.is_none() {
+        panic!("exon_only is set, but annotation file is not provided");
+    }
+
     let (regions, exon_regions) = build_regions(
         bam_path,
         ref_path,
@@ -453,6 +486,8 @@ fn main() {
         truncation,
         truncation_coverage.unwrap(),
         anno_path,
+        intron_filter,
+        exon_only,
     );
 
     run(
@@ -464,6 +499,8 @@ fn main() {
         threads.unwrap(),
         regions,
         exon_regions,
+        exon_only,
+        intron_filter,
         &platform,
         max_iters.unwrap(),
         min_mapq.unwrap(),
