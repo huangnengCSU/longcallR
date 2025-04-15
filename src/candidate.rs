@@ -55,6 +55,7 @@ impl SNPFrag {
         &mut self,
         profile: &Profile,
         exon_region_vec: Vec<Interval<u32, u8>>,
+        exon_only: bool,
         min_allele_freq: f32,
         min_variant_qual: u32,
         min_allele_freq_include_intron: f32,
@@ -69,7 +70,6 @@ impl SNPFrag {
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
-        let use_annotation = !exon_region_vec.is_empty();
         let exon_intervaltree = Lapper::new(exon_region_vec);
         let mut position = profile.region.start - 1; // 0-based
         for bfidx in 0..pileup.len() {
@@ -77,7 +77,7 @@ impl SNPFrag {
             if bf.i {
                 continue;
             }
-            if use_annotation
+            if exon_only
                 && exon_intervaltree
                     .find(position + 1, position + 2)
                     .next()
