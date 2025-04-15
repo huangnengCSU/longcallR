@@ -23,6 +23,8 @@ pub fn run(
     thread_size: usize,
     isolated_regions: Vec<Region>,
     exon_regions: HashMap<String, Vec<Interval<u32, u8>>>,
+    exon_only: bool,
+    intron_filter: bool,
     platform: &Platform,
     max_iters: i32,
     min_mapq: u8,
@@ -79,7 +81,7 @@ pub fn run(
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
             let mut exon_region_vec = Vec::new();
-            if reg.gene_id.is_some() {
+            if exon_only || intron_filter {
                 let gene_id_field = reg.gene_id.clone().unwrap();
                 for gene_id in gene_id_field.split(",").collect::<Vec<&str>>() {
                     if exon_regions.contains_key(gene_id) {
@@ -95,6 +97,8 @@ pub fn run(
                 bam_file,
                 &reg,
                 ref_seq,
+                &exon_region_vec,
+                intron_filter,
                 platform,
                 min_mapq,
                 min_read_length,
@@ -119,6 +123,7 @@ pub fn run(
                 snpfrag.get_candidate_snps(
                     &profile,
                     exon_region_vec,
+                    exon_only,
                     min_allele_freq,
                     min_qual,
                     min_allele_freq_include_intron,
