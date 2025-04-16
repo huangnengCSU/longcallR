@@ -365,7 +365,7 @@ impl SNPFrag {
                 snp.genotype = 0;
                 snp.variant_type = 1;
                 snp.phase_score = phase_score;
-                println!("Rescue low_frac_var chr: {}, snp:{}, score: {}", snp.chromosome, snp.pos, phase_score);
+                // println!("Rescue low_frac_var chr: {}, snp:{}, score: {}", snp.chromosome, snp.pos, phase_score);
             } else {
                 // out-of-phase
                 snp.non_selected = true;
