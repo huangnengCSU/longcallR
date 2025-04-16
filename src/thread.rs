@@ -24,7 +24,6 @@ pub fn run(
     isolated_regions: Vec<Region>,
     exon_regions: HashMap<String, Vec<Interval<u32, u8>>>,
     exon_only: bool,
-    intron_filter: bool,
     platform: &Platform,
     max_iters: i32,
     min_mapq: u8,
@@ -81,7 +80,7 @@ pub fn run(
             let mut profile = Profile::default();
             let ref_seq = ref_seqs.get(&reg.chr).unwrap();
             let mut exon_region_vec = Vec::new();
-            if exon_only || intron_filter {
+            if exon_only {
                 let gene_id_field = reg.gene_id.clone().unwrap();
                 for gene_id in gene_id_field.split(",").collect::<Vec<&str>>() {
                     if exon_regions.contains_key(gene_id) {
@@ -93,14 +92,10 @@ pub fn run(
                     return;
                 }
             }
-            let mut filtered_reads: Vec<String> = Vec::new();
             profile.fill_data_into_freq_vec(
                 bam_file,
                 &reg,
                 ref_seq,
-                &exon_region_vec,
-                intron_filter,
-                &mut filtered_reads,
                 platform,
                 min_mapq,
                 min_read_length,
@@ -144,7 +139,6 @@ pub fn run(
                 &bam_file,
                 &reg,
                 ref_seq,
-                &filtered_reads,
                 min_mapq,
                 min_read_length,
                 divergence,

@@ -623,9 +623,6 @@ impl Profile {
         bam_path: &str,
         region: &Region,
         ref_seq: &Vec<u8>,
-        exon_region_vec: &Vec<Interval<u32, u8>>,
-        intron_filter: bool,
-        filtered_reads: &mut Vec<String>,
         platform: &Platform,
         min_mapq: u8,
         min_read_length: usize,
@@ -644,11 +641,6 @@ impl Profile {
         self.region = region.clone();
         let freq_vec_start_pos = region.start as usize - 1; // the first position on reference, 0-based, inclusive
         let polya_tail_length = polya_tail_length as i64;
-        let exon_region_ivltree = if intron_filter {
-            Lapper::new(exon_region_vec.clone())
-        } else {
-            Lapper::new(vec![])
-        };
 
         // fill the ref_base field in each BaseFreq
         for i in 0..vec_size {
@@ -686,7 +678,6 @@ impl Profile {
                 Err(_) => {}
             }
             let start_pos = record.pos() as usize; // 0-based
-            let mut ref_pos = record.reference_start() as usize; // 0-based
             let cigar = record.cigar();
             let leading_softclips = cigar.leading_softclips();
             let trailing_softclips = cigar.trailing_softclips();
@@ -697,61 +688,7 @@ impl Profile {
             } else {
                 0
             };
-            let mut read_exons: Vec<Interval<u32, u8>> = Vec::new();
-            let (mut read_exon_start, mut read_exon_end) = (ref_pos, ref_pos);
             let cigars = cigar.to_vec();
-            if intron_filter {
-                for cg_idx in 0..cigars.len() {
-                    let cg = cigars[cg_idx];
-                    match cg.char() as u8 {
-                        b'S' | b'H' | b'I' => { continue; }
-                        b'M' | b'X' | b'=' | b'D' => {
-                            ref_pos += cg.len() as usize;
-                            read_exon_end = ref_pos;
-                        }
-                        b'N' => {
-                            if read_exon_end > read_exon_start {
-                                read_exons.push(Interval {
-                                    start: read_exon_start as u32,
-                                    stop: read_exon_end as u32,
-                                    val: 0,
-                                });
-                            }
-                            ref_pos += cg.len() as usize;
-                            read_exon_start = ref_pos;
-                            read_exon_end = ref_pos;
-                        }
-                        _ => {
-                            panic!("Error: unknown cigar operation: {}", cg.char());
-                        }
-                    }
-                }
-                if read_exon_end > read_exon_start {
-                    read_exons.push(Interval {
-                        start: read_exon_start as u32,
-                        stop: read_exon_end as u32,
-                        val: 0,
-                    });
-                }
-                // Determine whether the entire read is intronic (i.e., no read exon overlaps any known exon region)
-                let mut entire_intron_read = true;
-                for read_exon in &read_exons {
-                    if exon_region_ivltree
-                        .find(read_exon.start, read_exon.stop)
-                        .next()
-                        .is_some()
-                    {
-                        entire_intron_read = false;
-                        break;
-                    }
-                }
-                if entire_intron_read {
-                    let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-                    filtered_reads.push(qname);
-                    continue;
-                }
-            }
-
             for cg_idx in 0..cigars.len() {
                 let cg = cigars[cg_idx];
                 match cg.char() as u8 {

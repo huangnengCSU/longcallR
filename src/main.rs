@@ -77,10 +77,6 @@ struct Args {
     #[arg(short = 'p', long)]
     preset: Preset,
 
-    /// When set, apply filtering of reads entirely within introns
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    intron_filter: bool,
-
     /// When set, only call SNPs in exons
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     exon_only: bool,
@@ -210,7 +206,6 @@ fn build_regions(
     truncation: bool,
     truncation_coverage: u32,
     anno_path: Option<String>,
-    intron_filter: bool,
     exon_only: bool,
 ) -> (Vec<Region>, HashMap<String, Vec<Interval<u32, u8>>>) {
     let mut regions = if let Some(region_str) = input_region {
@@ -237,10 +232,6 @@ fn build_regions(
         // divided region into multiple regions overlapped with gene regions
         regions = intersect_gene_regions(&regions, &anno_gene_regions, threads, true);
     }
-    if intron_filter {
-        // only get the overlapped gene ids for the region, do not divide the region
-        regions = intersect_gene_regions(&regions, &anno_gene_regions, threads, false);
-    }
     (regions, anno_exon_regions)
 }
 
@@ -260,7 +251,6 @@ fn main() {
     let no_bam_output = arg.no_bam_output;
     let downsample = arg.downsample;
     let truncation = arg.truncation;
-    let intron_filter = arg.intron_filter;
     let exon_only = arg.exon_only;
 
     let mut platform = Platform::Hifi;
@@ -298,12 +288,12 @@ fn main() {
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
-            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
             min_allele_freq_include_intron =
                 Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
-            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
-            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(10));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
+            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
@@ -331,12 +321,12 @@ fn main() {
             min_phase_score = Option::from(arg.min_phase_score.unwrap_or(13.0));
             min_read_assignment_diff = Option::from(arg.min_read_assignment_diff.unwrap_or(0.0));
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
-            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.15));
+            min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
             min_allele_freq_include_intron =
                 Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
-            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
-            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(10));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
+            min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
 
             threads = Option::from(arg.threads.unwrap_or(1));
@@ -438,7 +428,6 @@ fn main() {
             truncation,
             truncation_coverage.unwrap(),
             anno_path,
-            intron_filter,
             exon_only,
         );
         for reg in regions.iter() {
@@ -464,11 +453,6 @@ fn main() {
         return;
     }
 
-    // check if set intron_filter, anno_path should be set
-    if intron_filter && anno_path.is_none() {
-        panic!("intron_filter is set, but annotation file is not provided");
-    }
-
     // check if set exon_only, anno_path should be set
     if exon_only && anno_path.is_none() {
         panic!("exon_only is set, but annotation file is not provided");
@@ -486,7 +470,6 @@ fn main() {
         truncation,
         truncation_coverage.unwrap(),
         anno_path,
-        intron_filter,
         exon_only,
     );
 
@@ -500,7 +483,6 @@ fn main() {
         regions,
         exon_regions,
         exon_only,
-        intron_filter,
         &platform,
         max_iters.unwrap(),
         min_mapq.unwrap(),

@@ -12,7 +12,6 @@ impl SNPFrag {
         bam_path: &str,
         region: &Region,
         ref_seq: &Vec<u8>,
-        filtered_reads: &Vec<String>,
         min_mapq: u8,
         min_read_length: usize,
         divergence: f32,
@@ -39,12 +38,7 @@ impl SNPFrag {
                 continue;
             }
             
-            // filter out the reads in filtered_reads
             let qname = std::str::from_utf8(record.qname()).unwrap().to_string();
-            if filtered_reads.contains(&qname) {
-                continue;
-            }
-
             match record.aux(b"de") {
                 Ok(Aux::Float(f)) => {
                     if f >= divergence {
