@@ -22,7 +22,6 @@ cargo build --release
 - [Introduction](#introduction)
 - [Compiling](#compiling)
 - [Usage](#usage)
-- [Results](#results)
 - [Demo](#demo)
 - [TODO](#todo)
 - [License](#license)
