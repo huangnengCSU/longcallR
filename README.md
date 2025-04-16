@@ -6,16 +6,16 @@ cd longcallR
 cargo build --release
 
 # call small variants from Nanopore cDNA reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 --platform ont --preset ont-cdna
+./longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-cdna
 
 # call small variants from Nanopore dRNA reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 --platform ont --preset ont-drna
+./longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna
 
 # call small variants from PacBio iso-seq reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 --platform hifi --preset hifi-isoseq
+./longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-isoseq
 
 # call small variants from PacBio mas-seq reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 --platform hifi --preset hifi-masseq
+./longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq
 ```
 
 ## Table of Contents
@@ -46,24 +46,14 @@ General usage
 ./longcallR \
 --bam-path input.bam \                  ## The alignment bam file
 --ref-path ref.fa \                     ## The reference file must be indexed.
---platform ${PLATFORM} \                ## options: {ont, hifi}
 --preset ${PRESET} \                    ## option: {ont-cdna, ont-drna, hifi-isoseq, hifi-masseq}
 --output ${OUTPUT_DIR}/${PREFIX}        ## output path and prefix of output files
 ```
 
-## Results
-
-The following table shows the results of several datasets. [WTC-11 Iso-Seq](https://zenodo.org/records/5920920), [WTC-11 ONT](https://www.encodeproject.org/experiments/ENCSR539ZXJ/), [HG002 MAS-Seq](https://downloads.pacbcloud.com/public/dataset/Kinnex-full-length-RNA/) and [HG004 MAS-Seq](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data_RNAseq/AshkenazimTrio/HG004_NA24143_mother/PacBio_Pacbio-MASseq/) are public available. The ground truth of WTC-11 is described in Mark D. Robinson et.al [paper](https://link.springer.com/article/10.1186/s13059-023-02923-y). The ground truths of HG002 and HG004 are from GIAB [NISTv4.2.1](https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/release/). All truth variants used for benchmarking have at least 10X coverage in the input. The results in sub-table (all sites) are obtained by [hap.py](https://github.com/Illumina/hap.py.git). The sub-table (non-A-to-G sites) is achieved by removing all A-G and T-C substitutions from the results of hap.py. The sub-table (evaluation without genotype error) is for separating genotype errors from SNP discovery errors.
-![alt text](img/longcallR_result.png)
-
 ## Demo
-
 ```
-./longcallR -b demo/demo.bam -f demo/chr20.fa -o demo/test -t 8 --platform hifi --preset hifi-masseq
+./longcallR -b demo/demo.bam -f demo/chr20.fa -o demo/test -t 8 -p hifi-masseq
 ```
-
-## TODO
-- [ ] Preset for Nanopore direct cDNA-Seq.
 
 ## License
 MIT License
