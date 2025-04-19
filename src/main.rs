@@ -290,9 +290,9 @@ fn main() {
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
             min_allele_freq_include_intron =
-                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
+                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
-            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
 
@@ -323,9 +323,9 @@ fn main() {
             min_linkers = Option::from(arg.min_linkers.unwrap_or(1));
             min_allele_freq = Option::from(arg.min_allele_freq.unwrap_or(0.20));
             min_allele_freq_include_intron =
-                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.05));
+                Option::from(arg.min_allele_freq_include_intron.unwrap_or(0.0));
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
-            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(500));
+            dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
 
