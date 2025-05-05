@@ -1,3 +1,25 @@
+<p align="center">
+    <img src="longcallR.png" alt="longcallR logo" style="width:85%">
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/longcallR">
+    <img src="https://img.shields.io/crates/v/longcallR.svg" alt="Crates.io version">
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+  </a>
+  <a href="https://crates.io/crates/longcallR">
+    <img src="https://img.shields.io/crates/d/longcallR.svg" alt="Crates.io Downloads">
+  </a>
+  <a href="https://github.com/huangnengCSU/longcallR/releases">
+    <img src="https://img.shields.io/github/downloads/huangnengCSU/longcallR/total.svg" alt="GitHub Downloads">
+  </a>
+  <a href="https://github.com/huangnengCSU/longcallR">
+    <img src="https://img.shields.io/github/stars/huangnengCSU/longcallR.svg?style=social&label=Star" alt="GitHub Stars">
+  </a>
+</p>
+
 ## Getting Started
 ```sh
 # download and build longcallR
@@ -23,7 +45,6 @@ cargo build --release
 - [Compiling](#compiling)
 - [Usage](#usage)
 - [Demo](#demo)
-- [TODO](#todo)
 - [License](#license)
 
 ## Introduction
@@ -36,6 +57,10 @@ LongcallR is written in [Rust](https://www.rust-lang.org) and uses [Cargo](https
 git clone https://github.com/huangnengCSU/longcallR.git
 cd longcallR
 cargo build --release
+```
+Alternatively, install directly from crates.io:
+```
+cargo install longcallR
 ```
 
 ## Usage
