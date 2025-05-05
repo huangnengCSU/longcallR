@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use crate::thread::run;
 use crate::util::*;
 use clap::{ArgAction, Parser};
-use rand::seq::SliceRandom;
-use rust_htslib::bam::Read;
 use rust_lapper::Interval;
 
 mod candidate;
@@ -253,33 +251,33 @@ fn main() {
     let truncation = arg.truncation;
     let exon_only = arg.exon_only;
 
-    let mut platform = Platform::Hifi;
-    let mut min_depth = arg.min_depth;
-    let mut min_phase_score = arg.min_phase_score;
-    let mut min_read_assignment_diff = arg.min_read_assignment_diff;
-    let mut min_linkers = arg.min_linkers;
-    let mut min_allele_freq = arg.min_allele_freq;
-    let mut min_allele_freq_include_intron = arg.min_allele_freq_include_intron;
-    let mut distance_to_read_end = arg.distance_to_read_end;
-    let mut dense_win_size = arg.dense_win_size;
-    let mut min_dense_cnt = arg.min_dense_cnt;
-    let mut strand_bias = arg.strand_bias;
 
-    let mut threads = arg.threads;
-    let mut max_iters = arg.max_iters;
-    let mut max_enum_snps = arg.max_enum_snps;
-    let mut random_flip_fraction = arg.random_flip_fraction;
-    let mut min_mapq = arg.min_mapq;
-    let mut divergence = arg.divergence;
-    let mut min_baseq = arg.min_baseq;
-    let mut min_qual = arg.min_qual;
-    let mut polya_tail_length = arg.polya_tail_length;
-    let mut max_depth = arg.max_depth;
-    let mut truncation_coverage = arg.truncation_coverage;
-    let mut downsample_depth = arg.downsample_depth;
-    let mut min_read_length = arg.min_read_length;
-    let mut somatic_allele_frac_cutoff = arg.somatic_allele_frac_cutoff;
-    let mut somatic_allele_cnt_cutoff = arg.somatic_allele_cnt_cutoff;
+    let platform: Platform;
+    let min_depth: Option<u32>;
+    let min_phase_score: Option<f32>;
+    let min_read_assignment_diff: Option<f64>;
+    let min_linkers: Option<u32>;
+    let min_allele_freq: Option<f32>;
+    let min_allele_freq_include_intron: Option<f32>;
+    let distance_to_read_end: Option<u32>;
+    let dense_win_size: Option<u32>;
+    let min_dense_cnt: Option<u32>;
+    let strand_bias: Option<bool>;
+    let threads: Option<usize>;
+    let max_iters: Option<i32>;
+    let max_enum_snps: Option<usize>;
+    let random_flip_fraction: Option<f32>;
+    let min_mapq: Option<u8>;
+    let divergence: Option<f32>;
+    let min_baseq: Option<u8>;
+    let min_qual: Option<u32>;
+    let polya_tail_length: Option<u32>;
+    let max_depth: Option<u32>;
+    let truncation_coverage: Option<u32>;
+    let downsample_depth: Option<u32>;
+    let min_read_length: Option<usize>;
+    let somatic_allele_frac_cutoff: Option<f32>;
+    let somatic_allele_cnt_cutoff: Option<u32>;
 
     match preset {
         Preset::OntCdna => {
