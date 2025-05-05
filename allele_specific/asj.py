@@ -187,7 +187,7 @@ def merge_gene_exon_regions(exon_regions):
     return merged_genes_exons
 
 
-def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, shared_tree, shared_gene_intervals):
+def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, min_junctions, shared_tree, shared_gene_intervals):
     read_assignment = {}
     reads_positions = {}
     reads_tags = {}
@@ -215,6 +215,11 @@ def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, shared_tre
 
             # get all exons and introns
             exon_regions, intron_regions = get_exon_intron_regions(read, ref_seq, no_gtag)
+            # filter artifacts with too few junctions
+            if len(intron_regions) <= min_junctions:
+                del reads_positions[read.query_name]
+                del reads_tags[read.query_name]
+                continue
             reads_exons[read.query_name] = exon_regions
             reads_junctions[read.query_name] = intron_regions
 
@@ -256,7 +261,7 @@ def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, shared_tre
     return read_assignment, reads_positions, reads_tags, reads_exons, reads_junctions
 
 
-def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag):
+def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_junctions=0):
     """Assign reads to genes based on their alignment positions."""
 
     # read_assignment, key: read_name, value: gene_id
@@ -297,7 +302,7 @@ def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag):
                 continue
             tree = trees_by_chr[chromosome]
             gene_intervals = gene_intervals_by_chr[chromosome]
-            chunks.append((bam_file, chromosome, start, end, genome_dict[chromosome], no_gtag, tree, gene_intervals))
+            chunks.append((bam_file, chromosome, start, end, genome_dict[chromosome], no_gtag, min_junctions, tree, gene_intervals))
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
         futures = [executor.submit(process_chunk, *chunk) for chunk in chunks]
@@ -373,6 +378,44 @@ def parse_reads_from_alignment(bam_file, gene_reads, chr, start_pos, end_pos, re
         reads_exons[read.query_name] = exon_regions
         reads_junctions[read.query_name] = intron_regions
     return reads_positions, reads_exons, reads_junctions, reads_tags
+
+def cluster_junctions_connected_components(reads_junctions, min_count=10):
+    junctions_clusters = []
+    junctions = {}  # key: (start, end), value: count
+    gt_ag_dict = {}  # key: (start, end), value: gt-ag tag
+    for read_name, list_of_junctions in reads_junctions.items():
+        for (start, end, tag) in list_of_junctions:
+            junction_region = (start, end)
+            junctions[junction_region] = junctions.get(junction_region, 0) + 1
+            gt_ag_dict[junction_region] = tag
+    junctions = {k: v for k, v in junctions.items() if v >= min_count}
+    # Create a graph
+    G = nx.Graph()
+    # Add nodes for each junction
+    for junction in junctions.keys():
+        G.add_node((junction[0], junction[1], "junction"))  # "junction = (intron_start, intron_end)"
+    # Add edges between overlapping junctions (sharing start or end positions)
+    junction_list = [(junction[0], junction[1], "junction") for junction in list(junctions.keys())]
+    merged_list = junction_list
+    for i in range(len(merged_list)):
+        for j in range(i + 1, len(merged_list)):
+            start1, end1, type1 = merged_list[i]
+            start2, end2, type2 = merged_list[j]
+            # Check if they share a start or end position
+            if type1 == type2:
+                # junction-junction or exon-exon should share the donor or acceptor site
+                if start1 == start2 or end1 == end2:
+                    G.add_edge(merged_list[i], merged_list[j])
+    connected_components = list(nx.connected_components(G))
+    for component in connected_components:
+        clu = []
+        for node in component:
+            if node[2] == "junction":
+                gtag_tag = gt_ag_dict[(node[0], node[1])]
+                clu.append((node[0], node[1], gtag_tag))
+        if len(clu) > 0:
+            junctions_clusters.append(clu)
+    return junctions_clusters, junctions
 
 
 def cluster_junctions_exons_connected_components(reads_junctions, reads_exons, min_count=10):
@@ -664,7 +707,7 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags):
     # return events
 
 
-def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count):
+def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns
     # Subset reads for this gene
     sub_reads_positions = {name: reads_positions[name] for name in gene_reads}
@@ -692,8 +735,10 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
     #                                                                                      gene_assigned_reads[gene_id],
     #                                                                                      chr, start, end,
     #                                                                                      ref_seq, no_gtag)
-    # junctions_clusters, read_junctions = cluster_junctions_connected_components(reads_introns, min_count)
-    junctions_clusters, read_junctions = cluster_junctions_exons_connected_components(sub_reads_introns, sub_reads_exons,
+    if not cluster_with_exons:
+        junctions_clusters, read_junctions = cluster_junctions_connected_components(sub_reads_introns, min_count)
+    else:
+        junctions_clusters, read_junctions = cluster_junctions_exons_connected_components(sub_reads_introns, sub_reads_exons,
                                                                                       min_count)
 
     # filter reads which have no overlapped exons with current gene exons
@@ -744,7 +789,7 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
     return gene_ase_events
 
 
-def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count):
+def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
     # Subset reads for this gene
     sub_reads_positions = {name: reads_positions[name] for name in gene_reads}
@@ -771,8 +816,10 @@ def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annota
     #                                                                                      gene_assigned_reads[gene_id],
     #                                                                                      chr, start, end,
     #                                                                                      ref_seq, no_gtag)
-    # junctions_clusters, read_junctions = cluster_junctions_connected_components(reads_introns, min_count)
-    junctions_clusters, read_junctions = cluster_junctions_exons_connected_components(sub_reads_introns, sub_reads_exons,
+    if not cluster_with_exons:
+        junctions_clusters, read_junctions = cluster_junctions_connected_components(sub_reads_introns, min_count)
+    else:
+        junctions_clusters, read_junctions = cluster_junctions_exons_connected_components(sub_reads_introns, sub_reads_exons,
                                                                                       min_count)
 
     # filter reads which have no overlapped exons with current gene exons
@@ -844,7 +891,7 @@ reads_introns = None
 dna_vcfs = None
 rna_vcfs = None
 
-def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag):
+def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, min_junctions, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
 
     all_ase_events = {}  # key: (chr, start, end), value: {gene_name: AseEvent}
@@ -862,7 +909,8 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
                                                                                             genome_dict,
                                                                                             merged_genes_exons,
                                                                                             threads,
-                                                                                            no_gtag)
+                                                                                            no_gtag,
+                                                                                            min_junctions)
     print(f"Reads assigned to genes in {time.time() - start_time:.2f} seconds")
     gene_assigned_reads = transform_read_assignment(read_assignment)
 
@@ -891,7 +939,7 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
             gene_anno_introns = anno_intron_regions[gene_id]
             gene_reads = gene_assigned_reads[gene_id]
             gene_data_list.append(
-                (gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count))
+                (gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count, cluster_with_exons))
 
     print(f"Total genes to be analyzed: {len(gene_data_list)}")
     start_time = time.time()
@@ -948,7 +996,7 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
             chr, pvalue, sor = asj_genes[gene_name]
             f.write(f"{gene_name}\t{chr}\t{pvalue}\t{sor}\n")
 
-def analyze_with_filtering(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, dna_vcfs_in, rna_vcfs_in):
+def analyze_with_filtering(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, min_junctions, cluster_with_exons, dna_vcfs_in, rna_vcfs_in):
     global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
 
     all_ase_events = {}  # key: (chr, start, end), value: {gene_name: AseEvent}
@@ -966,7 +1014,8 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
                                                                                             genome_dict,
                                                                                             merged_genes_exons,
                                                                                             threads,
-                                                                                            no_gtag)
+                                                                                            no_gtag,
+                                                                                            min_junctions)
     print(f"Reads assigned to genes in {time.time() - start_time:.2f} seconds")
     gene_assigned_reads = transform_read_assignment(read_assignment)
 
@@ -995,7 +1044,7 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
             gene_anno_exons = anno_exon_regions[gene_id]
             gene_anno_introns = anno_intron_regions[gene_id]
             gene_reads = gene_assigned_reads[gene_id]
-            gene_data_list.append((gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count))
+            gene_data_list.append((gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count, cluster_with_exons))
     print(f"Total genes to be analyzed: {len(gene_data_list)}")
 
     start_time = time.time()
@@ -1059,6 +1108,8 @@ if __name__ == "__main__":
     parse.add_argument("-b", "--bam_file", help="BAM file", required=True)
     parse.add_argument("--dna_vcf", help="DNA VCF file", required=False)
     parse.add_argument("--rna_vcf", help="RNA VCF file", required=False)
+    parse.add_argument("--min_junctions", help="Minimum number of junctions to be considered", default=2, type=int)
+    parse.add_argument("--cluster_with_exons", action="store_true", help="Cluster junctions with exons", default=False)
     parse.add_argument("-f", "--reference", help="Reference genome file", required=True)
     parse.add_argument("-o", "--output_prefix",
                        help="prefix of output differential splicing file and allele-specific junctions file",
@@ -1074,8 +1125,8 @@ if __name__ == "__main__":
         dna_vcfs = load_dna_vcf(args.dna_vcf)
         rna_vcfs = load_longcallR_phased_vcf(args.rna_vcf, with_dp_af=False)
         analyze_with_filtering(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, args.gene_types,
-                args.threads, args.no_gtag, dna_vcfs, rna_vcfs)
+                args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons, dna_vcfs, rna_vcfs)
     else:
         analyze(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, args.gene_types,
-            args.threads, args.no_gtag)
+            args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons)
 
