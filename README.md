@@ -1,8 +1,5 @@
 <p align="center">
-    <img src="longcallR.png" alt="longcallR logo" style="width:85%">
-</p>
-
-<p align="center">
+  <img src="longcallR.png" alt="longcallR logo" style="width:85%">
   <a href="https://crates.io/crates/longcallR">
     <img src="https://img.shields.io/crates/v/longcallR.svg" alt="Crates.io version">
   </a>
