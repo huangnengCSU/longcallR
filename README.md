@@ -42,15 +42,16 @@ cargo build --release
 
 ## Table of Contents
 - [Introduction](#introduction)
-- [Compiling](#compiling)
+- [Installation](#installation)
 - [Usage](#usage)
 - [Demo](#demo)
+- [Alignment](#alignment)
 - [License](#license)
 
 ## Introduction
 LongcallR is a small variant caller for single molecule long-read RNA-seq data. LongcallR supports Nanopore cDNA sequecing and dRNA sequencing, PacBio Iso-Seq and MAS-Seq.
 
-## Compiling
+## Installation
 
 LongcallR is written in [Rust](https://www.rust-lang.org) and uses [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) to build as follows:
 ```
@@ -78,6 +79,22 @@ General usage
 ```
 ./longcallR -b demo/demo.bam -f demo/chr20.fa -o demo/test -t 8 -p hifi-masseq
 ```
+
+## Alignment
+Based on the strand orientation of reads from different PacBio and Nanopore protocols, we recommend the following alignment parameters for [**minimap2**](https://github.com/lh3/minimap2):
+```sh
+minimap2 -ax splice:hq -uf ref.fa query.fa > aln.sam    # PacBio Kinnex/Mas-seq
+minimap2 -ax splice:hq ref.fa query.fa > aln.sam        # PacBio Iso-seq
+minimap2 -ax splice -uf -k14 ref.fa reads.fa > aln.sam  # Nanopore dRNA
+minimap2 -ax splice ref.fa reads.fa > aln.sam           # Nanopore cDNA
+```
+Note: The `-uf` option forces minimap2 to consider only a single transcript strand during alignment.
+-	PacBio Kinnex/MAS-Seq and Nanopore dRNA sequencing produce single-stranded reads.
+-	Nanopore cDNA sequencing produces double-stranded reads.
+-	PacBio Iso-Seq datasets may be either single- or double-stranded.
+
+We recommend using the `-uf` option for single-stranded reads and omitting it for double-stranded reads.
+
 
 ## License
 MIT License
