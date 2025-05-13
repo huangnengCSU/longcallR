@@ -202,9 +202,13 @@ def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, min_juncti
             end_pos = read.reference_end
 
             # get read positions and read tags
-            if not read.has_tag("HP"):
-                continue
-            HP_tag = read.get_tag("HP")
+            # if not read.has_tag("HP"):
+            #     continue
+            # HP_tag = read.get_tag("HP")
+            if read.has_tag("HP"):
+                HP_tag = read.get_tag("HP")
+            else:
+                HP_tag = "."
             if read.has_tag("PS"):
                 PS_tag = read.get_tag("PS")
             else:
@@ -323,61 +327,6 @@ def transform_read_assignment(read_assignment):
     for read_name, gene_id in read_assignment.items():
         gene_assigned_reads[gene_id].append(read_name)
     return gene_assigned_reads
-
-
-def parse_reads_from_alignment(bam_file, gene_reads, chr, start_pos, end_pos, ref_seq, no_gtag):
-    """Parse reads from a BAM file that overlap a specific region.
-    :param bam_file: Path to the BAM file
-    :param chr: Chromosome
-    :param start_pos: Start position, 1-based inclusive
-    :param end_pos: End position, 1-based inclusive
-    :return:
-    """
-    reads_exons = {}
-    reads_junctions = {}
-    reads_positions = {}  # 1-based, start-inclusive, end-inclusive
-    reads_tags = {}  # key: read name, value: {"PS": phase set, "HP": haplotype}
-    samfile = pysam.AlignmentFile(bam_file, "rb")
-    fetch_start = start_pos - 1  # 0-based, start-inclusive
-    fetch_end = end_pos  # 0-based, end-exclusive
-    contigs = samfile.references
-    if chr not in contigs:
-        return reads_positions, reads_exons, reads_junctions, reads_tags
-    for read in samfile.fetch(chr, fetch_start, fetch_end):
-        if read.query_name not in gene_reads:
-            continue
-        # read is not phased, ignore
-        # if not read.has_tag("PS") or not read.has_tag("HP"):
-        #     continue
-        if not read.has_tag("HP"):
-            continue
-        if read.has_tag("PS"):
-            PS_tag = read.get_tag("PS")
-        else:
-            PS_tag = "."
-        HP_tag = read.get_tag("HP")
-        reads_tags[read.query_name] = {"PS": PS_tag, "HP": HP_tag}
-        # get read start position and end position, 1-based, start-inclusive, end-inclusive
-        read_start = read.reference_start + 1
-        read_end = read.reference_end
-        reads_positions[read.query_name] = (read_start, read_end)
-        # get all exons and introns
-        exon_regions, intron_regions = get_exon_intron_regions(read, ref_seq, no_gtag)
-        # # determine if the read belongs to this gene by calculating percentage of exonic bases overlapped with the gene
-        # overlapped_exon_bases = 0
-        # total_exon_bases = 0
-        # for exon_start, exon_end in exon_regions:
-        #     # exon_start, exon_end, 1-based, start-inclusive, end-inclusive
-        #     total_exon_bases += (exon_end - exon_start + 1)
-        #     if start_pos <= exon_end and end_pos >= exon_start:
-        #         overlapped_exon_bases += (min(read_end, exon_end) - max(read_start, exon_start) + 1)
-        # if total_exon_bases == 0:
-        #     continue
-        # if overlapped_exon_bases / total_exon_bases < 0.5:
-        #     continue
-        reads_exons[read.query_name] = exon_regions
-        reads_junctions[read.query_name] = intron_regions
-    return reads_positions, reads_exons, reads_junctions, reads_tags
 
 def cluster_junctions_connected_components(reads_junctions, min_count=10):
     junctions_clusters = []
@@ -710,10 +659,11 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags):
 def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns
     # Subset reads for this gene
-    sub_reads_positions = {name: reads_positions[name] for name in gene_reads}
-    sub_reads_tags = {name: reads_tags[name] for name in gene_reads}
-    sub_reads_exons = {name: reads_exons[name] for name in gene_reads}
-    sub_reads_introns = {name: reads_introns[name] for name in gene_reads}
+    phased_read_names = [name for name in gene_reads if reads_tags[name]["HP"] != "."]
+    sub_reads_positions = {name: reads_positions[name] for name in phased_read_names}
+    sub_reads_tags = {name: reads_tags[name] for name in phased_read_names}
+    sub_reads_exons = {name: reads_exons[name] for name in phased_read_names}
+    sub_reads_introns = {name: reads_introns[name] for name in phased_read_names}
 
 
     chr = gene_region["chr"]
@@ -727,14 +677,6 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
     for transcript_id, anno_exons in annotation_exons.items():
         for anno_exon in anno_exons:
             gene_exon_set.add(anno_exon)
-
-    # print(f"gene_name: {gene_name}, sub_reads_tags: {len(sub_reads_tags)}, sub_reads_exons: {len(sub_reads_exons)}, sub_reads_introns: {len(sub_reads_introns)}")
-
-    # # Extract relevant reads and regions
-    # reads_positions, reads_exons, reads_introns, reads_tags = parse_reads_from_alignment(bam_file,
-    #                                                                                      gene_assigned_reads[gene_id],
-    #                                                                                      chr, start, end,
-    #                                                                                      ref_seq, no_gtag)
     if not cluster_with_exons:
         junctions_clusters, read_junctions = cluster_junctions_connected_components(sub_reads_introns, min_count)
     else:
@@ -792,10 +734,11 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
 def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
     # Subset reads for this gene
-    sub_reads_positions = {name: reads_positions[name] for name in gene_reads}
-    sub_reads_tags = {name: reads_tags[name] for name in gene_reads}
-    sub_reads_exons = {name: reads_exons[name] for name in gene_reads}
-    sub_reads_introns = {name: reads_introns[name] for name in gene_reads}
+    phased_read_names = [name for name in gene_reads if reads_tags[name]["HP"] != "."]
+    sub_reads_positions = {name: reads_positions[name] for name in phased_read_names}
+    sub_reads_tags = {name: reads_tags[name] for name in phased_read_names}
+    sub_reads_exons = {name: reads_exons[name] for name in phased_read_names}
+    sub_reads_introns = {name: reads_introns[name] for name in phased_read_names}
 
     chr = gene_region["chr"]
     start = gene_region["start"]
@@ -808,14 +751,6 @@ def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annota
     for transcript_id, anno_exons in annotation_exons.items():
         for anno_exon in anno_exons:
             gene_exon_set.add(anno_exon)
-
-    # print(f"gene_name: {gene_name}, sub_reads_tags: {len(sub_reads_tags)}, sub_reads_exons: {len(sub_reads_exons)}, sub_reads_introns: {len(sub_reads_introns)}")
-
-    # # Extract relevant reads and regions
-    # reads_positions, reads_exons, reads_introns, reads_tags = parse_reads_from_alignment(bam_file,
-    #                                                                                      gene_assigned_reads[gene_id],
-    #                                                                                      chr, start, end,
-    #                                                                                      ref_seq, no_gtag)
     if not cluster_with_exons:
         junctions_clusters, read_junctions = cluster_junctions_connected_components(sub_reads_introns, min_count)
     else:
