@@ -22,22 +22,22 @@
 
 ## Getting Started
 ```sh
-# download and build longcallR
+# download and build
 git clone https://github.com/huangnengCSU/longcallR.git
 cd longcallR
-cargo build --release
+cargo build --release # The executable will be located at: longcallR/target/release/longcallR
 
-# call small variants from Nanopore cDNA reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-cdna
+# call SNPs
+longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-cdna       # Nanopore cDNA reads
+longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna       # Nanopore dRNA reads (no strand bias filtering)
+longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-isoseq    # PacBio iso-seq reads
+longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq    # PacBio mas-seq reads (no strand bias filtering)
 
-# call small variants from Nanopore dRNA reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna
+# Allele-specific junction analysis
+python allele_specific/longcallR-asj.py -a annotation.gtf -b phased.bam -f ref.fa -o output_prefix -t threads
 
-# call small variants from PacBio iso-seq reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-isoseq
-
-# call small variants from PacBio mas-seq reads
-./longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq
+# Allele-specific expression analysis
+python allele_specific/longcallR-ase.py -a annotation.gtf -b phased.bam -o output_prefix -t threads
 ```
 
 ## Table of Contents
@@ -49,7 +49,7 @@ cargo build --release
 - [License](#license)
 
 ## Introduction
-LongcallR is a small variant caller for single molecule long-read RNA-seq data. LongcallR supports Nanopore cDNA sequecing and dRNA sequencing, PacBio Iso-Seq and MAS-Seq.
+LongcallR is a SNP caller for single molecule long-read RNA-seq data. LongcallR supports Nanopore cDNA sequecing and dRNA sequencing, PacBio Iso-Seq and MAS-Seq.
 
 ## Installation
 
