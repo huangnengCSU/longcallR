@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse
 import concurrent.futures
 from multiprocessing import Manager
