@@ -661,7 +661,9 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags):
 def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns
     # Subset reads for this gene
-    phased_read_names = [name for name in gene_reads if reads_tags[name]["HP"] != "."]
+    # Compute the intersection of read names present in both gene_reads and reads_tags
+    valid_read_names = set(gene_reads) & set(reads_tags.keys())
+    phased_read_names = [name for name in valid_read_names if reads_tags[name]["HP"] != "."]
     sub_reads_positions = {name: reads_positions[name] for name in phased_read_names}
     sub_reads_tags = {name: reads_tags[name] for name in phased_read_names}
     sub_reads_exons = {name: reads_exons[name] for name in phased_read_names}
@@ -736,7 +738,9 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
 def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
     global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
     # Subset reads for this gene
-    phased_read_names = [name for name in gene_reads if reads_tags[name]["HP"] != "."]
+    # Compute the intersection of read names present in both gene_reads and reads_tags
+    valid_read_names = set(gene_reads) & set(reads_tags.keys())
+    phased_read_names = [name for name in valid_read_names if reads_tags[name]["HP"] != "."]
     sub_reads_positions = {name: reads_positions[name] for name in phased_read_names}
     sub_reads_tags = {name: reads_tags[name] for name in phased_read_names}
     sub_reads_exons = {name: reads_exons[name] for name in phased_read_names}
