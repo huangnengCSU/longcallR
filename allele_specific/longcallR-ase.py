@@ -119,7 +119,10 @@ def get_gene_regions(annotation_file, gene_types):
 
             if feature_type == "gene":
                 gene_id = attr_dict["gene_id"]
-                gene_type = attr_dict["gene_type"]
+                try:
+                    gene_type = attr_dict["gene_type"]
+                except KeyError:
+                    gene_type = attr_dict["gene_biotype"]
                 tag = attr_dict.get("tag", "")
                 try:
                     gene_name = attr_dict["gene_name"]
