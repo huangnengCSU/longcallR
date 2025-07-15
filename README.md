@@ -60,7 +60,11 @@ git clone https://github.com/huangnengCSU/longcallR.git
 cd longcallR
 cargo build --release
 ```
-Alternatively, install directly from crates.io:
+Alternatively, it can be installed via Conda:
+```
+mamba install longcallr
+```
+Or installed directly from crates.io:
 ```
 cargo install longcallR
 ```
