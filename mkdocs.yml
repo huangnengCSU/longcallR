@@ -1,0 +1,10 @@
+site_name: longcallR
+nav:
+  - Home: docs/index.md
+  - Installation: docs/install.md
+  - Usage: docs/usage.md
+  - ASE: docs/ase.md
+  - ASJ: docs/asj.md
+  - Citation: docs/citation.md
+theme:
+  name: material
