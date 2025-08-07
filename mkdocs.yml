@@ -1,10 +1,30 @@
 site_name: longcallR
 nav:
-  - Home: docs/index.md
-  - Installation: docs/install.md
-  - Usage: docs/usage.md
-  - ASE: docs/ase.md
-  - ASJ: docs/asj.md
-  - Citation: docs/citation.md
+  - Home: index.md
+  - Installation: install.md
+  - Usage: usage.md
+  - ASE: ase.md
+  - ASJ: asj.md
+  - Citation: citation.md
+
+use_directory_urls: false
+
 theme:
   name: material
+  palette:
+    primary: white
+  features:
+    - content.code.copy
+  
+
+markdown_extensions:
+  - pymdownx.highlight:
+      use_pygments: true
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - attr_list
+  - md_in_html
