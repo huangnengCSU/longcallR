@@ -81,31 +81,31 @@ Full Arguments
 + -r, --region: Region to be processed. Format: chr:start-end, left-closed, right-open
 + -x, --contigs: Conitgs to be processed. Example: -x chr1 chr2 chr3
 + -v , --input-vcf: Input vcf file as Candidate SNPs
-+ --exon-only: When set, only call SNPs in exons
-+ --max-enum-snps: Maximum number of SNPs for enumerate haplotypes [Default: 10]
++ --min-allele-freq: Minimum allele frequency for high allele fraction candidate SNPs [Default: 0.20]
++ --min-allele-freq-include-intron: Minimum allele frequency for high allele fraction candidate SNPs include intron [Default: 0.0]
++ --low-allele-frac-cutoff: Minimum allele frequency for low allele fraction candidate SNPs [Default: 0.05]
++ --low-allele-cnt-cutoff: Minimum allele count for low allele fraction candidate SNPs [Default: 10]
 + --min-read-length: Minimum length for reads [Default: 500]
 + --min-mapq: Minimum mapping quality for reads [Default: 20]
 + --min-baseq: Minimim base quality for allele calling [Default: 10]
 + --divergence: Max sequence divergence for valid reads [Default: 0.05]
 + --min-depth: Minimum depth for a candidate SNP [Default: 10]
 + --max-depth: Maximum depth for a candidate SNP [Default: 50000]
-+ --min-allele-freq: Minimum allele frequency for high allele fraction candidate SNPs [Default: 0.20]
-+ --min-allele-freq-include-intron: Minimum allele frequency for high allele fraction candidate SNPs include intron [Default: 0.0]
-+ --min-qual: Minimum QUAL for candidate SNPs [Default: 2]
 + --strand-bias: Whether to use strand bias to filter SNPs [Default: false] [possible values: true, false]
++ --min-qual: Minimum QUAL for candidate SNPs [Default: 2]
 + --distance-to-read-end: Ignore bases within distance to read end [Default: 20]
 + --polya-tail-length: PolyA tail length threshold for filtering [Default: 5]
 + --dense-win-size: Window size used to identify dense regions of candidate SNPs [Default: 500]
 + --min-dense-cnt: Minimum number of candidate SNPs within the dense window to consider the region as dense [Default: 5]
 + --min-linkers: Minimum number of related candidate heterozygous SNPs required to perform phasing in a region [Default: 1]
++ --max-enum-snps: Maximum number of SNPs for enumerate haplotypes [Default: 10]
 + --min-phase-score: Minimum phase score to filter candidate SNPs [Default: 8.0]
++ --min-read-assignment-diff: Minimum absolute difference between haplotype assignment probabilities required for a read to be confidently assigned [Default: 0.15]
 + --truncation: When set, apply truncation of high coverage regions
 + --truncation-coverage: Read number threshold for region truncation [Default: 200000]
 + --downsample: When set, allow downsampling of high coverage regions
 + --downsample-depth: Downsample depth [Default: 10000]
-+ --min-read-assignment-diff: Minimum absolute difference between haplotype assignment probabilities required for a read to be confidently assigned [Default: 0.15]
-+ --low-allele-frac-cutoff: Minimum allele frequency for low allele fraction candidate SNPs [Default: 0.05]
-+ --low-allele-cnt-cutoff: Minimum allele count for low allele fraction candidate SNPs [Default: 10]
++ --exon-only: When set, only call SNPs in exons
 + --no-bam-output: When set, do not output phased bam file
 + --get-blocks: When set, show all regions to be processed.
 
