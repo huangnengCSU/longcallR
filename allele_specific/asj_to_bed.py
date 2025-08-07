@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 def convert_asj_to_bed(input_tsv, pval_threshold=1e-10):
     with open(input_tsv, "r") as infile:
