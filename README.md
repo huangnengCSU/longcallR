@@ -52,6 +52,8 @@ python allele_specific/longcallR-ase.py -a annotation.gtf -b phased.bam -o outpu
 ## Introduction
 LongcallR is a SNP caller for single molecule long-read RNA-seq data. LongcallR supports Nanopore cDNA sequecing and dRNA sequencing, PacBio Iso-Seq and MAS-Seq.
 
+Full documentation is available at [huangnengCSU.github.io/longcallR](https://huangnengCSU.github.io/longcallR/).
+
 ## Installation
 
 LongcallR is written in [Rust](https://www.rust-lang.org) and uses [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) to build as follows:
