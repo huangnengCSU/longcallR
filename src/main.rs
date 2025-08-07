@@ -75,13 +75,25 @@ struct Args {
     #[arg(short = 'p', long)]
     preset: Preset,
 
-    /// When set, only call SNPs in exons
-    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
-    exon_only: bool,
-
-    /// Maximum number of SNPs for enumerate haplotypes [Default: 10]
+    /// Minimum allele frequency for high allele fraction candidate SNPs [Default: 0.20]
     #[arg(long)]
-    max_enum_snps: Option<usize>,
+    min_allele_freq: Option<f32>,
+
+    /// Minimum allele frequency for high allele fraction candidate SNPs include intron [Default: 0.0]
+    #[arg(long)]
+    min_allele_freq_include_intron: Option<f32>,
+
+    /// Minimum allele frequency for low allele fraction candidate SNPs [Default: 0.05]
+    #[arg(long)]
+    low_allele_frac_cutoff: Option<f32>,
+
+    /// Minimum allele count for low allele fraction candidate SNPs [Default: 10]
+    #[arg(long)]
+    low_allele_cnt_cutoff: Option<u32>,
+
+    /// Minimum length for reads [Default: 500]
+    #[arg(long)]
+    min_read_length: Option<usize>,
 
     /// Minimum mapping quality for reads [Default: 20]
     #[arg(long)]
@@ -95,21 +107,21 @@ struct Args {
     #[arg(long)]
     divergence: Option<f32>,
 
-    /// Minimum allele frequency for high allele fraction candidate SNPs [Default: 0.20]
+    /// Minimum depth for a candidate SNP [Default: 10]
     #[arg(long)]
-    min_allele_freq: Option<f32>,
+    min_depth: Option<u32>,
 
-    /// Minimum allele frequency for high allele fraction candidate SNPs include intron [Default: 0.0]
+    /// Maximum depth for a candidate SNP [Default: 50000]
     #[arg(long)]
-    min_allele_freq_include_intron: Option<f32>,
-
-    /// Minimum QUAL for candidate SNPs [Default: 2]
-    #[arg(long)]
-    min_qual: Option<u32>,
+    max_depth: Option<u32>,
 
     /// Whether to use strand bias to filter SNPs [Default: false]
     #[arg(long)]
     strand_bias: Option<bool>,
+
+    /// Minimum QUAL for candidate SNPs [Default: 2]
+    #[arg(long)]
+    min_qual: Option<u32>,
 
     /// Ignore bases within distance to read end [Default: 20]
     #[arg(long)]
@@ -131,17 +143,17 @@ struct Args {
     #[arg(long)]
     min_linkers: Option<u32>,
 
+    /// Maximum number of SNPs for enumerate haplotypes [Default: 10]
+    #[arg(long)]
+    max_enum_snps: Option<usize>,
+
     /// Minimum phase score to filter candidate SNPs [Default: 8.0]
     #[arg(long)]
     min_phase_score: Option<f32>,
 
-    /// Minimum depth for a candidate SNP [Default: 10]
+    /// Minimum absolute difference between haplotype assignment probabilities required for a read to be confidently assigned [Default: 0.15]
     #[arg(long)]
-    min_depth: Option<u32>,
-
-    /// Maximum depth for a candidate SNP [Default: 50000]
-    #[arg(long)]
-    max_depth: Option<u32>,
+    min_read_assignment_diff: Option<f64>,
 
     /// When set, apply truncation of high coverage regions
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
@@ -159,21 +171,9 @@ struct Args {
     #[arg(long)]
     downsample_depth: Option<u32>,
 
-    /// Minimum length for reads [Default: 500]
-    #[arg(long)]
-    min_read_length: Option<usize>,
-
-    /// Minimum absolute difference between haplotype assignment probabilities required for a read to be confidently assigned [Default: 0.15]
-    #[arg(long)]
-    min_read_assignment_diff: Option<f64>,
-
-    /// Minimum allele frequency for low allele fraction candidate SNPs [Default: 0.05]
-    #[arg(long)]
-    low_allele_frac_cutoff: Option<f32>,
-
-    /// Minimum allele count for low allele fraction candidate SNPs [Default: 10]
-    #[arg(long)]
-    low_allele_cnt_cutoff: Option<u32>,
+    /// When set, only call SNPs in exons
+    #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
+    exon_only: bool,
 
     /// When set, do not output phased bam file
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
