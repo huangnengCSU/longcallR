@@ -1,6 +1,6 @@
 [package]
 name = "longcallR"
-version = "1.11.0"
+version = "1.12.0"
 edition = "2021"
 authors = ["Neng Huang <neng@ds.dfci.harvard.edu>"]
 description = "A Rust tool for SNP calling and haplotype phasing with long RNA-seq reads."
