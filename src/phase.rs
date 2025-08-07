@@ -1084,7 +1084,7 @@ impl SNPFrag {
         }
     }
 
-    pub fn phase(&mut self, ld_weight_threshold: u32, max_enum_snps: usize, random_flip_fraction: f32, max_iters: i32, apply_downsampling: bool) {
+    pub fn phase(&mut self, ld_weight_threshold: u32, max_enum_snps: usize, apply_downsampling: bool) {
         let mut largest_prob = f64::NEG_INFINITY;
         let mut best_haplotype: HashMap<usize, i32> = HashMap::new();
         let mut best_haplotag: HashMap<usize, i32> = HashMap::new();

@@ -65,8 +65,8 @@ impl SNPFrag {
         use_strand_bias: bool,
         dense_win_size: u32,
         min_dense_cnt: u32,
-        somatic_allele_frac_cutoff: f32,
-        somatic_allele_cnt_cutoff: u32,
+        low_allele_frac_cutoff: f32,
+        low_allele_cnt_cutoff: u32,
     ) {
         // get candidate SNPs, filtering with min_coverage, deletion_freq, min_allele_freq_include_intron, cover_strand_bias_threshold
         let pileup = &profile.freq_vec;
@@ -141,13 +141,13 @@ impl SNPFrag {
 
             if alternate_alleles.num == 1 {
                 if total_allele_count < 200
-                    && alternate_alleles.frequency[0] < somatic_allele_frac_cutoff
+                    && alternate_alleles.frequency[0] < low_allele_frac_cutoff
                 {
                     position += 1;
                     continue;
                 }
                 if total_allele_count >= 200
-                    && alternate_alleles.count[0] < somatic_allele_cnt_cutoff
+                    && alternate_alleles.count[0] < low_allele_cnt_cutoff
                 {
                     position += 1;
                     continue;

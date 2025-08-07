@@ -39,23 +39,23 @@ pub enum Platform {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Path to input bam file
+    /// Input BAM file (must be sorted and indexed)
     #[arg(short = 'b', long)]
     bam_path: String,
 
-    /// Path to reference file
+    /// Reference FASTA file
     #[arg(short = 'f', long)]
     ref_path: String,
 
-    /// annotation file
+    /// Annotation file, GFF3 or GTF format
     #[arg(short = 'a', long)]
     annotation: Option<String>,
 
-    /// Output bam file path
+    /// Output file prefix
     #[arg(short = 'o', long)]
     output: String,
 
-    /// Region to realign (Optional). Format: chr:start-end, left-closed, right-open.
+    /// Region to be processed. Format: chr:start-end, left-closed, right-open
     #[arg(short = 'r', long)]
     region: Option<String>,
 
@@ -63,7 +63,7 @@ struct Args {
     #[arg(short = 'x', long, num_args(0..))]
     contigs: Option<Vec<String>>,
 
-    /// Input vcf file
+    /// Input vcf file as Candidate SNPs
     #[arg(short = 'v', long)]
     input_vcf: Option<String>,
 
@@ -71,7 +71,7 @@ struct Args {
     #[arg(short = 't', long)]
     threads: Option<usize>,
 
-    /// Preset of parameters, choices: hifi-isoseq, hifi-masseq, ont-cdna, ont-drna
+    /// Preset for sequencing platform, choices: hifi-isoseq, hifi-masseq, ont-cdna, ont-drna
     #[arg(short = 'p', long)]
     preset: Preset,
 
@@ -79,17 +79,9 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     exon_only: bool,
 
-    /// Maximum number of iteration for phasing [Default: 100]
-    #[arg(long)]
-    max_iters: Option<i32>,
-
     /// Maximum number of SNPs for enumerate haplotypes [Default: 10]
     #[arg(long)]
     max_enum_snps: Option<usize>,
-
-    /// Random flip fraction for snps and fragments [Default: 0.2]
-    #[arg(long)]
-    random_flip_fraction: Option<f32>,
 
     /// Minimum mapping quality for reads [Default: 20]
     #[arg(long)]
@@ -103,11 +95,11 @@ struct Args {
     #[arg(long)]
     divergence: Option<f32>,
 
-    /// Minimum allele frequency for candidate SNPs [Default: 0.20]
+    /// Minimum allele frequency for high allele fraction candidate SNPs [Default: 0.20]
     #[arg(long)]
     min_allele_freq: Option<f32>,
 
-    /// Minimum allele frequency for candidate SNPs include intron [Default: 0.0]
+    /// Minimum allele frequency for high allele fraction candidate SNPs include intron [Default: 0.0]
     #[arg(long)]
     min_allele_freq_include_intron: Option<f32>,
 
@@ -127,27 +119,27 @@ struct Args {
     #[arg(long)]
     polya_tail_length: Option<u32>,
 
-    /// Dense window size for candidate SNPs [Default: 500]
+    /// Window size used to identify dense regions of candidate SNPs [Default: 500]
     #[arg(long)]
     dense_win_size: Option<u32>,
 
-    /// Minimum dense cnt for candidate SNPs [Default: 5]
+    /// Minimum number of candidate SNPs within the dense window to consider the region as dense [Default: 5]
     #[arg(long)]
     min_dense_cnt: Option<u32>,
 
-    /// Minimum linked heterozygous snps for phasing [Default: 1]
+    /// Minimum number of related candidate heterozygous SNPs required to perform phasing in a region [Default: 1]
     #[arg(long)]
     min_linkers: Option<u32>,
 
-    /// Minimum phase score to filter SNPs [Default: 8.0]
+    /// Minimum phase score to filter candidate SNPs [Default: 8.0]
     #[arg(long)]
     min_phase_score: Option<f32>,
 
-    /// Minimum depth to filter SNPs [Default: 10]
+    /// Minimum depth for a candidate SNP [Default: 10]
     #[arg(long)]
     min_depth: Option<u32>,
 
-    /// Maximum depth to filter SNPs [Default: 50000]
+    /// Maximum depth for a candidate SNP [Default: 50000]
     #[arg(long)]
     max_depth: Option<u32>,
 
@@ -155,7 +147,7 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     truncation: bool,
 
-    /// coverage for truncation [Default: 200000]
+    /// Read number threshold for region truncation [Default: 200000]
     #[arg(long)]
     truncation_coverage: Option<u32>,
 
@@ -167,27 +159,27 @@ struct Args {
     #[arg(long)]
     downsample_depth: Option<u32>,
 
-    /// Minimum read length to filter reads [Default: 500]
+    /// Minimum length for reads [Default: 500]
     #[arg(long)]
     min_read_length: Option<usize>,
 
-    /// Minimum absolute difference |p(h1) - p(h2)| to consider assignment legal [Default: 0.15]
+    /// Minimum absolute difference between haplotype assignment probabilities required for a read to be confidently assigned [Default: 0.15]
     #[arg(long)]
     min_read_assignment_diff: Option<f64>,
 
-    /// Somatic mutation allele fraction cutoff [Default: 0.05]
+    /// Minimum allele frequency for low allele fraction candidate SNPs [Default: 0.05]
     #[arg(long)]
-    somatic_allele_frac_cutoff: Option<f32>,
+    low_allele_frac_cutoff: Option<f32>,
 
-    /// Somatic mutation allele count cutoff [Default: 10]
+    /// Minimum allele count for low allele fraction candidate SNPs [Default: 10]
     #[arg(long)]
-    somatic_allele_cnt_cutoff: Option<u32>,
+    low_allele_cnt_cutoff: Option<u32>,
 
-    /// When set, do not output phased bam file.
+    /// When set, do not output phased bam file
     #[arg(long, action = ArgAction::SetTrue, default_value = "false")]
     no_bam_output: bool,
 
-    /// When set, show blocks information.
+    /// When set, show all regions to be processed
     #[clap(long, action = ArgAction::SetTrue, default_value = "false")]
     get_blocks: bool,
 }
@@ -264,9 +256,7 @@ fn main() {
     let min_dense_cnt: Option<u32>;
     let strand_bias: Option<bool>;
     let threads: Option<usize>;
-    let max_iters: Option<i32>;
     let max_enum_snps: Option<usize>;
-    let random_flip_fraction: Option<f32>;
     let min_mapq: Option<u8>;
     let divergence: Option<f32>;
     let min_baseq: Option<u8>;
@@ -276,8 +266,8 @@ fn main() {
     let truncation_coverage: Option<u32>;
     let downsample_depth: Option<u32>;
     let min_read_length: Option<usize>;
-    let somatic_allele_frac_cutoff: Option<f32>;
-    let somatic_allele_cnt_cutoff: Option<u32>;
+    let low_allele_frac_cutoff: Option<f32>;
+    let low_allele_cnt_cutoff: Option<u32>;
 
     match preset {
         Preset::OntCdna => {
@@ -295,9 +285,7 @@ fn main() {
             strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
-            max_iters = Option::from(arg.max_iters.unwrap_or(100));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
-            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
             divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
@@ -307,9 +295,9 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff =
-                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
-            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            low_allele_frac_cutoff =
+                Option::from(arg.low_allele_frac_cutoff.unwrap_or(0.05));
+            low_allele_cnt_cutoff = Option::from(arg.low_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: ont-cdna");
         }
 
@@ -328,9 +316,7 @@ fn main() {
             strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
 
             threads = Option::from(arg.threads.unwrap_or(1));
-            max_iters = Option::from(arg.max_iters.unwrap_or(100));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
-            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
             divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
@@ -340,9 +326,9 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff =
-                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
-            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            low_allele_frac_cutoff =
+                Option::from(arg.low_allele_frac_cutoff.unwrap_or(0.05));
+            low_allele_cnt_cutoff = Option::from(arg.low_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: ont-drna");
         }
 
@@ -361,9 +347,7 @@ fn main() {
             strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
-            max_iters = Option::from(arg.max_iters.unwrap_or(100));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
-            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
             divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
@@ -373,9 +357,9 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff =
-                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
-            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            low_allele_frac_cutoff =
+                Option::from(arg.low_allele_frac_cutoff.unwrap_or(0.05));
+            low_allele_cnt_cutoff = Option::from(arg.low_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: hifi-isoseq");
         }
 
@@ -394,9 +378,7 @@ fn main() {
             strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
 
             threads = Option::from(arg.threads.unwrap_or(1));
-            max_iters = Option::from(arg.max_iters.unwrap_or(100));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
-            random_flip_fraction = Option::from(arg.random_flip_fraction.unwrap_or(0.2));
             min_mapq = Option::from(arg.min_mapq.unwrap_or(20));
             divergence = Option::from(arg.divergence.unwrap_or(0.5));
             min_baseq = Option::from(arg.min_baseq.unwrap_or(10));
@@ -406,9 +388,9 @@ fn main() {
             truncation_coverage = Option::from(arg.truncation_coverage.unwrap_or(200000));
             downsample_depth = Option::from(arg.downsample_depth.unwrap_or(10000));
             min_read_length = Option::from(arg.min_read_length.unwrap_or(500));
-            somatic_allele_frac_cutoff =
-                Option::from(arg.somatic_allele_frac_cutoff.unwrap_or(0.05));
-            somatic_allele_cnt_cutoff = Option::from(arg.somatic_allele_cnt_cutoff.unwrap_or(10));
+            low_allele_frac_cutoff =
+                Option::from(arg.low_allele_frac_cutoff.unwrap_or(0.05));
+            low_allele_cnt_cutoff = Option::from(arg.low_allele_cnt_cutoff.unwrap_or(10));
             println!("Preset: hifi-masseq");
         }
     }
@@ -482,7 +464,6 @@ fn main() {
         exon_regions,
         exon_only,
         &platform,
-        max_iters.unwrap(),
         min_mapq.unwrap(),
         min_baseq.unwrap(),
         divergence.unwrap(),
@@ -502,10 +483,9 @@ fn main() {
         min_linkers.unwrap(),
         min_phase_score.unwrap(),
         max_enum_snps.unwrap(),
-        random_flip_fraction.unwrap(),
         min_read_assignment_diff.unwrap(),
         no_bam_output,
-        somatic_allele_frac_cutoff.unwrap(),
-        somatic_allele_cnt_cutoff.unwrap(),
+        low_allele_frac_cutoff.unwrap(),
+        low_allele_cnt_cutoff.unwrap(),
     );
 }

@@ -25,7 +25,6 @@ pub fn run(
     exon_regions: HashMap<String, Vec<Interval<u32, u8>>>,
     exon_only: bool,
     platform: &Platform,
-    max_iters: i32,
     min_mapq: u8,
     min_baseq: u8,
     divergence: f32,
@@ -45,11 +44,10 @@ pub fn run(
     min_linkers: u32,
     min_phase_score: f32,
     max_enum_snps: usize,
-    random_flip_fraction: f32,
     read_assignment_cutoff: f64,
     no_bam_output: bool,
-    somatic_allele_frac_cutoff: f32,
-    somatic_allele_cnt_cutoff: u32,
+    low_allele_frac_cutoff: f32,
+    low_allele_cnt_cutoff: u32,
 ) {
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(thread_size)
@@ -130,8 +128,8 @@ pub fn run(
                     use_strand_bias,
                     dense_win_size,
                     min_dense_cnt,
-                    somatic_allele_frac_cutoff,
-                    somatic_allele_cnt_cutoff,
+                    low_allele_frac_cutoff,
+                    low_allele_cnt_cutoff,
                 );
             }
             // TODO: for very high depth region, down-sampling the reads
@@ -165,15 +163,15 @@ pub fn run(
                 snpfrag.init_assignment();
             }
             // snpfrag.chain_phase(max_enum_snps);
-            snpfrag.phase(1, max_enum_snps, random_flip_fraction, max_iters, apply_downsampling);
+            snpfrag.phase(1, max_enum_snps, apply_downsampling);
             // let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
             snpfrag.assign_reads_haplotype(read_assignment_cutoff, apply_downsampling);
             snpfrag.assign_snp_haplotype_genotype(apply_downsampling);
             // let read_assignments = snpfrag.assign_reads_haplotype(read_assignment_cutoff);
             snpfrag.assign_reads_haplotype(read_assignment_cutoff, apply_downsampling);
             snpfrag.assign_snp_haplotype_genotype(apply_downsampling);
-            // snpfrag.assign_het_var_haplotype(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
-            // snpfrag.eval_low_frac_het_var_phase(min_phase_score, somatic_allele_frac_cutoff, somatic_allele_cnt_cutoff);
+            // snpfrag.assign_het_var_haplotype(min_phase_score, low_allele_frac_cutoff, low_allele_cnt_cutoff);
+            // snpfrag.eval_low_frac_het_var_phase(min_phase_score, low_allele_frac_cutoff, low_allele_cnt_cutoff);
 
             // Evaluate RNA editing sites and low allele fraction variants using a relaxed phase score threshold.
             // This step reinserts these candidates into the phasing process to ensure that phase sites are properly updated.
