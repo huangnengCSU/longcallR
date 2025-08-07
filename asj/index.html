@@ -1,0 +1,621 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
+    
+    
+      
+        <title>Allele-specific junction - longcallR</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.7e37652d.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#allele-specific-junction" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="longcallR" class="md-header__button md-logo" aria-label="longcallR" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            longcallR
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Allele-specific junction
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="longcallR" class="md-nav__button md-logo" aria-label="longcallR" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    longcallR
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/index.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/install.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/usage.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Usage
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/ase.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ASE
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/asj.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ASJ
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/citation.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Citation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#allele-specific-junction-quantification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Allele-Specific Junction Quantification
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-confidence-asj-using-known-genomic-snps" class="md-nav__link">
+    <span class="md-ellipsis">
+      High-Confidence ASJ Using Known Genomic SNPs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#store-allele-specific-junctions-in-bed-format-for-igv-visualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Store Allele-Specific Junctions in BED Format for IGV Visualization
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output format
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="allele-specific-junction">Allele-specific junction</h1>
+<h2 id="allele-specific-junction-quantification">Allele-Specific Junction Quantification</h2>
+<p>To quantify allele-specific junction based on the LongcallR-phased BAM, run the following command:</p>
+<pre><code>python longcallR-asj.py
+-b &lt;phased_bam&gt;
+-a &lt;annotation&gt;
+-f &lt;reference&gt;
+-o &lt;output_prefix&gt;
+-t &lt;threads&gt;
+-g &lt;gene_types&gt;
+-m &lt;min_sup&gt;
+</code></pre>
+<ul>
+<li>-b, --bam_file: longcallR phased bam file</li>
+<li>-a, --annotation_file: Annotation file GTF for GFF3 format</li>
+<li>-f, --reference: Reference genome file</li>
+<li>-o, --output_prefix: Prefix of output files</li>
+<li>-t, --threads: Number of threads</li>
+<li>-g, --gene_types: Gene types to be analyzed. Default: ["protein_coding", "lncRNA"]</li>
+<li>-m, --min_sup: Minimum support of phased reads for counting event. Default: 10</li>
+</ul>
+<h2 id="high-confidence-asj-using-known-genomic-snps">High-Confidence ASJ Using Known Genomic SNPs</h2>
+<p>To increase confidence by requiring allele-specific junction to be supported by both longcallR's RNA SNPs and known genomic SNPs, use the following command:</p>
+<pre><code>python longcallR-asj.py
+-b &lt;phased_bam&gt;
+-a &lt;annotation&gt;
+-f &lt;reference&gt;
+--dna_vcf &lt;genomic_vcf&gt;
+--rna_vcf &lt;rna_vcf&gt;
+-o &lt;output_prefix&gt;
+-t &lt;threads&gt;
+-g &lt;gene_types&gt;
+-m &lt;min_sup&gt;
+</code></pre>
+<ul>
+<li>--dna_vcf: DNA vcf file</li>
+<li>--rna_vcf: longcallR phased RNA vcf file</li>
+</ul>
+<h2 id="store-allele-specific-junctions-in-bed-format-for-igv-visualization">Store Allele-Specific Junctions in BED Format for IGV Visualization</h2>
+<p>To visualize allele-specific junctions in IGV, extract regions with a p-value below a specified threshold (default: 1e-10) and save them in BED format:</p>
+<pre><code>python asj_to_bed.py output.asj.tsv [p_value_threshold] &gt; output.asj.bed
+</code></pre>
+<ul>
+<li>output.asj.tsv: Input file containing allele-specific junctions</li>
+<li>p_value_threshold (optional): Significance threshold (default: 1e-10)</li>
+<li>output.asj.bed: Output BED file for IGV visualization</li>
+</ul>
+<h2 id="output-format">Output format</h2>
+<p>Running <code>longcallR-asj.py</code> will generate three output files <code>output.asj.tsv</code>, <code>output.asj_gene.tsv</code> and <code>output.gene_coverage.tsv</code>. The formats of these files are described below:</p>
+<p>1.output.asj.tsv</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#Junction</code></td>
+<td>Junction coordinates in the format <code>chr:start-end</code></td>
+</tr>
+<tr>
+<td><code>Strand</code></td>
+<td>Strand of the junction (<code>+</code> or <code>-</code>)</td>
+</tr>
+<tr>
+<td><code>Junction_set</code></td>
+<td>Junction set identifier (cluster of related junctions)</td>
+</tr>
+<tr>
+<td><code>Phase_set</code></td>
+<td>Phase set ID</td>
+</tr>
+<tr>
+<td><code>Hap1_absent</code></td>
+<td>Number of reads from haplotype 1 where the junction is absent</td>
+</tr>
+<tr>
+<td><code>Hap1_present</code></td>
+<td>Number of reads from haplotype 1 where the junction is present</td>
+</tr>
+<tr>
+<td><code>Hap2_absent</code></td>
+<td>Number of reads from haplotype 2 where the junction is absent</td>
+</tr>
+<tr>
+<td><code>Hap2_present</code></td>
+<td>Number of reads from haplotype 2 where the junction is present</td>
+</tr>
+<tr>
+<td><code>P_value</code></td>
+<td>P-value for allele-specific junction</td>
+</tr>
+<tr>
+<td><code>SOR</code></td>
+<td>Symmetric odds ratio</td>
+</tr>
+<tr>
+<td><code>Novel</code></td>
+<td>Whether the junction is novel (<code>TRUE</code> / <code>FALSE</code>)</td>
+</tr>
+<tr>
+<td><code>GT_AG</code></td>
+<td>Whether junction has canonical GT-AG splice sites (<code>TRUE</code> / <code>FALSE</code>)</td>
+</tr>
+<tr>
+<td><code>Gene_name</code></td>
+<td>Associated gene symbol</td>
+</tr>
+</tbody>
+</table>
+<p>2.output.asj_gene.tsv</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#Gene_name</code></td>
+<td>Gene symbol that containing allele-specific junctions</td>
+</tr>
+<tr>
+<td><code>Chr</code></td>
+<td>Chromosome</td>
+</tr>
+<tr>
+<td><code>P_value</code></td>
+<td>P-value for the most significant allele-specific junction in the gene</td>
+</tr>
+<tr>
+<td><code>SOR</code></td>
+<td>Symmetric odds ratio for the most significant allele-specific junction in the gene</td>
+</tr>
+</tbody>
+</table>
+<p>3.output.gene_coverage.tsv</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#Gene_name</code></td>
+<td>Gene symbol</td>
+</tr>
+<tr>
+<td><code>Chr</code></td>
+<td>Chromosome</td>
+</tr>
+<tr>
+<td><code>Start</code></td>
+<td>start position of gene, 1-based, inclusive</td>
+</tr>
+<tr>
+<td><code>End</code></td>
+<td>end position of gene, 1-based, inclusive</td>
+</tr>
+<tr>
+<td><code>Num_reads</code></td>
+<td>Number of reads in the gene</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.50899def.min.js"></script>
+      
+    
+  </body>
+</html>
