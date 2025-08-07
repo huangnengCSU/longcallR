@@ -25,7 +25,7 @@
 # download and build
 git clone https://github.com/huangnengCSU/longcallR.git
 cd longcallR
-cargo build --release # The executable will be located at: longcallR/target/release/longcallR
+cargo build --release # The executable will be located at: target/release/longcallR
 
 # call SNPs
 longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-cdna       # Nanopore cDNA reads
@@ -56,35 +56,89 @@ Full documentation is available at [huangnengCSU.github.io/longcallR](https://hu
 
 ## Installation
 
+### Install from source
 LongcallR is written in [Rust](https://www.rust-lang.org) and uses [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) to build as follows:
-```
+```bash
 git clone https://github.com/huangnengCSU/longcallR.git
 cd longcallR
 cargo build --release
+
+# Temporarily add to your PATH
+export PATH="$PATH:$(pwd)/target/release"
+export PATH="$PATH:$(pwd)/allele_specific"
+
+# Permanently add to PATH
+echo 'export PATH="$PATH:$(pwd)/target/release"' >> ~/.bashrc
+echo 'export PATH="$PATH:$(pwd)/allele_specific"' >> ~/.bashrc
+source ~/.bashrc
+
+# Check Installation
+longcallR -h
 ```
-Alternatively, it can be installed via Conda:
-```
+
+### Install from Conda
+longcallR can be installed via Conda:
+```bash
 mamba install longcallr
+
+# Check Installation
+longcallR -h
 ```
-Or installed directly from crates.io:
-```
+
+### Install from Crates.io
+longcallR can be installed from crates.io:
+```bash
 cargo install longcallR
+
+# Check Installation
+longcallR -h
 ```
 
 ## Usage
 
-General usage
-```
-./longcallR \
+### Basic Example
+```bash
+longcallR \
 --bam-path input.bam \                  ## The alignment bam file
 --ref-path ref.fa \                     ## The reference file must be indexed.
 --preset ${PRESET} \                    ## option: {ont-cdna, ont-drna, hifi-isoseq, hifi-masseq}
---output ${OUTPUT_DIR}/${PREFIX}        ## output path and prefix of output files
+--output ${OUTPUT_PREFIX}               ## Prefix of output files
 ```
+For advanced options, see the [documentation](https://huangnengCSU.github.io/longcallR/)
+
+### Allele specific analysis
+1.If installed from source and the executable is already in your PATH, run:
+```bash
+# call allele-specific expression
+longcallR-ase.py -b <phased_bam>  -a <annotation> -o <output_prefix> -t <threads> --gene_types <gene_types> --min_support <min_support>
+
+# call allele-specific junction
+longcallR-asj.py -b <phased_bam> -a <annotation> -f <reference> -o <output_prefix> -t <threads> -g <gene_types> -m <min_support>
+
+# store allele-specific junction in BED format for IGV visualization
+asj_to_bed.py output.asj.tsv [p_value_threshold] > output.asj.bed
+```
+2.If install from Conda, run:
+```bash
+longcallR-ase -b <phased_bam>  -a <annotation> -o <output_prefix> -t <threads> --gene_types <gene_types> --min_support <min_support>
+longcallR-asj -b <phased_bam> -a <annotation> -f <reference> -o <output_prefix> -t <threads> -g <gene_types> -m <min_support>
+asj_to_bed output.asj.tsv [p_value_threshold] > output.asj.bed
+```
+3.If install from Crates.io, run:
+```bash
+wget https://github.com/huangnengCSU/longcallR/blob/r1.11/allele_specific/longcallR-ase.py
+wget https://github.com/huangnengCSU/longcallR/blob/r1.11/allele_specific/longcallR-asj.py
+wget https://github.com/huangnengCSU/longcallR/blob/r1.11/allele_specific/asj_to_bed.py
+
+python longcallR-ase.py -b <phased_bam>  -a <annotation> -o <output_prefix> -t <threads> --gene_types <gene_types> --min_support <min_support>
+python longcallR-asj.py -b <phased_bam> -a <annotation> -f <reference> -o <output_prefix> -t <threads> -g <gene_types> -m <min_support>
+python asj_to_bed.py output.asj.tsv [p_value_threshold] > output.asj.bed
+```
+For detailed information on available options and output file formats, please refer to the [documentation](https://huangnengCSU.github.io/longcallR/)
 
 ## Demo
 ```
-./longcallR -b demo/demo.bam -f demo/chr20.fa -o demo/test -t 8 -p hifi-masseq
+longcallR -b demo/demo.bam -f demo/chr20.fa -o demo/test -t 8 -p hifi-masseq
 ```
 
 ## Alignment
