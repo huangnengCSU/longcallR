@@ -9,8 +9,10 @@
       
       
       
+        <link rel="prev" href="usage.html">
       
-        <link rel="next" href="install.html">
+      
+        <link rel="next" href="asj.html">
       
       
       <link rel="icon" href="assets/images/favicon.png">
@@ -18,7 +20,7 @@
     
     
       
-        <title>longcallR</title>
+        <title>ASE - longcallR</title>
       
     
     
@@ -68,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#about-longcallr" class="md-skip">
+        <a href="#allele-specific-expressed-gene" class="md-skip">
           Skip to content
         </a>
       
@@ -104,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              ASE
             
           </span>
         </div>
@@ -197,19 +199,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-      <a href="index.html" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
         
   
   
@@ -220,7 +213,6 @@
   
 
       </a>
-      
     </li>
   
 
@@ -273,10 +265,32 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="ase.html" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    ASE
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="ase.html" class="md-nav__link md-nav__link--active">
         
   
   
@@ -287,6 +301,62 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#allele-specific-expression-quantification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Allele-Specific Expression Quantification
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-confidence-ase-using-known-genomic-snps" class="md-nav__link">
+    <span class="md-ellipsis">
+      High-Confidence ASE Using Known Genomic SNPs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-phased-genomic-vcf-for-parental-allele-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Phased Genomic VCF for Parental Allele Resolution
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output format
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -355,6 +425,50 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#allele-specific-expression-quantification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Allele-Specific Expression Quantification
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-confidence-ase-using-known-genomic-snps" class="md-nav__link">
+    <span class="md-ellipsis">
+      High-Confidence ASE Using Known Genomic SNPs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-phased-genomic-vcf-for-parental-allele-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Phased Genomic VCF for Parental Allele Resolution
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output format
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -369,15 +483,138 @@
 
 
 
-<h1 id="about-longcallr">About longcallR</h1>
-<p><strong>longcallR</strong> is a Rust tool for joint SNP calling, haplotype phasing, and allele-specific analysis using long RNA-seq reads.</p>
-<ul>
-<li><a href="install.html">Installation</a></li>
-<li><a href="usage.html">Usage</a></li>
-<li><a href="ase.html">Allele_specific_expression</a></li>
-<li><a href="asj.html">Allele_specific_junction</a></li>
-<li><a href="citation.html">Citation</a></li>
-</ul>
+<h1 id="allele-specific-expressed-gene">Allele-specific expressed gene</h1>
+<h2 id="allele-specific-expression-quantification">Allele-Specific Expression Quantification</h2>
+<p>To quantify allele-specific gene expression based on the LongcallR-phased BAM, run the following command to get <code>output.ase.tsv</code>:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python longcallR-ase.py
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>-b &lt;phased_bam&gt; 
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>-a &lt;annotation&gt;
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>-o &lt;output_prefix&gt;
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>-t &lt;threads&gt;
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>--gene_types &lt;gene_types&gt;
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>--min_support &lt;min_support&gt;
+</span></code></pre></div>
++ -b, --bam: longcallR phased bam file
++ -a, --annotation: Annotation file GTF for GFF3 format
++ -o, --output: Prefix of output files
++ -t, --threads: Number of threads
++ --gene_types: Gene types to be analyzed. Default: ["protein_coding", "lncRNA"]
++ --min_support: Minimum support reads for counting event. Default: 10</p>
+<h2 id="high-confidence-ase-using-known-genomic-snps">High-Confidence ASE Using Known Genomic SNPs</h2>
+<p>To increase confidence by requiring allele-specific expression to be supported by both LongcallR SNPs and known genomic SNPs, use the following command to get <code>output.filter_ase.tsv</code>:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python longcallR-ase.py
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>-b &lt;phased_bam&gt;
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>--vcf1 &lt;longcallR_phased_vcf&gt;
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>--vcf3 &lt;genomic_vcf&gt;
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>-a &lt;annotation&gt;
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>-o &lt;output_prefix&gt;
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>-t &lt;threads&gt;
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>--gene_types &lt;gene_types&gt;
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>--min_support &lt;min_support&gt;
+</span></code></pre></div>
++ --vcf1: LongcallR phased vcf file
++ --vcf3: DNA vcf file</p>
+<h2 id="using-phased-genomic-vcf-for-parental-allele-resolution">Using Phased Genomic VCF for Parental Allele Resolution</h2>
+<p>To assign allele-specific expression to paternal and maternal haplotypes, provide both the LongcallR-phased VCF and a whole-genome haplotype-phased DNA VCF, get <code>output.patmat_ase.tsv</code>:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python longcallR-ase.py
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>-b &lt;phased_bam&gt;
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>--vcf1 &lt;longcallR_phased_vcf&gt;
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>--vcf2 &lt;phased_genomic_vcf&gt;
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>-a &lt;annotation&gt;
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>-o &lt;output_prefix&gt;
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>-t &lt;threads&gt;
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>--gene_types &lt;gene_types&gt;
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>--min_support &lt;min_support&gt;
+</span></code></pre></div>
++ --vcf1: LongcallR phased vcf file
++ --vcf2: Whole genome haplotype phased DNA vcf file</p>
+<h2 id="output-format">Output format</h2>
+<p>1.output.ase.tsv or output.filter_ase.tsv</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#Gene_name</code></td>
+<td>Gene symbol</td>
+</tr>
+<tr>
+<td><code>Chr</code></td>
+<td>Chromosome</td>
+</tr>
+<tr>
+<td><code>PS</code></td>
+<td>Phase set ID</td>
+</tr>
+<tr>
+<td><code>H1</code></td>
+<td>Read count assigned to haplotype 1</td>
+</tr>
+<tr>
+<td><code>H2</code></td>
+<td>Read count assigned to haplotype 2</td>
+</tr>
+<tr>
+<td><code>P_value</code></td>
+<td>Binomial test p-value for allelic imbalance</td>
+</tr>
+</tbody>
+</table>
+<p>2.output.patmat_ase.tsv</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#Gene_name</code></td>
+<td>Gene symbol</td>
+</tr>
+<tr>
+<td><code>Chr</code></td>
+<td>Chromosome</td>
+</tr>
+<tr>
+<td><code>PS</code></td>
+<td>Phase set ID</td>
+</tr>
+<tr>
+<td><code>H1</code></td>
+<td>Read count assigned to haplotype 1</td>
+</tr>
+<tr>
+<td><code>H2</code></td>
+<td>Read count assigned to haplotype 2</td>
+</tr>
+<tr>
+<td><code>P_value</code></td>
+<td>Binomial test p-value for allelic imbalance</td>
+</tr>
+<tr>
+<td><code>H1_Paternal</code></td>
+<td>Read count in H1 supporting the paternal allele</td>
+</tr>
+<tr>
+<td><code>H1_Maternal</code></td>
+<td>Read count in H1 supporting the maternal allele</td>
+</tr>
+<tr>
+<td><code>H2_Paternal</code></td>
+<td>Read count in H2 supporting the paternal allele</td>
+</tr>
+<tr>
+<td><code>H2_Maternal</code></td>
+<td>Read count in H2 supporting the maternal allele</td>
+</tr>
+</tbody>
+</table>
 
 
 
