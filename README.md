@@ -123,17 +123,18 @@ asj_to_bed.py output.asj.tsv [p_value_threshold] > output.asj.bed
 longcallR-ase -b <phased_bam>  -a <annotation> -o <output_prefix> -t <threads> --gene_types <gene_types> --min_support <min_support>
 longcallR-asj -b <phased_bam> -a <annotation> -f <reference> -o <output_prefix> -t <threads> -g <gene_types> -m <min_support>
 
-wget https://github.com/huangnengCSU/longcallR/blob/master/allele_specific/asj_to_bed.py
+wget https://raw.githubusercontent.com/huangnengCSU/longcallR/refs/heads/master/allele_specific/asj_to_bed.py
 python asj_to_bed.py output.asj.tsv [p_value_threshold] > output.asj.bed
 ```
 3.If install from Crates.io, run:
 ```bash
-wget https://github.com/huangnengCSU/longcallR/blob/master/allele_specific/longcallR-ase.py
-wget https://github.com/huangnengCSU/longcallR/blob/master/allele_specific/longcallR-asj.py
-wget https://github.com/huangnengCSU/longcallR/blob/master/allele_specific/asj_to_bed.py
-
+wget https://raw.githubusercontent.com/huangnengCSU/longcallR/refs/heads/master/allele_specific/longcallR-ase.py
 python longcallR-ase.py -b <phased_bam>  -a <annotation> -o <output_prefix> -t <threads> --gene_types <gene_types> --min_support <min_support>
+
+wget https://raw.githubusercontent.com/huangnengCSU/longcallR/refs/heads/master/allele_specific/longcallR-asj.py
 python longcallR-asj.py -b <phased_bam> -a <annotation> -f <reference> -o <output_prefix> -t <threads> -g <gene_types> -m <min_support>
+
+wget https://raw.githubusercontent.com/huangnengCSU/longcallR/refs/heads/master/allele_specific/asj_to_bed.py
 python asj_to_bed.py output.asj.tsv [p_value_threshold] > output.asj.bed
 ```
 For detailed information on available options and output file formats, please refer to the [documentation](https://huangnengCSU.github.io/longcallR/)
