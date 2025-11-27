@@ -15,8 +15,11 @@
         <link rel="next" href="citation.html">
       
       
+        
+      
+      
       <link rel="icon" href="assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
     
     
       
@@ -24,10 +27,10 @@
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.7e37652d.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.618322db.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -50,7 +53,6 @@
     
       
 
-    
     
     
   </head>
@@ -207,9 +209,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Home
+  
+
     
   </span>
+  
   
 
       </a>
@@ -229,9 +236,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Installation
+  
+
     
   </span>
+  
   
 
       </a>
@@ -251,9 +263,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Usage
+  
+
     
   </span>
+  
   
 
       </a>
@@ -273,9 +290,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     ASE
+  
+
     
   </span>
+  
   
 
       </a>
@@ -304,9 +326,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     ASJ
+  
+
     
   </span>
+  
   
 
           <span class="md-nav__icon md-icon"></span>
@@ -317,9 +344,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     ASJ
+  
+
     
   </span>
+  
   
 
       </a>
@@ -342,7 +374,9 @@
         <li class="md-nav__item">
   <a href="#allele-specific-junction-quantification" class="md-nav__link">
     <span class="md-ellipsis">
-      Allele-Specific Junction Quantification
+      
+        Allele-Specific Junction Quantification
+      
     </span>
   </a>
   
@@ -351,7 +385,9 @@
         <li class="md-nav__item">
   <a href="#high-confidence-asj-using-known-genomic-snps" class="md-nav__link">
     <span class="md-ellipsis">
-      High-Confidence ASJ Using Known Genomic SNPs
+      
+        High-Confidence ASJ Using Known Genomic SNPs
+      
     </span>
   </a>
   
@@ -360,7 +396,9 @@
         <li class="md-nav__item">
   <a href="#store-allele-specific-junctions-in-bed-format-for-igv-visualization" class="md-nav__link">
     <span class="md-ellipsis">
-      Store Allele-Specific Junctions in BED Format for IGV Visualization
+      
+        Store Allele-Specific Junctions in BED Format for IGV Visualization
+      
     </span>
   </a>
   
@@ -369,7 +407,9 @@
         <li class="md-nav__item">
   <a href="#output-format" class="md-nav__link">
     <span class="md-ellipsis">
-      Output format
+      
+        Output format
+      
     </span>
   </a>
   
@@ -395,9 +435,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Citation
+  
+
     
   </span>
+  
   
 
       </a>
@@ -434,7 +479,9 @@
         <li class="md-nav__item">
   <a href="#allele-specific-junction-quantification" class="md-nav__link">
     <span class="md-ellipsis">
-      Allele-Specific Junction Quantification
+      
+        Allele-Specific Junction Quantification
+      
     </span>
   </a>
   
@@ -443,7 +490,9 @@
         <li class="md-nav__item">
   <a href="#high-confidence-asj-using-known-genomic-snps" class="md-nav__link">
     <span class="md-ellipsis">
-      High-Confidence ASJ Using Known Genomic SNPs
+      
+        High-Confidence ASJ Using Known Genomic SNPs
+      
     </span>
   </a>
   
@@ -452,7 +501,9 @@
         <li class="md-nav__item">
   <a href="#store-allele-specific-junctions-in-bed-format-for-igv-visualization" class="md-nav__link">
     <span class="md-ellipsis">
-      Store Allele-Specific Junctions in BED Format for IGV Visualization
+      
+        Store Allele-Specific Junctions in BED Format for IGV Visualization
+      
     </span>
   </a>
   
@@ -461,7 +512,9 @@
         <li class="md-nav__item">
   <a href="#output-format" class="md-nav__link">
     <span class="md-ellipsis">
-      Output format
+      
+        Output format
+      
     </span>
   </a>
   
@@ -477,6 +530,7 @@
           
           
             <div class="md-content" data-md-component="content">
+              
               <article class="md-content__inner md-typeset">
                 
                   
@@ -494,14 +548,16 @@
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>-t &lt;threads&gt;
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>-g &lt;gene_types&gt;
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>-m &lt;min_sup&gt;
-</span></code></pre></div>
-+ -b, --bam_file: longcallR phased bam file
-+ -a, --annotation_file: Annotation file GTF for GFF3 format
-+ -f, --reference: Reference genome file
-+ -o, --output_prefix: Prefix of output files
-+ -t, --threads: Number of threads
-+ -g, --gene_types: Gene types to be analyzed. Default: ["protein_coding", "lncRNA"]
-+ -m, --min_sup: Minimum support of phased reads for counting event. Default: 10</p>
+</span></code></pre></div></p>
+<ul>
+<li>-b, --bam_file: longcallR phased bam file</li>
+<li>-a, --annotation_file: Annotation file GTF for GFF3 format</li>
+<li>-f, --reference: Reference genome file</li>
+<li>-o, --output_prefix: Prefix of output files</li>
+<li>-t, --threads: Number of threads</li>
+<li>-g, --gene_types: Gene types to be analyzed. Default: ["protein_coding", "lncRNA"]</li>
+<li>-m, --min_sup: Minimum support of phased reads for counting event. Default: 10</li>
+</ul>
 <h2 id="high-confidence-asj-using-known-genomic-snps">High-Confidence ASJ Using Known Genomic SNPs</h2>
 <p>To increase confidence by requiring allele-specific junction to be supported by both longcallR's RNA SNPs and known genomic SNPs, use the following command:
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python longcallR-asj.py
@@ -514,16 +570,20 @@
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>-t &lt;threads&gt;
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>-g &lt;gene_types&gt;
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>-m &lt;min_sup&gt;
-</span></code></pre></div>
-+ --dna_vcf: DNA vcf file
-+ --rna_vcf: longcallR phased RNA vcf file</p>
+</span></code></pre></div></p>
+<ul>
+<li>--dna_vcf: DNA vcf file</li>
+<li>--rna_vcf: longcallR phased RNA vcf file</li>
+</ul>
 <h2 id="store-allele-specific-junctions-in-bed-format-for-igv-visualization">Store Allele-Specific Junctions in BED Format for IGV Visualization</h2>
 <p>To visualize allele-specific junctions in IGV, extract regions with a p-value below a specified threshold (default: 1e-10) and save them in BED format:
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python asj_to_bed.py output.asj.tsv [p_value_threshold] &gt; output.asj.bed
-</span></code></pre></div>
-- output.asj.tsv: Input file containing allele-specific junctions
-- p_value_threshold (optional): Significance threshold (default: 1e-10)
-- output.asj.bed: Output BED file for IGV visualization</p>
+</span></code></pre></div></p>
+<ul>
+<li>output.asj.tsv: Input file containing allele-specific junctions</li>
+<li>p_value_threshold (optional): Significance threshold (default: 1e-10)</li>
+<li>output.asj.bed: Output BED file for IGV visualization</li>
+</ul>
 <h2 id="output-format">Output format</h2>
 <p>Running <code>longcallR-asj.py</code> will generate three output files <code>output.asj.tsv</code>, <code>output.asj_gene.tsv</code> and <code>output.gene_coverage.tsv</code>. The formats of these files are described below:</p>
 <p>1.output.asj.tsv</p>
@@ -695,10 +755,11 @@
     
     
       
-      <script id="__config" type="application/json">{"base": ".", "features": ["content.code.copy"], "search": "assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy"], "search": "assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.50899def.min.js"></script>
+      <script src="assets/javascripts/bundle.e71a0d61.min.js"></script>
       
     
   </body>

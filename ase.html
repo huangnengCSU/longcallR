@@ -15,8 +15,11 @@
         <link rel="next" href="asj.html">
       
       
+        
+      
+      
       <link rel="icon" href="assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
     
     
       
@@ -24,10 +27,10 @@
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.7e37652d.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.618322db.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -50,7 +53,6 @@
     
       
 
-    
     
     
   </head>
@@ -207,9 +209,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Home
+  
+
     
   </span>
+  
   
 
       </a>
@@ -229,9 +236,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Installation
+  
+
     
   </span>
+  
   
 
       </a>
@@ -251,9 +263,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Usage
+  
+
     
   </span>
+  
   
 
       </a>
@@ -282,9 +299,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     ASE
+  
+
     
   </span>
+  
   
 
           <span class="md-nav__icon md-icon"></span>
@@ -295,9 +317,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     ASE
+  
+
     
   </span>
+  
   
 
       </a>
@@ -320,7 +347,9 @@
         <li class="md-nav__item">
   <a href="#allele-specific-expression-quantification" class="md-nav__link">
     <span class="md-ellipsis">
-      Allele-Specific Expression Quantification
+      
+        Allele-Specific Expression Quantification
+      
     </span>
   </a>
   
@@ -329,7 +358,9 @@
         <li class="md-nav__item">
   <a href="#high-confidence-ase-using-known-genomic-snps" class="md-nav__link">
     <span class="md-ellipsis">
-      High-Confidence ASE Using Known Genomic SNPs
+      
+        High-Confidence ASE Using Known Genomic SNPs
+      
     </span>
   </a>
   
@@ -338,7 +369,9 @@
         <li class="md-nav__item">
   <a href="#using-phased-genomic-vcf-for-parental-allele-resolution" class="md-nav__link">
     <span class="md-ellipsis">
-      Using Phased Genomic VCF for Parental Allele Resolution
+      
+        Using Phased Genomic VCF for Parental Allele Resolution
+      
     </span>
   </a>
   
@@ -347,7 +380,9 @@
         <li class="md-nav__item">
   <a href="#output-format" class="md-nav__link">
     <span class="md-ellipsis">
-      Output format
+      
+        Output format
+      
     </span>
   </a>
   
@@ -373,9 +408,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     ASJ
+  
+
     
   </span>
+  
   
 
       </a>
@@ -395,9 +435,14 @@
   
   
   <span class="md-ellipsis">
+    
+  
     Citation
+  
+
     
   </span>
+  
   
 
       </a>
@@ -434,7 +479,9 @@
         <li class="md-nav__item">
   <a href="#allele-specific-expression-quantification" class="md-nav__link">
     <span class="md-ellipsis">
-      Allele-Specific Expression Quantification
+      
+        Allele-Specific Expression Quantification
+      
     </span>
   </a>
   
@@ -443,7 +490,9 @@
         <li class="md-nav__item">
   <a href="#high-confidence-ase-using-known-genomic-snps" class="md-nav__link">
     <span class="md-ellipsis">
-      High-Confidence ASE Using Known Genomic SNPs
+      
+        High-Confidence ASE Using Known Genomic SNPs
+      
     </span>
   </a>
   
@@ -452,7 +501,9 @@
         <li class="md-nav__item">
   <a href="#using-phased-genomic-vcf-for-parental-allele-resolution" class="md-nav__link">
     <span class="md-ellipsis">
-      Using Phased Genomic VCF for Parental Allele Resolution
+      
+        Using Phased Genomic VCF for Parental Allele Resolution
+      
     </span>
   </a>
   
@@ -461,7 +512,9 @@
         <li class="md-nav__item">
   <a href="#output-format" class="md-nav__link">
     <span class="md-ellipsis">
-      Output format
+      
+        Output format
+      
     </span>
   </a>
   
@@ -477,6 +530,7 @@
           
           
             <div class="md-content" data-md-component="content">
+              
               <article class="md-content__inner md-typeset">
                 
                   
@@ -493,13 +547,15 @@
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>-t &lt;threads&gt;
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>--gene_types &lt;gene_types&gt;
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>--min_support &lt;min_support&gt;
-</span></code></pre></div>
-+ -b, --bam: longcallR phased bam file
-+ -a, --annotation: Annotation file GTF for GFF3 format
-+ -o, --output: Prefix of output files
-+ -t, --threads: Number of threads
-+ --gene_types: Gene types to be analyzed. Default: ["protein_coding", "lncRNA"]
-+ --min_support: Minimum support reads for counting event. Default: 10</p>
+</span></code></pre></div></p>
+<ul>
+<li>-b, --bam: longcallR phased bam file</li>
+<li>-a, --annotation: Annotation file GTF for GFF3 format</li>
+<li>-o, --output: Prefix of output files</li>
+<li>-t, --threads: Number of threads</li>
+<li>--gene_types: Gene types to be analyzed. Default: ["protein_coding", "lncRNA"]</li>
+<li>--min_support: Minimum support reads for counting event. Default: 10</li>
+</ul>
 <h2 id="high-confidence-ase-using-known-genomic-snps">High-Confidence ASE Using Known Genomic SNPs</h2>
 <p>To increase confidence by requiring allele-specific expression to be supported by both LongcallR SNPs and known genomic SNPs, use the following command to get <code>output.filter_ase.tsv</code>:
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python longcallR-ase.py
@@ -511,9 +567,11 @@
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>-t &lt;threads&gt;
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>--gene_types &lt;gene_types&gt;
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>--min_support &lt;min_support&gt;
-</span></code></pre></div>
-+ --vcf1: LongcallR phased vcf file
-+ --vcf3: DNA vcf file</p>
+</span></code></pre></div></p>
+<ul>
+<li>--vcf1: LongcallR phased vcf file</li>
+<li>--vcf3: DNA vcf file</li>
+</ul>
 <h2 id="using-phased-genomic-vcf-for-parental-allele-resolution">Using Phased Genomic VCF for Parental Allele Resolution</h2>
 <p>To assign allele-specific expression to paternal and maternal haplotypes, provide both the LongcallR-phased VCF and a whole-genome haplotype-phased DNA VCF, get <code>output.patmat_ase.tsv</code>:
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python longcallR-ase.py
@@ -525,9 +583,11 @@
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>-t &lt;threads&gt;
 </span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>--gene_types &lt;gene_types&gt;
 </span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>--min_support &lt;min_support&gt;
-</span></code></pre></div>
-+ --vcf1: LongcallR phased vcf file
-+ --vcf2: Whole genome haplotype phased DNA vcf file</p>
+</span></code></pre></div></p>
+<ul>
+<li>--vcf1: LongcallR phased vcf file</li>
+<li>--vcf2: Whole genome haplotype phased DNA vcf file</li>
+</ul>
 <h2 id="output-format">Output format</h2>
 <p>1.output.ase.tsv or output.filter_ase.tsv</p>
 <table>
@@ -663,10 +723,11 @@
     
     
       
-      <script id="__config" type="application/json">{"base": ".", "features": ["content.code.copy"], "search": "assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy"], "search": "assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.50899def.min.js"></script>
+      <script src="assets/javascripts/bundle.e71a0d61.min.js"></script>
       
     
   </body>
