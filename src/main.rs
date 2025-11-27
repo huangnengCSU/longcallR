@@ -119,6 +119,10 @@ struct Args {
     #[arg(long)]
     strand_bias: Option<bool>,
 
+    /// Whether to apply RNA-editing filter to candidate SNPs [Default: true]
+    #[arg(long)]
+    rna_edit_filter: Option<bool>,
+
     /// Minimum QUAL for candidate SNPs [Default: 2]
     #[arg(long)]
     min_qual: Option<u32>,
@@ -255,6 +259,7 @@ fn main() {
     let dense_win_size: Option<u32>;
     let min_dense_cnt: Option<u32>;
     let strand_bias: Option<bool>;
+    let rna_edit_filter: Option<bool>;
     let threads: Option<usize>;
     let max_enum_snps: Option<usize>;
     let min_mapq: Option<u8>;
@@ -283,6 +288,7 @@ fn main() {
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
+            rna_edit_filter = Option::from(arg.rna_edit_filter.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -314,6 +320,7 @@ fn main() {
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+            rna_edit_filter = Option::from(arg.rna_edit_filter.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -345,6 +352,7 @@ fn main() {
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
+            rna_edit_filter = Option::from(arg.rna_edit_filter.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -376,6 +384,7 @@ fn main() {
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
             strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+            rna_edit_filter = Option::from(arg.rna_edit_filter.unwrap_or(true));
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -471,6 +480,7 @@ fn main() {
         min_qual.unwrap(),
         min_allele_freq_include_intron.unwrap(),
         strand_bias.unwrap(),
+        rna_edit_filter.unwrap(),
         min_depth.unwrap(),
         max_depth.unwrap(),
         downsample,

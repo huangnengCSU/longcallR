@@ -63,6 +63,7 @@ impl SNPFrag {
         max_coverage: u32,
         min_baseq: u8,
         use_strand_bias: bool,
+        rna_edit_filter: bool,
         dense_win_size: u32,
         min_dense_cnt: u32,
         low_allele_frac_cutoff: f32,
@@ -385,10 +386,17 @@ impl SNPFrag {
                     || (forward_transcript_cnt == 0 && reverse_transcript_cnt == 0))  // sometimes for missing `ts` tag
                 && candidate_snp.variant_type != 2
             {
-                candidate_snp.rna_editing = true;
-                candidate_snp.for_phasing = false;
+                if rna_edit_filter {
+                    candidate_snp.rna_editing = true;
+                    candidate_snp.for_phasing = false;
+                } else {
+                    candidate_snp.rna_editing = false;
+                    candidate_snp.for_phasing = true;
+                }
                 self.candidate_snps.push(candidate_snp);
-                self.edit_snps.push(self.candidate_snps.len() - 1);
+                if rna_edit_filter {
+                    self.edit_snps.push(self.candidate_snps.len() - 1);
+                }
                 position += 1;
                 continue;
             }
@@ -398,10 +406,17 @@ impl SNPFrag {
                     || (forward_transcript_cnt == 0 && reverse_transcript_cnt == 0))  // sometimes for missing `ts` tag
                 && candidate_snp.variant_type != 2
             {
-                candidate_snp.rna_editing = true;
-                candidate_snp.for_phasing = false;
+                if rna_edit_filter {
+                    candidate_snp.rna_editing = true;
+                    candidate_snp.for_phasing = false;
+                } else {
+                    candidate_snp.rna_editing = false;
+                    candidate_snp.for_phasing = true;
+                }
                 self.candidate_snps.push(candidate_snp);
-                self.edit_snps.push(self.candidate_snps.len() - 1);
+                if rna_edit_filter {
+                    self.edit_snps.push(self.candidate_snps.len() - 1);
+                }
                 position += 1;
                 continue;
             }
