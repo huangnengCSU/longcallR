@@ -159,6 +159,9 @@ Note: The `-uf` option forces minimap2 to consider only a single transcript stra
 
 We recommend using the `-uf` option for single-stranded reads and omitting it for double-stranded reads.
 
+## Results:
+The results of manuscript can be found and reproduced using the data and scripts available at: [Zenodo](https://doi.org/10.5281/zenodo.17842979).
+
 ## Citation
 If you use LongcallR in your work or analysis, please cite the preprint:
 > Neng Huang, Heng Li, SNP calling, haplotype phasing and allele-specific analysis with long RNA-seq reads. *bioRxiv*, 2025. [doi.org/10.1101/2025.05.26.656191](https://doi.org/10.1101/2025.05.26.656191)
