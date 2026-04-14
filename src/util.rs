@@ -1004,6 +1004,40 @@ impl Profile {
 //     phred_pvalue
 // }
 
+pub fn warn_gene_type_mismatch(
+    requested: &std::collections::HashSet<String>,
+    seen: &std::collections::HashSet<String>,
+    module_name: &str,
+) {
+    if requested.is_empty() || seen.is_empty() {
+        return;
+    }
+    let missing: Vec<String> = {
+        let mut v: Vec<String> = requested.iter().filter(|t| !seen.contains(*t)).cloned().collect();
+        v.sort();
+        v
+    };
+    if missing.is_empty() {
+        return;
+    }
+    let missing_str = missing.join(",");
+    if missing.len() == requested.len() {
+        let mut seen_examples: Vec<String> = seen.iter().cloned().collect();
+        seen_examples.sort();
+        let seen_str = seen_examples.into_iter().take(5).collect::<Vec<String>>().join(",");
+        eprintln!(
+            "Warning [{}]: none of the requested gene types [{}] were found in the annotation. \
+             Gene types found in annotation (examples): [{}]",
+            module_name, missing_str, seen_str
+        );
+    } else {
+        eprintln!(
+            "Warning [{}]: requested gene types [{}] were not found in the annotation.",
+            module_name, missing_str
+        );
+    }
+}
+
 pub fn warn_chr_name_mismatch(
     bam_header: &bam::HeaderView,
     annotation_chrs: &std::collections::HashSet<String>,

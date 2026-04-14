@@ -1,4 +1,4 @@
-use crate::util::warn_chr_name_mismatch;
+use crate::util::{warn_chr_name_mismatch, warn_gene_type_mismatch};
 use flate2::read::MultiGzDecoder;
 use rayon::prelude::*;
 use rust_htslib::bam;
@@ -185,6 +185,7 @@ fn parse_gene_regions(
 
     let mut gene_infos: HashMap<String, GeneInfo> = HashMap::new();
     let mut exon_regions: GeneExons = HashMap::new();
+    let mut seen_gene_types: HashSet<String> = HashSet::new();
 
     let reader = open_text_reader(annotation_file);
     for line in reader.lines() {
@@ -211,6 +212,9 @@ fn parse_gene_regions(
             .or_else(|| attrs.get("gene_biotype"))
             .cloned()
             .unwrap_or_else(|| "".to_string());
+        if feature_type == "gene" && !gene_type.is_empty() {
+            seen_gene_types.insert(gene_type.clone());
+        }
         let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
         if !gene_types.contains(&gene_type) || tag.contains("readthrough") {
             continue;
@@ -262,6 +266,8 @@ fn parse_gene_regions(
                 .push((chr, start, end));
         }
     }
+
+    warn_gene_type_mismatch(gene_types, &seen_gene_types, "ASE");
 
     (gene_infos, exon_regions)
 }

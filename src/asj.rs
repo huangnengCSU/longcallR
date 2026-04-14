@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use crate::util::{load_reference, warn_chr_name_mismatch};
+use crate::util::{load_reference, warn_chr_name_mismatch, warn_gene_type_mismatch};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -272,6 +272,7 @@ fn get_gene_regions(
     let mut gene_names: HashMap<String, String> = HashMap::new();
     let mut gene_strands: HashMap<String, String> = HashMap::new();
     let mut exon_regions: GeneRegionsByTranscript = HashMap::new();
+    let mut seen_gene_types: HashSet<String> = HashSet::new();
 
     let reader = open_text_reader(annotation_file);
     for line in reader.lines() {
@@ -299,6 +300,9 @@ fn get_gene_regions(
             .or_else(|| attrs.get("gene_biotype"))
             .cloned()
             .unwrap_or_else(|| "".to_string());
+        if feature == "gene" && !gene_type.is_empty() {
+            seen_gene_types.insert(gene_type.clone());
+        }
         let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
         if !gene_types.contains(&gene_type) || tag.contains("readthrough") {
             continue;
@@ -361,6 +365,8 @@ fn get_gene_regions(
             }
         }
     }
+
+    warn_gene_type_mismatch(gene_types, &seen_gene_types, "ASJ");
 
     (
         gene_regions,
