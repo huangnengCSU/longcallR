@@ -31,25 +31,25 @@ def choose_best_gene(read_overlap_length, gene_starts, gene_ends):
     )
 
 
-def warn_chr_name_mismatch(annotation_chrs, bam_chrs, module_name):
-    if not annotation_chrs or not bam_chrs:
+def warn_chr_name_mismatch(chrs_a, chrs_b, module_name, label_a="annotation", label_b="BAM"):
+    if not chrs_a or not chrs_b:
         return
-    shared = annotation_chrs & bam_chrs
-    if len(shared) == len(annotation_chrs):
+    shared = chrs_a & chrs_b
+    if len(shared) == len(chrs_a):
         return
 
-    anno_only = sorted(annotation_chrs - bam_chrs)
-    anno_examples = ",".join(anno_only[:5])
+    a_only = sorted(chrs_a - chrs_b)
+    a_examples = ",".join(a_only[:5])
     if len(shared) == 0:
-        bam_examples = ",".join(sorted(bam_chrs)[:5])
+        b_examples = ",".join(sorted(chrs_b)[:5])
         print(
-            f"Warning [{module_name}]: no shared chromosome names between annotation and BAM. "
-            f"annotation examples: [{anno_examples}], BAM examples: [{bam_examples}]"
+            f"Warning [{module_name}]: no shared chromosome names between {label_a} and {label_b}. "
+            f"{label_a} examples: [{a_examples}], {label_b} examples: [{b_examples}]"
         )
     else:
         print(
-            f"Warning [{module_name}]: {len(anno_only)} annotation chromosome names are missing "
-            f"in BAM header (examples: [{anno_examples}])"
+            f"Warning [{module_name}]: {len(a_only)} {label_a} chromosome names are missing "
+            f"in {label_b} (examples: [{a_examples}])"
         )
 
 
@@ -363,8 +363,9 @@ def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         chromosomes = bam.references
         chromosome_lengths = dict(zip(bam.references, bam.lengths))
-    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(chromosomes), "ASJ")
-    warn_chr_name_mismatch(set(genome_dict.keys()), set(chromosomes), "ASJ-reference")
+    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(chromosomes), "ASJ", "annotation", "BAM")
+    warn_chr_name_mismatch(set(genome_dict.keys()), set(chromosomes), "ASJ", "reference", "BAM")
+    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(genome_dict.keys()), "ASJ", "annotation", "reference")
 
     chunks = []
     for chromosome in chromosomes:

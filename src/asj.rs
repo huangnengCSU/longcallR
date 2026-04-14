@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use crate::util::{load_reference, warn_chr_name_mismatch, warn_gene_type_mismatch};
+use crate::util::{load_reference, warn_chr_name_mismatch, warn_chr_name_mismatch_sets, warn_gene_type_mismatch};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -587,9 +587,10 @@ fn load_reads(
         .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
     let header = bam.header().to_owned();
     let annotation_chrs: HashSet<String> = span_trees.keys().cloned().collect();
-    warn_chr_name_mismatch(&header, &annotation_chrs, "ASJ");
     let reference_chrs: HashSet<String> = genome_dict.keys().cloned().collect();
-    warn_chr_name_mismatch(&header, &reference_chrs, "ASJ-reference");
+    warn_chr_name_mismatch(&header, &annotation_chrs, "ASJ");
+    warn_chr_name_mismatch(&header, &reference_chrs, "ASJ");
+    warn_chr_name_mismatch_sets(&annotation_chrs, &reference_chrs, "annotation", "reference", "ASJ");
 
     for rec in bam.records() {
         let record = rec.unwrap();
