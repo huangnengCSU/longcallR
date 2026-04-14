@@ -1,3 +1,4 @@
+use crate::util::warn_chr_name_mismatch;
 use flate2::read::MultiGzDecoder;
 use rayon::prelude::*;
 use rust_htslib::bam;
@@ -408,6 +409,8 @@ fn assign_reads_to_gene(
     let mut bam = bam::Reader::from_path(bam_file)
         .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
     let header = bam.header().to_owned();
+    let annotation_chrs: HashSet<String> = span_trees.keys().cloned().collect();
+    warn_chr_name_mismatch(&header, &annotation_chrs, "ASE");
 
     for rec in bam.records() {
         let record = rec.unwrap();

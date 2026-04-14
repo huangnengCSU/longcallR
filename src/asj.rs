@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use crate::util::load_reference;
+use crate::util::{load_reference, warn_chr_name_mismatch};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -580,6 +580,8 @@ fn load_reads(
     let mut bam = bam::Reader::from_path(bam_file)
         .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
     let header = bam.header().to_owned();
+    let annotation_chrs: HashSet<String> = span_trees.keys().cloned().collect();
+    warn_chr_name_mismatch(&header, &annotation_chrs, "ASJ");
 
     for rec in bam.records() {
         let record = rec.unwrap();

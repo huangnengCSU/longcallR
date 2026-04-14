@@ -1003,3 +1003,54 @@ impl Profile {
 //
 //     phred_pvalue
 // }
+
+pub fn warn_chr_name_mismatch(
+    bam_header: &bam::HeaderView,
+    annotation_chrs: &std::collections::HashSet<String>,
+    module_name: &str,
+) {
+    if annotation_chrs.is_empty() {
+        return;
+    }
+    let bam_chrs: std::collections::HashSet<String> = bam_header
+        .target_names()
+        .iter()
+        .map(|name| String::from_utf8_lossy(name).to_string())
+        .collect();
+    if bam_chrs.is_empty() {
+        return;
+    }
+
+    let shared_cnt = annotation_chrs
+        .iter()
+        .filter(|chr| bam_chrs.contains(*chr))
+        .count();
+    if shared_cnt == annotation_chrs.len() {
+        return;
+    }
+
+    let mut anno_only: Vec<String> = annotation_chrs
+        .iter()
+        .filter(|chr| !bam_chrs.contains(*chr))
+        .cloned()
+        .collect();
+    anno_only.sort();
+    let anno_examples = anno_only.iter().take(5).cloned().collect::<Vec<String>>().join(",");
+
+    if shared_cnt == 0 {
+        let mut bam_examples: Vec<String> = bam_chrs.iter().cloned().collect();
+        bam_examples.sort();
+        let bam_examples = bam_examples.into_iter().take(5).collect::<Vec<String>>().join(",");
+        eprintln!(
+            "Warning [{}]: no shared chromosome names between annotation and BAM. annotation examples: [{}], BAM examples: [{}]",
+            module_name, anno_examples, bam_examples
+        );
+    } else {
+        eprintln!(
+            "Warning [{}]: {} annotation chromosome names are missing in BAM header (examples: [{}])",
+            module_name,
+            anno_only.len(),
+            anno_examples
+        );
+    }
+}
