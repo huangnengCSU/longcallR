@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use crate::util::warn_chr_name_mismatch;
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AseArgs {
@@ -1327,6 +1328,15 @@ pub fn run_ase(args: AseArgs) {
     let (gene_infos, exon_regions) = parse_gene_regions(&args.annotation, &gene_type_set);
     let merged_exons = merge_gene_exons(&exon_regions);
     let (span_trees, exon_trees) = build_gene_trees(&merged_exons);
+    {
+        let annotation_chrs: HashSet<String> = gene_infos
+            .values()
+            .map(|g| g.region.chr.clone())
+            .collect();
+        let bam_reader = bam::Reader::from_path(&args.bam)
+            .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", args.bam, e));
+        warn_chr_name_mismatch(bam_reader.header(), &annotation_chrs, "ase");
+    }
     let (read_assignment, read_tags) = assign_reads_to_gene(&args.bam, &span_trees, &exon_trees);
     let gene_assigned_reads = transform_read_assignment(&read_assignment);
 

@@ -927,6 +927,10 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
     anno_gene_regions, anno_gene_names, anno_gene_strands, anno_exon_regions, anno_intron_regions = get_gene_regions(
         annotation_file, gene_types)
     print(f"Annotation file parsed in {time.time() - start_time:.2f} seconds")
+    with pysam.AlignmentFile(bam_file, "rb") as bam:
+        bam_chrs = set(bam.references)
+    annotation_chrs = {r["chr"] for r in anno_gene_regions.values()}
+    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "asj")
     merged_genes_exons = merge_gene_exon_regions(anno_exon_regions)
     genome_dict = {}
     ref_genome = pysam.FastaFile(reference_file)
@@ -1034,6 +1038,10 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
     anno_gene_regions, anno_gene_names, anno_gene_strands, anno_exon_regions, anno_intron_regions = get_gene_regions(
         annotation_file, gene_types)
     print(f"Annotation file parsed in {time.time() - start_time:.2f} seconds")
+    with pysam.AlignmentFile(bam_file, "rb") as bam:
+        bam_chrs = set(bam.references)
+    annotation_chrs = {r["chr"] for r in anno_gene_regions.values()}
+    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "asj")
     merged_genes_exons = merge_gene_exon_regions(anno_exon_regions)
     genome_dict = {}
     ref_genome = pysam.FastaFile(reference_file)

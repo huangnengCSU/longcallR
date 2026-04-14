@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use crate::util::load_reference;
+use crate::util::{load_reference, warn_chr_name_mismatch};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -1359,6 +1359,15 @@ fn analyze(
     let (span_trees, exon_trees) = build_gene_trees(&merged_genes_exons);
     let genome_dict = load_reference(reference_file)
         .unwrap_or_else(|e| panic!("failed loading reference {}: {}", reference_file, e));
+    {
+        let annotation_chrs: HashSet<String> = anno_gene_regions
+            .values()
+            .map(|r| r.chr.clone())
+            .collect();
+        let bam_reader = bam::Reader::from_path(bam_file)
+            .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
+        warn_chr_name_mismatch(bam_reader.header(), &annotation_chrs, "asj");
+    }
     let read_bundle = load_reads(
         bam_file,
         &genome_dict,

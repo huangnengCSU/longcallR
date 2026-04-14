@@ -638,6 +638,10 @@ def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, mi
 
 def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, min_support, overdispersion):
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
+    with pysam.AlignmentFile(bam_file, "rb") as bam:
+        bam_chrs = set(bam.references)
+    annotation_chrs = {r["chr"] for r in gene_regions.values()}
+    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "ase")
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
@@ -678,6 +682,10 @@ def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, o
     rna_vcfs = load_longcallR_phased_vcf(vcf_file1)
     wg_vcfs = load_whole_genome_phased_vcf(vcf_file2)
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
+    with pysam.AlignmentFile(bam_file, "rb") as bam:
+        bam_chrs = set(bam.references)
+    annotation_chrs = {r["chr"] for r in gene_regions.values()}
+    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "ase")
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
@@ -721,6 +729,10 @@ def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_f
     rna_vcfs = load_longcallR_phased_vcf(vcf_file1, with_dp_af=True)
     dna_vcfs = load_dna_vcf(vcf_file3)
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
+    with pysam.AlignmentFile(bam_file, "rb") as bam:
+        bam_chrs = set(bam.references)
+    annotation_chrs = {r["chr"] for r in gene_regions.values()}
+    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "ase")
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
