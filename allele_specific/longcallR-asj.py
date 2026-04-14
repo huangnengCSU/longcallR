@@ -364,6 +364,7 @@ def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_
         chromosomes = bam.references
         chromosome_lengths = dict(zip(bam.references, bam.lengths))
     warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(chromosomes), "ASJ")
+    warn_chr_name_mismatch(set(genome_dict.keys()), set(chromosomes), "ASJ-reference")
 
     chunks = []
     for chromosome in chromosomes:
