@@ -44,11 +44,11 @@ pub struct AseArgs {
     threads: usize,
 
     /// Gene types to analyze; pass --gene-types with no values to include all gene types [default: protein_coding lncRNA]
-    #[arg(long, num_args(0..))]
+    #[arg(short = 'g', long, num_args(0..))]
     gene_types: Option<Vec<String>>,
 
     /// Minimum support reads for counting ASE
-    #[arg(long, default_value_t = 10)]
+    #[arg(short = 'm', long, default_value_t = 10)]
     min_support: u32,
 }
 
