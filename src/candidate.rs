@@ -642,8 +642,8 @@ impl SNPFrag {
                         self.homo_snps.push(self.candidate_snps.len() - 1);
                     }
                     _ => {
-                        println!(
-                            "Error: unknown genotype {:?} at {:?}:{:?}",
+                        eprintln!(
+                            "Warning: unknown genotype {:?} at {:?}:{:?}",
                             genotype_quality.genotype,
                             candidate_snp.chromosome,
                             candidate_snp.pos + 1 // vcf position 1-based
