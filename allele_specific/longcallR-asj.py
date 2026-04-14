@@ -65,8 +65,6 @@ def get_gene_regions(annotation_file, gene_types):
     gene_strands = {}
     exon_regions = defaultdict(lambda: defaultdict(list))
     intron_regions = defaultdict(lambda: defaultdict(list))
-    seen_gene_types = set()
-
     def process_gene(parts, gene_id, gene_name):
         chr, start, end = parts[0], int(parts[3]), int(parts[4])
         gene_regions[gene_id] = {"chr": chr, "start": start, "end": end}  # 1-based, start-inclusive, end-inclusive
@@ -116,7 +114,6 @@ def get_gene_regions(annotation_file, gene_types):
                     gene_type = attr_dict["gene_type"]
                 except KeyError:
                     gene_type = attr_dict["gene_biotype"]
-                seen_gene_types.add(gene_type)
                 tag = attr_dict.get("tag", "")
                 try:
                     gene_name = attr_dict["gene_name"]
@@ -140,20 +137,6 @@ def get_gene_regions(annotation_file, gene_types):
 
     with open_func(annotation_file, "rt") as f:
         parse_file(f, file_type)
-
-    missing_types = gene_types - seen_gene_types
-    if missing_types:
-        missing_str = ",".join(sorted(missing_types))
-        if missing_types == gene_types:
-            seen_examples = ",".join(sorted(seen_gene_types)[:5])
-            print(
-                f"Warning [ASJ]: none of the requested gene types [{missing_str}] were found in the annotation. "
-                f"Gene types found in annotation (examples): [{seen_examples}]"
-            )
-        else:
-            print(
-                f"Warning [ASJ]: requested gene types [{missing_str}] were not found in the annotation."
-            )
 
     # Calculate intron regions based on exons
     for gene_id, transcripts in exon_regions.items():
@@ -363,9 +346,6 @@ def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         chromosomes = bam.references
         chromosome_lengths = dict(zip(bam.references, bam.lengths))
-    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(chromosomes), "ASJ", "annotation", "BAM")
-    warn_chr_name_mismatch(set(genome_dict.keys()), set(chromosomes), "ASJ", "reference", "BAM")
-    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(genome_dict.keys()), "ASJ", "annotation", "reference")
 
     chunks = []
     for chromosome in chromosomes:
@@ -1186,7 +1166,7 @@ if __name__ == "__main__":
                        required=True)
     parse.add_argument("-t", "--threads", help="Number of threads", default=1, type=int)
     parse.add_argument("-g", "--gene_types", type=str, nargs="*", default=["protein_coding", "lncRNA"],
-                       help='Gene types to be analyzed. Default is ["protein_coding", "lncRNA"]. '
+                       help='Gene types to be analyzed (default: protein_coding lncRNA). '
                             'Pass --gene_types with no values to include all gene types.', )
     parse.add_argument("-m", "--min_sup",
                        help="Minimum phased-read support required for each exon/junction event",

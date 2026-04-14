@@ -1,4 +1,3 @@
-use crate::util::{warn_chr_name_mismatch, warn_gene_type_mismatch};
 use flate2::read::MultiGzDecoder;
 use rayon::prelude::*;
 use rust_htslib::bam;
@@ -44,7 +43,7 @@ pub struct AseArgs {
     #[arg(short = 't', long, default_value_t = 1)]
     threads: usize,
 
-    /// Gene types to analyze; pass --gene-types with no values to include all gene types
+    /// Gene types to analyze; pass --gene-types with no values to include all gene types [default: protein_coding lncRNA]
     #[arg(long, num_args(0..))]
     gene_types: Option<Vec<String>>,
 
@@ -185,7 +184,6 @@ fn parse_gene_regions(
 
     let mut gene_infos: HashMap<String, GeneInfo> = HashMap::new();
     let mut exon_regions: GeneExons = HashMap::new();
-    let mut seen_gene_types: HashSet<String> = HashSet::new();
 
     let reader = open_text_reader(annotation_file);
     for line in reader.lines() {
@@ -212,9 +210,6 @@ fn parse_gene_regions(
             .or_else(|| attrs.get("gene_biotype"))
             .cloned()
             .unwrap_or_else(|| "".to_string());
-        if feature_type == "gene" && !gene_type.is_empty() {
-            seen_gene_types.insert(gene_type.clone());
-        }
         let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
         if (!gene_types.is_empty() && !gene_types.contains(&gene_type)) || tag.contains("readthrough") {
             continue;
@@ -266,8 +261,6 @@ fn parse_gene_regions(
                 .push((chr, start, end));
         }
     }
-
-    warn_gene_type_mismatch(gene_types, &seen_gene_types, "ASE");
 
     (gene_infos, exon_regions)
 }
@@ -415,9 +408,6 @@ fn assign_reads_to_gene(
     let mut bam = bam::Reader::from_path(bam_file)
         .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
     let header = bam.header().to_owned();
-    let annotation_chrs: HashSet<String> = span_trees.keys().cloned().collect();
-    warn_chr_name_mismatch(&header, &annotation_chrs, "ASE");
-
     for rec in bam.records() {
         let record = rec.unwrap();
         if record.is_unmapped() || record.tid() < 0 {

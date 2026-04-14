@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use crate::util::{load_reference, warn_chr_name_mismatch, warn_chr_name_mismatch_sets, warn_gene_type_mismatch};
+use crate::util::load_reference;
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -54,7 +54,7 @@ pub struct AsjArgs {
     #[arg(short = 't', long = "threads", default_value_t = 1)]
     threads: usize,
 
-    /// Gene types to be analyzed; pass --gene-types with no values to include all gene types
+    /// Gene types to be analyzed; pass --gene-types with no values to include all gene types [default: protein_coding lncRNA]
     #[arg(short = 'g', long = "gene-types", num_args(0..))]
     gene_types: Option<Vec<String>>,
 
@@ -272,7 +272,6 @@ fn get_gene_regions(
     let mut gene_names: HashMap<String, String> = HashMap::new();
     let mut gene_strands: HashMap<String, String> = HashMap::new();
     let mut exon_regions: GeneRegionsByTranscript = HashMap::new();
-    let mut seen_gene_types: HashSet<String> = HashSet::new();
 
     let reader = open_text_reader(annotation_file);
     for line in reader.lines() {
@@ -300,9 +299,6 @@ fn get_gene_regions(
             .or_else(|| attrs.get("gene_biotype"))
             .cloned()
             .unwrap_or_else(|| "".to_string());
-        if feature == "gene" && !gene_type.is_empty() {
-            seen_gene_types.insert(gene_type.clone());
-        }
         let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
         if (!gene_types.is_empty() && !gene_types.contains(&gene_type)) || tag.contains("readthrough") {
             continue;
@@ -365,8 +361,6 @@ fn get_gene_regions(
             }
         }
     }
-
-    warn_gene_type_mismatch(gene_types, &seen_gene_types, "ASJ");
 
     (
         gene_regions,
@@ -586,17 +580,6 @@ fn load_reads(
     let mut bam = bam::Reader::from_path(bam_file)
         .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
     let header = bam.header().to_owned();
-    let annotation_chrs: HashSet<String> = span_trees.keys().cloned().collect();
-    let reference_chrs: HashSet<String> = genome_dict.keys().cloned().collect();
-    let bam_chrs: HashSet<String> = header
-        .target_names()
-        .iter()
-        .map(|name| String::from_utf8_lossy(name).to_string())
-        .collect();
-    warn_chr_name_mismatch_sets(&annotation_chrs, &bam_chrs, "annotation", "BAM", "ASJ");
-    warn_chr_name_mismatch_sets(&reference_chrs, &bam_chrs, "reference", "BAM", "ASJ");
-    warn_chr_name_mismatch_sets(&annotation_chrs, &reference_chrs, "annotation", "reference", "ASJ");
-
     for rec in bam.records() {
         let record = rec.unwrap();
         if record.is_unmapped() || record.tid() < 0 {

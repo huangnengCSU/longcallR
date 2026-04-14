@@ -110,8 +110,6 @@ def get_gene_regions(annotation_file, gene_types):
     gene_strands = {}
     exon_regions = defaultdict(lambda: defaultdict(list))
     intron_regions = defaultdict(lambda: defaultdict(list))
-    seen_gene_types = set()
-
     def process_gene(parts, gene_id, gene_name):
         chr, start, end = parts[0], int(parts[3]), int(parts[4])
         gene_regions[gene_id] = {"chr": chr, "start": start, "end": end}  # 1-based, start-inclusive, end-inclusive
@@ -161,7 +159,6 @@ def get_gene_regions(annotation_file, gene_types):
                     gene_type = attr_dict["gene_type"]
                 except KeyError:
                     gene_type = attr_dict["gene_biotype"]
-                seen_gene_types.add(gene_type)
                 tag = attr_dict.get("tag", "")
                 try:
                     gene_name = attr_dict["gene_name"]
@@ -185,20 +182,6 @@ def get_gene_regions(annotation_file, gene_types):
 
     with open_func(annotation_file, "rt") as f:
         parse_file(f, file_type)
-
-    missing_types = gene_types - seen_gene_types
-    if missing_types:
-        missing_str = ",".join(sorted(missing_types))
-        if missing_types == gene_types:
-            seen_examples = ",".join(sorted(seen_gene_types)[:5])
-            print(
-                f"Warning [ASE]: none of the requested gene types [{missing_str}] were found in the annotation. "
-                f"Gene types found in annotation (examples): [{seen_examples}]"
-            )
-        else:
-            print(
-                f"Warning [ASE]: requested gene types [{missing_str}] were not found in the annotation."
-            )
 
     # Calculate intron regions based on exons
     for gene_id, transcripts in exon_regions.items():
@@ -385,7 +368,6 @@ def assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads):
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         chromosomes = bam.references
         chromosome_lengths = dict(zip(bam.references, bam.lengths))
-    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(chromosomes), "ASE")
 
     chunks = []
     for chromosome in chromosomes:
@@ -796,7 +778,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", required=True, help="prefix of output file")
     parser.add_argument("-t", "--threads", type=int, default=1, help="Number of threads")
     parser.add_argument("--gene_types", type=str, nargs="*", default=["protein_coding", "lncRNA"],
-                        help='Gene types to be analyzed. Default is ["protein_coding", "lncRNA"]. '
+                        help='Gene types to be analyzed (default: protein_coding lncRNA). '
                              'Pass --gene_types with no values to include all gene types.', )
     parser.add_argument("--min_support", type=int, default=10,
                         help="Minimum support reads for counting event (default: 10)")
