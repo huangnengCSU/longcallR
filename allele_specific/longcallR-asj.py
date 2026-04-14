@@ -38,19 +38,11 @@ def warn_chr_name_mismatch(chrs_a, chrs_b, module_name, label_a="annotation", la
     if len(shared) == len(chrs_a):
         return
 
-    a_only = sorted(chrs_a - chrs_b)
-    a_examples = ",".join(a_only[:5])
+    missing_cnt = len(chrs_a) - len(shared)
     if len(shared) == 0:
-        b_examples = ",".join(sorted(chrs_b)[:5])
-        print(
-            f"Warning [{module_name}]: no shared chromosome names between {label_a} and {label_b}. "
-            f"{label_a} examples: [{a_examples}], {label_b} examples: [{b_examples}]"
-        )
+        print(f"Warning [{module_name}]: no shared chromosome names between {label_a} and {label_b}")
     else:
-        print(
-            f"Warning [{module_name}]: {len(a_only)} {label_a} chromosome names are missing "
-            f"in {label_b} (examples: [{a_examples}])"
-        )
+        print(f"Warning [{module_name}]: {missing_cnt} {label_a} chromosome names are missing in {label_b}")
 
 
 def get_gene_regions(annotation_file, gene_types):

@@ -83,19 +83,11 @@ def warn_chr_name_mismatch(annotation_chrs, bam_chrs, module_name):
     if len(shared) == len(annotation_chrs):
         return
 
-    anno_only = sorted(annotation_chrs - bam_chrs)
-    anno_examples = ",".join(anno_only[:5])
+    missing_cnt = len(annotation_chrs) - len(shared)
     if len(shared) == 0:
-        bam_examples = ",".join(sorted(bam_chrs)[:5])
-        print(
-            f"Warning [{module_name}]: no shared chromosome names between annotation and BAM. "
-            f"annotation examples: [{anno_examples}], BAM examples: [{bam_examples}]"
-        )
+        print(f"Warning [{module_name}]: no shared chromosome names between annotation and BAM")
     else:
-        print(
-            f"Warning [{module_name}]: {len(anno_only)} annotation chromosome names are missing "
-            f"in BAM header (examples: [{anno_examples}])"
-        )
+        print(f"Warning [{module_name}]: {missing_cnt} annotation chromosome names are missing in BAM")
 
 
 def get_gene_regions(annotation_file, gene_types):

@@ -1052,21 +1052,16 @@ pub fn warn_chr_name_mismatch_sets(
     if shared_cnt == chrs_a.len() {
         return;
     }
-    let mut a_only: Vec<String> = chrs_a.iter().filter(|c| !chrs_b.contains(*c)).cloned().collect();
-    a_only.sort();
-    let a_examples = a_only.iter().take(5).cloned().collect::<Vec<String>>().join(",");
+    let missing_cnt = chrs_a.len() - shared_cnt;
     if shared_cnt == 0 {
-        let mut b_examples: Vec<String> = chrs_b.iter().cloned().collect();
-        b_examples.sort();
-        let b_examples = b_examples.into_iter().take(5).collect::<Vec<String>>().join(",");
         eprintln!(
-            "Warning [{}]: no shared chromosome names between {} and {}. {} examples: [{}], {} examples: [{}]",
-            module_name, label_a, label_b, label_a, a_examples, label_b, b_examples
+            "Warning [{}]: no shared chromosome names between {} and {}",
+            module_name, label_a, label_b
         );
     } else {
         eprintln!(
-            "Warning [{}]: {} {} chromosome names are missing in {} (examples: [{}])",
-            module_name, a_only.len(), label_a, label_b, a_examples
+            "Warning [{}]: {} {} chromosome names are missing in {}",
+            module_name, missing_cnt, label_a, label_b
         );
     }
 }
