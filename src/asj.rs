@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use crate::util::{load_reference, warn_chr_name_mismatch};
+use crate::util::{load_reference, warn_chr_name_mismatch, warn_chr_name_mismatch_sets};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -1364,9 +1364,24 @@ fn analyze(
             .values()
             .map(|r| r.chr.clone())
             .collect();
+        let reference_chrs: HashSet<String> = genome_dict.keys().cloned().collect();
         let bam_reader = bam::Reader::from_path(bam_file)
             .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", bam_file, e));
         warn_chr_name_mismatch(bam_reader.header(), &annotation_chrs, "asj");
+        let bam_chrs: HashSet<String> = bam_reader
+            .header()
+            .target_names()
+            .iter()
+            .map(|name| String::from_utf8_lossy(name).to_string())
+            .collect();
+        warn_chr_name_mismatch_sets(&bam_chrs, &reference_chrs, "BAM", "reference", "asj");
+        warn_chr_name_mismatch_sets(
+            &annotation_chrs,
+            &reference_chrs,
+            "annotation",
+            "reference",
+            "asj",
+        );
     }
     let read_bundle = load_reads(
         bam_file,

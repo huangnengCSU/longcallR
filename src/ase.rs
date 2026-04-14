@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use crate::util::warn_chr_name_mismatch;
+use crate::util::{load_reference, warn_chr_name_mismatch, warn_chr_name_mismatch_sets};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AseArgs {
@@ -31,6 +31,10 @@ pub struct AseArgs {
     /// Annotation file (GTF/GFF3, optionally gzipped)
     #[arg(short = 'a', long)]
     annotation: String,
+
+    /// Reference genome FASTA file (used for chromosome name consistency checks)
+    #[arg(short = 'f', long = "reference")]
+    reference: Option<String>,
 
     /// Overdispersion parameter for Beta-Binomial test
     #[arg(short = 'd', long, default_value_t = 0.001)]
@@ -1335,7 +1339,30 @@ pub fn run_ase(args: AseArgs) {
             .collect();
         let bam_reader = bam::Reader::from_path(&args.bam)
             .unwrap_or_else(|e| panic!("failed to open BAM {}: {}", args.bam, e));
+        let bam_chrs: HashSet<String> = bam_reader
+            .header()
+            .target_names()
+            .iter()
+            .map(|name| String::from_utf8_lossy(name).to_string())
+            .collect();
         warn_chr_name_mismatch(bam_reader.header(), &annotation_chrs, "ase");
+        if let Some(reference_file) = args.reference.as_deref() {
+            let genome_dict = load_reference(reference_file)
+                .unwrap_or_else(|e| panic!("failed loading reference {}: {}", reference_file, e));
+            let reference_chrs: HashSet<String> = genome_dict.keys().cloned().collect();
+            warn_chr_name_mismatch_sets(&bam_chrs, &reference_chrs, "BAM", "reference", "ase");
+            warn_chr_name_mismatch_sets(
+                &annotation_chrs,
+                &reference_chrs,
+                "annotation",
+                "reference",
+                "ase",
+            );
+        } else {
+            eprintln!(
+                "Warning [ase]: reference not provided; skipping BAM/reference and annotation/reference chromosome checks"
+            );
+        }
     }
     let (read_assignment, read_tags) = assign_reads_to_gene(&args.bam, &span_trees, &exon_trees);
     let gene_assigned_reads = transform_read_assignment(&read_assignment);

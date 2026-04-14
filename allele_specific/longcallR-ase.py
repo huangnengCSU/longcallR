@@ -76,18 +76,29 @@ def choose_best_gene(read_overlap_length, gene_starts, gene_ends):
     )
 
 
-def warn_chr_name_mismatch(annotation_chrs, bam_chrs, module_name):
-    if not annotation_chrs or not bam_chrs:
+def warn_chr_name_mismatch(chrs_a, chrs_b, module_name, label_a="annotation", label_b="BAM"):
+    if not chrs_a or not chrs_b:
         return
-    shared = annotation_chrs & bam_chrs
-    if len(shared) == len(annotation_chrs):
+    shared = chrs_a & chrs_b
+    if len(shared) == len(chrs_a):
         return
 
-    missing_cnt = len(annotation_chrs) - len(shared)
+    missing_cnt = len(chrs_a) - len(shared)
     if len(shared) == 0:
-        print(f"Warning [{module_name}]: no shared chromosome names between annotation and BAM")
+        print(f"Warning [{module_name}]: no shared chromosome names between {label_a} and {label_b}")
     else:
-        print(f"Warning [{module_name}]: {missing_cnt} annotation chromosome names are missing in BAM")
+        print(f"Warning [{module_name}]: {missing_cnt} {label_a} chromosome names are missing in {label_b}")
+
+
+def run_chr_name_checks(annotation_chrs, bam_chrs, module_name, reference_file=None):
+    warn_chr_name_mismatch(annotation_chrs, bam_chrs, module_name, label_a="annotation", label_b="BAM")
+    if reference_file is None:
+        print(f"Warning [{module_name}]: reference not provided; skipping BAM/reference and annotation/reference chromosome checks")
+        return
+    with pysam.FastaFile(reference_file) as ref_genome:
+        reference_chrs = set(ref_genome.references)
+    warn_chr_name_mismatch(bam_chrs, reference_chrs, module_name, label_a="BAM", label_b="reference")
+    warn_chr_name_mismatch(annotation_chrs, reference_chrs, module_name, label_a="annotation", label_b="reference")
 
 
 def get_gene_regions(annotation_file, gene_types):
@@ -636,12 +647,13 @@ def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, mi
     return (gene_name, gene_region["chr"], p_value_ase, most_reads_ps, hap_count[1], hap_count[2])
 
 
-def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, min_support, overdispersion):
+def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, min_support, overdispersion,
+                      reference_file=None):
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         bam_chrs = set(bam.references)
     annotation_chrs = {r["chr"] for r in gene_regions.values()}
-    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "ase")
+    run_chr_name_checks(annotation_chrs, bam_chrs, "ase", reference_file)
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
@@ -678,14 +690,14 @@ def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, 
 
 
 def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, out_file, threads, gene_types,
-                              min_support, overdispersion):
+                              min_support, overdispersion, reference_file=None):
     rna_vcfs = load_longcallR_phased_vcf(vcf_file1)
     wg_vcfs = load_whole_genome_phased_vcf(vcf_file2)
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         bam_chrs = set(bam.references)
     annotation_chrs = {r["chr"] for r in gene_regions.values()}
-    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "ase")
+    run_chr_name_checks(annotation_chrs, bam_chrs, "ase", reference_file)
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
@@ -725,14 +737,14 @@ def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, o
 
 
 def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_file3, out_file, threads, gene_types,
-                              min_support, overdispersion):
+                              min_support, overdispersion, reference_file=None):
     rna_vcfs = load_longcallR_phased_vcf(vcf_file1, with_dp_af=True)
     dna_vcfs = load_dna_vcf(vcf_file3)
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         bam_chrs = set(bam.references)
     annotation_chrs = {r["chr"] for r in gene_regions.values()}
-    warn_chr_name_mismatch(annotation_chrs, bam_chrs, "ase")
+    run_chr_name_checks(annotation_chrs, bam_chrs, "ase", reference_file)
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
@@ -778,6 +790,8 @@ if __name__ == "__main__":
     parser.add_argument("--vcf2", required=False, help="Whole genome haplotype phased DNA vcf file", default=None)
     parser.add_argument("--vcf3", required=False, help="DNA vcf file", default=None)
     parser.add_argument("-a", "--annotation", required=True, help="Annotation file")
+    parser.add_argument("-f", "--reference", required=False,
+                        help="Reference FASTA file used for chromosome-name consistency checks", default=None)
     parser.add_argument("-d", "--overdispersion", type=float, default=0.001, help="Overdispersion parameter")
     parser.add_argument("-o", "--output", required=True, help="prefix of output file")
     parser.add_argument("-t", "--threads", type=int, default=1, help="Number of threads")
@@ -794,10 +808,10 @@ if __name__ == "__main__":
 
     if args.vcf1 and args.vcf2:
         analyze_ase_genes_pat_mat(args.annotation, args.bam, args.vcf1, args.vcf2, args.output + ".patmat_ase.tsv",
-                                  args.threads, gene_types, args.min_support, args.overdispersion)
+                                  args.threads, gene_types, args.min_support, args.overdispersion, args.reference)
     elif args.vcf1 and args.vcf3:
         analyze_ase_genes_with_filtering(args.annotation, args.bam, args.vcf1, args.vcf3, args.output + ".filter_ase.tsv",
-                                  args.threads, gene_types, args.min_support, args.overdispersion)
+                                  args.threads, gene_types, args.min_support, args.overdispersion, args.reference)
     else:
         analyze_ase_genes(args.annotation, args.bam, args.output + ".ase.tsv", args.threads, gene_types,
-                          args.min_support, args.overdispersion)
+                          args.min_support, args.overdispersion, args.reference)

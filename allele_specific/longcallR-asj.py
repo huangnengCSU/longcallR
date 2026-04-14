@@ -933,9 +933,12 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
     warn_chr_name_mismatch(annotation_chrs, bam_chrs, "asj")
     merged_genes_exons = merge_gene_exon_regions(anno_exon_regions)
     genome_dict = {}
-    ref_genome = pysam.FastaFile(reference_file)
-    for chrom in ref_genome.references:
-        genome_dict[chrom] = ref_genome.fetch(chrom)
+    with pysam.FastaFile(reference_file) as ref_genome:
+        reference_chrs = set(ref_genome.references)
+        warn_chr_name_mismatch(bam_chrs, reference_chrs, "asj", label_a="BAM", label_b="reference")
+        warn_chr_name_mismatch(annotation_chrs, reference_chrs, "asj", label_a="annotation", label_b="reference")
+        for chrom in ref_genome.references:
+            genome_dict[chrom] = ref_genome.fetch(chrom)
     start_time = time.time()
     read_assignment, all_read_assignment, reads_positions_local, reads_tags_local, reads_exons_local, reads_introns_local = load_reads(bam_file,
                                                                                             genome_dict,
@@ -1044,9 +1047,12 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
     warn_chr_name_mismatch(annotation_chrs, bam_chrs, "asj")
     merged_genes_exons = merge_gene_exon_regions(anno_exon_regions)
     genome_dict = {}
-    ref_genome = pysam.FastaFile(reference_file)
-    for chrom in ref_genome.references:
-        genome_dict[chrom] = ref_genome.fetch(chrom)
+    with pysam.FastaFile(reference_file) as ref_genome:
+        reference_chrs = set(ref_genome.references)
+        warn_chr_name_mismatch(bam_chrs, reference_chrs, "asj", label_a="BAM", label_b="reference")
+        warn_chr_name_mismatch(annotation_chrs, reference_chrs, "asj", label_a="annotation", label_b="reference")
+        for chrom in ref_genome.references:
+            genome_dict[chrom] = ref_genome.fetch(chrom)
     start_time = time.time()
     read_assignment, all_read_assignment, reads_positions_local, reads_tags_local, reads_exons_local, reads_introns_local = load_reads(bam_file,
                                                                                             genome_dict,
