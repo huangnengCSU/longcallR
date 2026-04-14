@@ -786,6 +786,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     gene_types = set(args.gene_types)
+    print(f"Gene types: {'all' if not gene_types else ', '.join(sorted(gene_types))}")
 
     if args.vcf1 and args.vcf2:
         analyze_ase_genes_pat_mat(args.annotation, args.bam, args.vcf1, args.vcf2, args.output + ".patmat_ase.tsv",

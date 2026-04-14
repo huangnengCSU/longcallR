@@ -1317,6 +1317,13 @@ pub fn run_ase(args: AseArgs) {
     } else {
         gene_types_vec.into_iter().collect()
     };
+    if gene_type_set.is_empty() {
+        eprintln!("Gene types: all");
+    } else {
+        let mut sorted: Vec<&String> = gene_type_set.iter().collect();
+        sorted.sort();
+        eprintln!("Gene types: {}", sorted.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+    }
     let (gene_infos, exon_regions) = parse_gene_regions(&args.annotation, &gene_type_set);
     let merged_exons = merge_gene_exons(&exon_regions);
     let (span_trees, exon_trees) = build_gene_trees(&merged_exons);

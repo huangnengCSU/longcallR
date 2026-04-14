@@ -1551,6 +1551,13 @@ pub fn run_asj(args: AsjArgs) {
     } else {
         gene_types_vec.into_iter().collect()
     };
+    if gene_types.is_empty() {
+        eprintln!("Gene types: all");
+    } else {
+        let mut sorted: Vec<&String> = gene_types.iter().collect();
+        sorted.sort();
+        eprintln!("Gene types: {}", sorted.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+    }
     let dna_vcfs = if has_filter {
         Some(load_dna_vcf(args.dna_vcf.as_ref().unwrap()))
     } else {

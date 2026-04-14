@@ -1179,6 +1179,7 @@ if __name__ == "__main__":
     if (args.dna_vcf is None) ^ (args.rna_vcf is None):
         parse.error("--dna_vcf and --rna_vcf must be provided together")
     gene_types = set(args.gene_types) if args.gene_types else set()
+    print(f"Gene types: {'all' if not gene_types else ', '.join(sorted(gene_types))}")
     if args.dna_vcf and args.rna_vcf:
         dna_vcfs = load_dna_vcf(args.dna_vcf)
         rna_vcfs = load_longcallR_phased_vcf(args.rna_vcf, with_dp_af=False)
