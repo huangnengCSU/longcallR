@@ -31,6 +31,28 @@ def choose_best_gene(read_overlap_length, gene_starts, gene_ends):
     )
 
 
+def warn_chr_name_mismatch(annotation_chrs, bam_chrs, module_name):
+    if not annotation_chrs or not bam_chrs:
+        return
+    shared = annotation_chrs & bam_chrs
+    if len(shared) == len(annotation_chrs):
+        return
+
+    anno_only = sorted(annotation_chrs - bam_chrs)
+    anno_examples = ",".join(anno_only[:5])
+    if len(shared) == 0:
+        bam_examples = ",".join(sorted(bam_chrs)[:5])
+        print(
+            f"Warning [{module_name}]: no shared chromosome names between annotation and BAM. "
+            f"annotation examples: [{anno_examples}], BAM examples: [{bam_examples}]"
+        )
+    else:
+        print(
+            f"Warning [{module_name}]: {len(anno_only)} annotation chromosome names are missing "
+            f"in BAM header (examples: [{anno_examples}])"
+        )
+
+
 def get_gene_regions(annotation_file, gene_types):
     """Parse gene, exon, and intron regions from a GFF3 or GTF file.
     :param annotation_file: Path to the annotation file
@@ -325,6 +347,7 @@ def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_
     with pysam.AlignmentFile(bam_file, "rb") as bam:
         chromosomes = bam.references
         chromosome_lengths = dict(zip(bam.references, bam.lengths))
+    warn_chr_name_mismatch(set(merged_genes_exons.keys()), set(chromosomes), "ASJ")
 
     chunks = []
     for chromosome in chromosomes:
