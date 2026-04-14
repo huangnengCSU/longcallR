@@ -167,7 +167,7 @@ def get_gene_regions(annotation_file, gene_types):
                     gene_name = attr_dict["gene_name"]
                 except KeyError:
                     gene_name = "."  # Use a placeholder if gene name is not available
-                if gene_type in gene_types and "readthrough" not in tag:
+                if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
                     process_gene(parts, gene_id, gene_name)
             elif feature_type == "exon":
                 try:
@@ -177,7 +177,7 @@ def get_gene_regions(annotation_file, gene_types):
                 transcript_id = attr_dict["transcript_id"]
                 gene_id = attr_dict["gene_id"]
                 tag = attr_dict.get("tag", "")
-                if gene_type in gene_types and "readthrough" not in tag:
+                if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
                     process_exon(parts, gene_id, transcript_id)
 
     open_func = gzip.open if annotation_file.endswith(".gz") else open
@@ -795,8 +795,9 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--overdispersion", type=float, default=0.001, help="Overdispersion parameter")
     parser.add_argument("-o", "--output", required=True, help="prefix of output file")
     parser.add_argument("-t", "--threads", type=int, default=1, help="Number of threads")
-    parser.add_argument("--gene_types", type=str, nargs="+", default=["protein_coding", "lncRNA"],
-                        help='Gene types to be analyzed. Default is ["protein_coding", "lncRNA"]', )
+    parser.add_argument("--gene_types", type=str, nargs="*", default=["protein_coding", "lncRNA"],
+                        help='Gene types to be analyzed. Default is ["protein_coding", "lncRNA"]. '
+                             'Pass --gene_types with no values to include all gene types.', )
     parser.add_argument("--min_support", type=int, default=10,
                         help="Minimum support reads for counting event (default: 10)")
 

@@ -44,9 +44,9 @@ pub struct AseArgs {
     #[arg(short = 't', long, default_value_t = 1)]
     threads: usize,
 
-    /// Gene types to analyze
-    #[arg(long, num_args(1..), default_values_t = vec!["protein_coding".to_string(), "lncRNA".to_string()])]
-    gene_types: Vec<String>,
+    /// Gene types to analyze; pass --gene-types with no values to include all gene types
+    #[arg(long, num_args(0..))]
+    gene_types: Option<Vec<String>>,
 
     /// Minimum support reads for counting ASE
     #[arg(long, default_value_t = 10)]
@@ -216,7 +216,7 @@ fn parse_gene_regions(
             seen_gene_types.insert(gene_type.clone());
         }
         let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
-        if !gene_types.contains(&gene_type) || tag.contains("readthrough") {
+        if (!gene_types.is_empty() && !gene_types.contains(&gene_type)) || tag.contains("readthrough") {
             continue;
         }
 
@@ -245,7 +245,7 @@ fn parse_gene_regions(
                 .cloned()
                 .unwrap_or_else(|| "".to_string());
             let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
-            if !gene_types.contains(&gene_type) || tag.contains("readthrough") {
+            if (!gene_types.is_empty() && !gene_types.contains(&gene_type)) || tag.contains("readthrough") {
                 continue;
             }
             let transcript_id = match attrs.get("transcript_id") {
@@ -1314,7 +1314,19 @@ pub fn run_ase(args: AseArgs) {
         panic!("--vcf2 and --vcf3 are mutually exclusive");
     }
 
-    let gene_type_set: HashSet<String> = args.gene_types.iter().cloned().collect();
+    let gene_types_vec = args
+        .gene_types
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| vec!["protein_coding".to_string(), "lncRNA".to_string()]);
+    let gene_type_set: HashSet<String> = if gene_types_vec
+        .iter()
+        .any(|x| x == "__LONGCALLR_ALL_GENE_TYPES__")
+    {
+        HashSet::new()
+    } else {
+        gene_types_vec.into_iter().collect()
+    };
     let (gene_infos, exon_regions) = parse_gene_regions(&args.annotation, &gene_type_set);
     let merged_exons = merge_gene_exons(&exon_regions);
     let (span_trees, exon_trees) = build_gene_trees(&merged_exons);

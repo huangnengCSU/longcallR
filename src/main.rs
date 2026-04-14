@@ -18,6 +18,34 @@ mod thread;
 mod util;
 mod vcf;
 
+const ALL_GENE_TYPES_SENTINEL: &str = "__LONGCALLR_ALL_GENE_TYPES__";
+
+fn inject_empty_multi_value_flag_sentinel(
+    argv: &mut Vec<String>,
+    long_flag: &str,
+    short_flag: Option<&str>,
+    sentinel: &str,
+) {
+    if argv.len() <= 1 {
+        return;
+    }
+    let mut i: usize = 1;
+    while i < argv.len() {
+        let is_target_flag = argv[i] == long_flag || short_flag.map(|s| argv[i] == s).unwrap_or(false);
+        if is_target_flag {
+            let next_is_value = argv
+                .get(i + 1)
+                .map(|s| !s.starts_with('-'))
+                .unwrap_or(false);
+            if !next_is_value {
+                argv.insert(i + 1, sentinel.to_string());
+                i += 1;
+            }
+        }
+        i += 1;
+    }
+}
+
 mod constants {
     pub const MAX_BASE_QUALITY: u8 = 30;
 }
@@ -237,6 +265,12 @@ fn main() {
         let mut ase_argv: Vec<String> = Vec::new();
         ase_argv.push(format!("{} ase", raw_args[0]));
         ase_argv.extend(raw_args.iter().skip(2).cloned());
+        inject_empty_multi_value_flag_sentinel(
+            &mut ase_argv,
+            "--gene-types",
+            None,
+            ALL_GENE_TYPES_SENTINEL,
+        );
         let ase_args = ase::AseArgs::parse_from(ase_argv);
         ase::run_ase(ase_args);
         return;
@@ -245,6 +279,12 @@ fn main() {
         let mut asj_argv: Vec<String> = Vec::new();
         asj_argv.push(format!("{} asj", raw_args[0]));
         asj_argv.extend(raw_args.iter().skip(2).cloned());
+        inject_empty_multi_value_flag_sentinel(
+            &mut asj_argv,
+            "--gene-types",
+            Some("-g"),
+            ALL_GENE_TYPES_SENTINEL,
+        );
         let asj_args = asj::AsjArgs::parse_from(asj_argv);
         asj::run_asj(asj_args);
         return;

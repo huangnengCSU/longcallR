@@ -54,9 +54,9 @@ pub struct AsjArgs {
     #[arg(short = 't', long = "threads", default_value_t = 1)]
     threads: usize,
 
-    /// Gene types to be analyzed
-    #[arg(short = 'g', long = "gene-types", num_args(1..), default_values_t = vec!["protein_coding".to_string(), "lncRNA".to_string()])]
-    gene_types: Vec<String>,
+    /// Gene types to be analyzed; pass --gene-types with no values to include all gene types
+    #[arg(short = 'g', long = "gene-types", num_args(0..))]
+    gene_types: Option<Vec<String>>,
 
     /// Minimum total phased reads required to test an ASJ event
     #[arg(short = 'm', long = "min-sup", default_value_t = 10)]
@@ -304,7 +304,7 @@ fn get_gene_regions(
             seen_gene_types.insert(gene_type.clone());
         }
         let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
-        if !gene_types.contains(&gene_type) || tag.contains("readthrough") {
+        if (!gene_types.is_empty() && !gene_types.contains(&gene_type)) || tag.contains("readthrough") {
             continue;
         }
 
@@ -1547,7 +1547,19 @@ pub fn run_asj(args: AsjArgs) {
         panic!("--dna-vcf and --rna-vcf must be provided together");
     }
 
-    let gene_types: HashSet<String> = args.gene_types.iter().cloned().collect();
+    let gene_types_vec = args
+        .gene_types
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| vec!["protein_coding".to_string(), "lncRNA".to_string()]);
+    let gene_types: HashSet<String> = if gene_types_vec
+        .iter()
+        .any(|x| x == "__LONGCALLR_ALL_GENE_TYPES__")
+    {
+        HashSet::new()
+    } else {
+        gene_types_vec.into_iter().collect()
+    };
     let dna_vcfs = if has_filter {
         Some(load_dna_vcf(args.dna_vcf.as_ref().unwrap()))
     } else {

@@ -122,7 +122,7 @@ def get_gene_regions(annotation_file, gene_types):
                     gene_name = attr_dict["gene_name"]
                 except KeyError:
                     gene_name = "."  # Use a placeholder if gene name is not available
-                if gene_type in gene_types and "readthrough" not in tag:
+                if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
                     process_gene(parts, gene_id, gene_name)
             elif feature_type == "exon":
                 try:
@@ -132,7 +132,7 @@ def get_gene_regions(annotation_file, gene_types):
                 transcript_id = attr_dict["transcript_id"]
                 gene_id = attr_dict["gene_id"]
                 tag = attr_dict.get("tag", "")
-                if gene_type in gene_types and "readthrough" not in tag:
+                if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
                     process_exon(parts, gene_id, transcript_id)
 
     open_func = gzip.open if annotation_file.endswith(".gz") else open
@@ -1183,8 +1183,9 @@ if __name__ == "__main__":
                        help="prefix of output differential splicing file and allele-specific junctions file",
                        required=True)
     parse.add_argument("-t", "--threads", help="Number of threads", default=1, type=int)
-    parse.add_argument("-g", "--gene_types", type=str, nargs="+", default=["protein_coding", "lncRNA"],
-                       help='Gene types to be analyzed. Default is ["protein_coding", "lncRNA"]', )
+    parse.add_argument("-g", "--gene_types", type=str, nargs="*", default=["protein_coding", "lncRNA"],
+                       help='Gene types to be analyzed. Default is ["protein_coding", "lncRNA"]. '
+                            'Pass --gene_types with no values to include all gene types.', )
     parse.add_argument("-m", "--min_sup",
                        help="Minimum phased-read support required for each exon/junction event",
                        default=10,
@@ -1195,11 +1196,12 @@ if __name__ == "__main__":
     args = parse.parse_args()
     if (args.dna_vcf is None) ^ (args.rna_vcf is None):
         parse.error("--dna_vcf and --rna_vcf must be provided together")
+    gene_types = set(args.gene_types) if args.gene_types else set()
     if args.dna_vcf and args.rna_vcf:
         dna_vcfs = load_dna_vcf(args.dna_vcf)
         rna_vcfs = load_longcallR_phased_vcf(args.rna_vcf, with_dp_af=False)
-        analyze_with_filtering(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, args.gene_types,
+        analyze_with_filtering(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, gene_types,
                 args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons, dna_vcfs, rna_vcfs)
     else:
-        analyze(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, args.gene_types,
+        analyze(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, gene_types,
             args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons)
