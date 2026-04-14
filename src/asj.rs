@@ -588,8 +588,13 @@ fn load_reads(
     let header = bam.header().to_owned();
     let annotation_chrs: HashSet<String> = span_trees.keys().cloned().collect();
     let reference_chrs: HashSet<String> = genome_dict.keys().cloned().collect();
-    warn_chr_name_mismatch(&header, &annotation_chrs, "ASJ");
-    warn_chr_name_mismatch(&header, &reference_chrs, "ASJ");
+    let bam_chrs: HashSet<String> = header
+        .target_names()
+        .iter()
+        .map(|name| String::from_utf8_lossy(name).to_string())
+        .collect();
+    warn_chr_name_mismatch_sets(&annotation_chrs, &bam_chrs, "annotation", "BAM", "ASJ");
+    warn_chr_name_mismatch_sets(&reference_chrs, &bam_chrs, "reference", "BAM", "ASJ");
     warn_chr_name_mismatch_sets(&annotation_chrs, &reference_chrs, "annotation", "reference", "ASJ");
 
     for rec in bam.records() {
