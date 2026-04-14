@@ -176,7 +176,8 @@ fn is_better_gene_event(candidate: &AseEvent, current: &AseEvent) -> bool {
 
 #[derive(Debug, Clone)]
 struct ReadDataBundle {
-    read_assignment: HashMap<String, String>,
+    read_assignment: HashMap<String, String>,       // junction-filtered, for ASJ analysis
+    all_read_assignment: HashMap<String, String>,   // all reads, for coverage
     reads_positions: HashMap<String, (u32, u32)>,
     reads_tags: HashMap<String, ReadTag>,
     reads_exons: HashMap<String, Vec<(u32, u32)>>,
@@ -570,6 +571,7 @@ fn load_reads(
     min_junctions: usize,
 ) -> ReadDataBundle {
     let mut read_assignment: HashMap<String, String> = HashMap::new();
+    let mut all_read_assignment: HashMap<String, String> = HashMap::new();
     let mut reads_positions: HashMap<String, (u32, u32)> = HashMap::new();
     let mut reads_tags: HashMap<String, ReadTag> = HashMap::new();
     let mut reads_exons: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
@@ -600,21 +602,27 @@ fn load_reads(
         reads_tags.insert(qname.clone(), ReadTag { ps, hp });
 
         let (exon_regions, intron_regions) = get_exon_intron_regions(&record, ref_seq, no_gtag);
-        if intron_regions.len() <= min_junctions {
-            reads_positions.remove(&qname);
-            reads_tags.remove(&qname);
-            continue;
-        }
-        reads_exons.insert(qname.clone(), exon_regions);
-        reads_introns.insert(qname.clone(), intron_regions);
 
+        // compute gene assignment for all reads (used for coverage)
         let span_tree = match span_trees.get(&chr) {
             Some(v) => v,
-            None => continue,
+            None => {
+                if intron_regions.len() <= min_junctions {
+                    reads_positions.remove(&qname);
+                    reads_tags.remove(&qname);
+                }
+                continue;
+            }
         };
         let chr_exons = match exon_trees.get(&chr) {
             Some(v) => v,
-            None => continue,
+            None => {
+                if intron_regions.len() <= min_junctions {
+                    reads_positions.remove(&qname);
+                    reads_tags.remove(&qname);
+                }
+                continue;
+            }
         };
         let start_pos0 = record.pos() as u32;
         let end_pos0 = record.cigar().end_pos() as u32;
@@ -622,9 +630,6 @@ fn load_reads(
             .find(start_pos0 + 1, end_pos0 + 1)
             .map(|x| (x.val.clone(), x.start, x.stop))
             .collect();
-        if candidates.is_empty() {
-            continue;
-        }
 
         let splice_regions = parse_splice_regions(&record);
         let mut best_gene: Option<String> = None;
@@ -679,12 +684,26 @@ fn load_reads(
             }
         }
         if let Some(gid) = best_gene {
-            read_assignment.insert(qname, gid);
+            all_read_assignment.insert(qname.clone(), gid.clone());
+            // only include in the junction-filtered assignment if the read passes the filter
+            if intron_regions.len() > min_junctions {
+                read_assignment.insert(qname.clone(), gid);
+            }
         }
+
+        // filter artifacts with too few junctions for ASJ analysis
+        if intron_regions.len() <= min_junctions {
+            reads_positions.remove(&qname);
+            reads_tags.remove(&qname);
+            continue;
+        }
+        reads_exons.insert(qname.clone(), exon_regions);
+        reads_introns.insert(qname.clone(), intron_regions);
     }
 
     ReadDataBundle {
         read_assignment,
+        all_read_assignment,
         reads_positions,
         reads_tags,
         reads_exons,
@@ -1350,6 +1369,7 @@ fn analyze(
         min_junctions,
     );
     let gene_assigned_reads = transform_read_assignment(&read_bundle.read_assignment);
+    let all_gene_assigned_reads = transform_read_assignment(&read_bundle.all_read_assignment);
 
     let mut cov_writer = BufWriter::new(
         File::create(format!("{}.gene_coverage.tsv", output_prefix))
@@ -1357,7 +1377,7 @@ fn analyze(
     );
     writeln!(cov_writer, "#Gene_name\tChr\tStart\tEnd\tNum_reads").unwrap();
     for (gene_id, region) in &anno_gene_regions {
-        let cov = gene_assigned_reads
+        let cov = all_gene_assigned_reads
             .get(gene_id)
             .map(|x| x.len())
             .unwrap_or(0);

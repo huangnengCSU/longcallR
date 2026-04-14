@@ -212,6 +212,7 @@ def merge_gene_exon_regions(exon_regions):
 
 def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, min_junctions, shared_tree, shared_gene_intervals):
     read_assignment = {}
+    all_read_assignment = {}  # gene assignment for all reads, ignoring min_junctions filter
     reads_positions = {}
     reads_tags = {}
     reads_exons = {}
@@ -242,13 +243,6 @@ def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, min_juncti
 
             # get all exons and introns
             exon_regions, intron_regions = get_exon_intron_regions(read, ref_seq, no_gtag)
-            # filter artifacts with too few junctions
-            if len(intron_regions) <= min_junctions:
-                del reads_positions[read.query_name]
-                del reads_tags[read.query_name]
-                continue
-            reads_exons[read.query_name] = exon_regions
-            reads_junctions[read.query_name] = intron_regions
 
             # query should be 1-based, left-inclusive, right-exclusive
             overlapping_intervals = shared_tree.overlap(start_pos + 1, end_pos + 1)
@@ -287,15 +281,28 @@ def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, min_juncti
             if read_overlap_length:
                 best_gene_id = choose_best_gene(read_overlap_length, gene_starts, gene_ends)
                 if best_gene_id is not None:
-                    read_assignment[read.query_name] = best_gene_id
-    return read_assignment, reads_positions, reads_tags, reads_exons, reads_junctions
+                    all_read_assignment[read.query_name] = best_gene_id
+
+            # filter artifacts with too few junctions for ASJ analysis
+            if len(intron_regions) <= min_junctions:
+                del reads_positions[read.query_name]
+                del reads_tags[read.query_name]
+                continue
+            reads_exons[read.query_name] = exon_regions
+            reads_junctions[read.query_name] = intron_regions
+
+            if read.query_name in all_read_assignment:
+                read_assignment[read.query_name] = all_read_assignment[read.query_name]
+    return read_assignment, all_read_assignment, reads_positions, reads_tags, reads_exons, reads_junctions
 
 
 def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_junctions=0):
     """Assign reads to genes based on their alignment positions."""
 
-    # read_assignment, key: read_name, value: gene_id
+    # read_assignment, key: read_name, value: gene_id (junction-filtered, for ASJ analysis)
     read_assignment = {}
+    # all_read_assignment, key: read_name, value: gene_id (all reads, for coverage)
+    all_read_assignment = {}
 
     reads_positions = {}  # key: read_name, value: (start, end)
     reads_tags = {}  # key: read_name, value: {"PS": phase set, "HP": haplotype}
@@ -339,12 +346,13 @@ def load_reads(bam_file, genome_dict, merged_genes_exons, threads, no_gtag, min_
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             read_assignment.update(result[0])
-            reads_positions.update(result[1])
-            reads_tags.update(result[2])
-            reads_exons.update(result[3])
-            reads_junctions.update(result[4])
+            all_read_assignment.update(result[1])
+            reads_positions.update(result[2])
+            reads_tags.update(result[3])
+            reads_exons.update(result[4])
+            reads_junctions.update(result[5])
 
-    return read_assignment, reads_positions, reads_tags, reads_exons, reads_junctions
+    return read_assignment, all_read_assignment, reads_positions, reads_tags, reads_exons, reads_junctions
 
 
 def transform_read_assignment(read_assignment):
@@ -912,7 +920,7 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
     for chrom in ref_genome.references:
         genome_dict[chrom] = ref_genome.fetch(chrom)
     start_time = time.time()
-    read_assignment, reads_positions_local, reads_tags_local, reads_exons_local, reads_introns_local = load_reads(bam_file,
+    read_assignment, all_read_assignment, reads_positions_local, reads_tags_local, reads_exons_local, reads_introns_local = load_reads(bam_file,
                                                                                             genome_dict,
                                                                                             merged_genes_exons,
                                                                                             threads,
@@ -920,6 +928,7 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
                                                                                             min_junctions)
     print(f"Reads assigned to genes in {time.time() - start_time:.2f} seconds")
     gene_assigned_reads = transform_read_assignment(read_assignment)
+    all_gene_assigned_reads = transform_read_assignment(all_read_assignment)
 
     # Set globals ONCE
     reads_positions = reads_positions_local
@@ -930,10 +939,10 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
     with open(output_prefix + ".gene_coverage.tsv", "w") as f:
         f.write("#Gene_name\tChr\tStart\tEnd\tNum_reads\n")
         for gene_id, gene_region in anno_gene_regions.items():
-            if gene_id not in gene_assigned_reads:
+            if gene_id not in all_gene_assigned_reads:
                 gene_coverage = 0
             else:
-                gene_coverage = len(gene_assigned_reads[gene_id])
+                gene_coverage = len(all_gene_assigned_reads[gene_id])
             f.write(f"{anno_gene_names[gene_id]}\t{gene_region['chr']}\t{gene_region['start']}\t"
                     f"{gene_region['end']}\t{gene_coverage}\n")
 
@@ -1018,7 +1027,7 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
     for chrom in ref_genome.references:
         genome_dict[chrom] = ref_genome.fetch(chrom)
     start_time = time.time()
-    read_assignment, reads_positions_local, reads_tags_local, reads_exons_local, reads_introns_local = load_reads(bam_file,
+    read_assignment, all_read_assignment, reads_positions_local, reads_tags_local, reads_exons_local, reads_introns_local = load_reads(bam_file,
                                                                                             genome_dict,
                                                                                             merged_genes_exons,
                                                                                             threads,
@@ -1026,6 +1035,7 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
                                                                                             min_junctions)
     print(f"Reads assigned to genes in {time.time() - start_time:.2f} seconds")
     gene_assigned_reads = transform_read_assignment(read_assignment)
+    all_gene_assigned_reads = transform_read_assignment(all_read_assignment)
 
     # Set globals ONCE
     reads_positions = reads_positions_local
@@ -1038,10 +1048,10 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
     with open(output_prefix + ".gene_coverage.tsv", "w") as f:
         f.write("#Gene_name\tChr\tStart\tEnd\tNum_reads\n")
         for gene_id, gene_region in anno_gene_regions.items():
-            if gene_id not in gene_assigned_reads:
+            if gene_id not in all_gene_assigned_reads:
                 gene_coverage = 0
             else:
-                gene_coverage = len(gene_assigned_reads[gene_id])
+                gene_coverage = len(all_gene_assigned_reads[gene_id])
             f.write(f"{anno_gene_names[gene_id]}\t{gene_region['chr']}\t{gene_region['start']}\t"
                     f"{gene_region['end']}\t{gene_coverage}\n")
     gene_data_list = []
