@@ -1012,7 +1012,10 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
             pass_idx.append(idx)
             p_values.append(event.p_value)
     print(f"number of junctions with at least {min_count} reads: {len(pass_idx)}")
-    reject, adjusted_p_values, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
+    if p_values:
+        _, adjusted_p_values, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
+    else:
+        adjusted_p_values = []
     asj_genes = {}
     with open(output_prefix + ".asj.tsv", "w") as f:
         f.write(AseEvent.__header__() + "\n")
@@ -1126,7 +1129,10 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
             pass_idx.append(idx)
             p_values.append(event.p_value)
     print(f"number of junctions with at least {min_count} reads: {len(pass_idx)}")
-    reject, adjusted_p_values, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
+    if p_values:
+        _, adjusted_p_values, _, _ = multipletests(p_values, alpha=0.05, method='fdr_bh')
+    else:
+        adjusted_p_values = []
     asj_genes = {}
     with open(output_prefix + ".asj.tsv", "w") as f:
         f.write(AseEvent.__header__() + "\n")

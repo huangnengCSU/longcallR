@@ -786,10 +786,10 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--overdispersion", type=float, default=0.001, help="Overdispersion parameter")
     parser.add_argument("-o", "--output", required=True, help="prefix of output file")
     parser.add_argument("-t", "--threads", type=int, default=1, help="Number of threads")
-    parser.add_argument("--gene_types", type=str, nargs="*", default=["protein_coding", "lncRNA"],
+    parser.add_argument("-g", "--gene_types", type=str, nargs="*", default=["protein_coding", "lncRNA"],
                         help='Gene types to be analyzed (default: protein_coding lncRNA). '
                              'Pass --gene_types with no values to include all gene types.', )
-    parser.add_argument("--min_support", type=int, default=10,
+    parser.add_argument("-m", "--min_support", type=int, default=10,
                         help="Minimum support reads for counting event (default: 10)")
 
     args = parser.parse_args()
