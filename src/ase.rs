@@ -84,6 +84,8 @@ struct RnaVariant {
 struct BasicResult {
     gene_name: String,
     chr: String,
+    gene_start: u32,
+    gene_end: u32,
     p_value: f64,
     ps: String,
     h1: u32,
@@ -94,6 +96,8 @@ struct BasicResult {
 struct PatMatResult {
     gene_name: String,
     chr: String,
+    gene_start: u32,
+    gene_end: u32,
     p_value: f64,
     ps: String,
     h1: u32,
@@ -623,6 +627,8 @@ fn calculate_basic_result(
             return BasicResult {
                 gene_name: gene.name.clone(),
                 chr: gene.region.chr.clone(),
+                gene_start: gene.region.start,
+                gene_end: gene.region.end,
                 p_value: 1.0,
                 ps: ps.to_string(),
                 h1: 0,
@@ -633,6 +639,8 @@ fn calculate_basic_result(
         BasicResult {
             gene_name: gene.name.clone(),
             chr: gene.region.chr.clone(),
+            gene_start: gene.region.start,
+            gene_end: gene.region.end,
             p_value: p,
             ps: ps.to_string(),
             h1,
@@ -642,6 +650,8 @@ fn calculate_basic_result(
         BasicResult {
             gene_name: gene.name.clone(),
             chr: gene.region.chr.clone(),
+            gene_start: gene.region.start,
+            gene_end: gene.region.end,
             p_value: 1.0,
             ps: ".".to_string(),
             h1: 0,
@@ -887,6 +897,8 @@ fn calculate_patmat_result(
         return PatMatResult {
             gene_name: gene.name.clone(),
             chr: gene.region.chr.clone(),
+            gene_start: gene.region.start,
+            gene_end: gene.region.end,
             p_value: 1.0,
             ps: ".".to_string(),
             h1: 0,
@@ -903,6 +915,8 @@ fn calculate_patmat_result(
         return PatMatResult {
             gene_name: gene.name.clone(),
             chr: gene.region.chr.clone(),
+            gene_start: gene.region.start,
+            gene_end: gene.region.end,
             p_value: 1.0,
             ps: ".".to_string(),
             h1: 0,
@@ -998,6 +1012,8 @@ fn calculate_patmat_result(
     PatMatResult {
         gene_name: gene.name.clone(),
         chr: gene.region.chr.clone(),
+        gene_start: gene.region.start,
+        gene_end: gene.region.end,
         p_value,
         ps: ps.to_string(),
         h1,
@@ -1023,6 +1039,8 @@ fn calculate_filtered_result(
             return BasicResult {
                 gene_name: gene.name.clone(),
                 chr: gene.region.chr.clone(),
+                gene_start: gene.region.start,
+                gene_end: gene.region.end,
                 p_value: 1.0,
                 ps: ps.to_string(),
                 h1: 0,
@@ -1059,6 +1077,8 @@ fn calculate_filtered_result(
             return BasicResult {
                 gene_name: gene.name.clone(),
                 chr: gene.region.chr.clone(),
+                gene_start: gene.region.start,
+                gene_end: gene.region.end,
                 p_value: 1.0,
                 ps: ".".to_string(),
                 h1: 0,
@@ -1069,6 +1089,8 @@ fn calculate_filtered_result(
         BasicResult {
             gene_name: gene.name.clone(),
             chr: gene.region.chr.clone(),
+            gene_start: gene.region.start,
+            gene_end: gene.region.end,
             p_value: p,
             ps: ps.to_string(),
             h1,
@@ -1078,6 +1100,8 @@ fn calculate_filtered_result(
         BasicResult {
             gene_name: gene.name.clone(),
             chr: gene.region.chr.clone(),
+            gene_start: gene.region.start,
+            gene_end: gene.region.end,
             p_value: 1.0,
             ps: ".".to_string(),
             h1: 0,
@@ -1106,14 +1130,22 @@ fn write_basic_results(output_path: &str, results: &[BasicResult], min_support: 
     let f = File::create(output_path)
         .unwrap_or_else(|e| panic!("failed to create {}: {}", output_path, e));
     let mut writer = BufWriter::new(f);
-    writeln!(writer, "#Gene_name\tChr\tPS\tH1\tH2\tP_value\tlogFC").unwrap();
+    writeln!(writer, "#Gene_name\tChr\tStart\tEnd\tPS\tH1\tH2\tP_value\tlogFC").unwrap();
     for (pi, idx) in pass_idx.iter().enumerate() {
         let r = &results[*idx];
         let logfc = ((r.h1 as f64 + 1.0) / (r.h2 as f64 + 1.0)).log2();
         writeln!(
             writer,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            r.gene_name, r.chr, r.ps, r.h1, r.h2, adjusted[pi], logfc
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            r.gene_name,
+            r.chr,
+            r.gene_start,
+            r.gene_end,
+            r.ps,
+            r.h1,
+            r.h2,
+            adjusted[pi],
+            logfc
         )
         .unwrap();
     }
@@ -1139,15 +1171,17 @@ fn write_patmat_results(output_path: &str, results: &[PatMatResult], min_support
     let f = File::create(output_path)
         .unwrap_or_else(|e| panic!("failed to create {}: {}", output_path, e));
     let mut writer = BufWriter::new(f);
-    writeln!(writer, "#Gene_name\tChr\tPS\tH1\tH2\tP_value\tH1_Paternal\tH1_Maternal\tH2_Paternal\tH2_Maternal\tlogFC").unwrap();
+    writeln!(writer, "#Gene_name\tChr\tStart\tEnd\tPS\tH1\tH2\tP_value\tH1_Paternal\tH1_Maternal\tH2_Paternal\tH2_Maternal\tlogFC").unwrap();
     for (pi, idx) in pass_idx.iter().enumerate() {
         let r = &results[*idx];
         let logfc = ((r.h1 as f64 + 1.0) / (r.h2 as f64 + 1.0)).log2();
         writeln!(
             writer,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             r.gene_name,
             r.chr,
+            r.gene_start,
+            r.gene_end,
             r.ps,
             r.h1,
             r.h2,

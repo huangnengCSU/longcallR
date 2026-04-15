@@ -60,6 +60,8 @@ python longcallR-ase.py
 |--------------|-------------------------------------------|
 | `#Gene_name` | Gene symbol                               |
 | `Chr`        | Chromosome                                |
+| `Start`      | Gene start position (1-based)             |
+| `End`        | Gene end position (1-based)               |
 | `PS`         | Phase set ID                              |
 | `H1`         | Read count assigned to haplotype 1        |
 | `H2`         | Read count assigned to haplotype 2        |
@@ -71,6 +73,8 @@ python longcallR-ase.py
 |----------------|------------------------------------------------------|
 | `#Gene_name`   | Gene symbol                                          |
 | `Chr`          | Chromosome                                           |
+| `Start`        | Gene start position (1-based)                        |
+| `End`          | Gene end position (1-based)                          |
 | `PS`           | Phase set ID                                         |
 | `H1`           | Read count assigned to haplotype 1                   |
 | `H2`           | Read count assigned to haplotype 2                   |

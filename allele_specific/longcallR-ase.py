@@ -506,14 +506,15 @@ def calculate_ase_pvalue(bam_file, gene_id, gene_name, gene_region, min_count, o
     if ps_read_cnt:
         most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
     else:
-        return (gene_name, gene_region["chr"], 1.0, ".", 0, 0)
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0)
     hap_count = phase_set_hap_count[most_reads_ps]
     if hap_count[1] + hap_count[2] < min_count:
-        return (gene_name, gene_region["chr"], 1.0, most_reads_ps, 0, 0)
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, most_reads_ps, 0, 0)
     # p_value_ase = binomtest(hap_count[1], hap_count[1] + hap_count[2], 0.5, alternative='two-sided').pvalue
     p_value_ase = beta_binomial_p_value(hap_count[1], hap_count[1] + hap_count[2], 0.5, overdispersion,
                                         alternative='two-sided')
-    return (gene_name, gene_region["chr"], p_value_ase, most_reads_ps, hap_count[1], hap_count[2])
+    return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], p_value_ase, most_reads_ps,
+            hap_count[1], hap_count[2])
 
 
 def calculate_ase_pvalue_pat_mat(bam_file, gene_id, gene_name, gene_region, min_count, overdispersion,
@@ -534,11 +535,13 @@ def calculate_ase_pvalue_pat_mat(bam_file, gene_id, gene_name, gene_region, min_
     if ps_read_cnt:
         most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
     else:
-        return (gene_name, gene_region["chr"], 1.0, ".", 0, 0, 0, 0, 0, 0)
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0, 0, 0, 0,
+                0)
     hap_count = phase_set_hap_count[most_reads_ps]
     h1_count, h2_count = hap_count[1], hap_count[2]
     if h1_count + h2_count < min_count:
-        return (gene_name, gene_region["chr"], 1.0, ".", 0, 0, 0, 0, 0, 0)
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0, 0, 0, 0,
+                0)
     # p_value_ase = binomtest(h1_count, h1_count + h2_count, 0.5, alternative='two-sided').pvalue
     p_value_ase = beta_binomial_p_value(hap_count[1], hap_count[1] + hap_count[2], 0.5, overdispersion,
                                         alternative='two-sided')
@@ -591,7 +594,7 @@ def calculate_ase_pvalue_pat_mat(bam_file, gene_id, gene_name, gene_region, min_
                 h2_mat_cnt += 1
             else:
                 continue
-    return (gene_name, gene_region["chr"], p_value_ase, most_reads_ps,
+    return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], p_value_ase, most_reads_ps,
             h1_count, h2_count, h1_pat_cnt, h1_mat_cnt, h2_pat_cnt, h2_mat_cnt)
 
 
@@ -613,11 +616,11 @@ def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, mi
     if ps_read_cnt:
         most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
     else:
-        return (gene_name, gene_region["chr"], 1.0, ".", 0, 0)
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0)
     hap_count = phase_set_hap_count[most_reads_ps]
     h1_count, h2_count = hap_count[1], hap_count[2]
     if h1_count + h2_count < min_count:
-        return (gene_name, gene_region["chr"], 1.0, most_reads_ps, 0, 0)
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, most_reads_ps, 0, 0)
     # p_value_ase = binomtest(h1_count, h1_count + h2_count, 0.5, alternative='two-sided').pvalue
     p_value_ase = beta_binomial_p_value(hap_count[1], hap_count[1] + hap_count[2], 0.5, overdispersion,
                                         alternative='two-sided')
@@ -636,8 +639,9 @@ def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, mi
             if depth >= min_count and p_value_ase_allele < 0.05:
                 overlapped_cnt += 1
     if overlapped_cnt == 0:
-        return (gene_name, gene_region["chr"], 1.0, ".", 0, 0)
-    return (gene_name, gene_region["chr"], p_value_ase, most_reads_ps, hap_count[1], hap_count[2])
+        return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0)
+    return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], p_value_ase, most_reads_ps,
+            hap_count[1], hap_count[2])
 
 
 def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, min_support, overdispersion,
@@ -663,7 +667,7 @@ def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, 
     pass_idx = []
     p_values = []
     print(f"total number of genes: {len(results)}")
-    for idx, (gene_name, chrom, p_value, ps, h1, h2) in enumerate(results):
+    for idx, (gene_name, chrom, gene_start, gene_end, p_value, ps, h1, h2) in enumerate(results):
         if h1 + h2 >= min_support:
             pass_idx.append(idx)
             p_values.append(p_value)
@@ -673,13 +677,13 @@ def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, 
     else:
         adjusted_p_values = []
     with open(out_file, "w") as f:
-        f.write("#Gene_name\tChr\tPS\tH1\tH2\tP_value\tlogFC\n")
+        f.write("#Gene_name\tChr\tGene_start\tGene_end\tPS\tH1\tH2\tP_value\tlogFC\n")
         for pi in range(len(pass_idx)):
             idx = pass_idx[pi]
-            gene_name, chrom, p_value, ps, h1, h2 = results[idx]
+            gene_name, chrom, gene_start, gene_end, p_value, ps, h1, h2 = results[idx]
             p_value = adjusted_p_values[pi]
             logFC = math.log2((h1 + 1) / (h2 + 1))
-            f.write(f"{gene_name}\t{chrom}\t{ps}\t{h1}\t{h2}\t{p_value}\t{logFC}\n")
+            f.write(f"{gene_name}\t{chrom}\t{gene_start}\t{gene_end}\t{ps}\t{h1}\t{h2}\t{p_value}\t{logFC}\n")
 
 
 def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, out_file, threads, gene_types,
@@ -710,7 +714,8 @@ def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, o
     pass_idx = []
     p_values = []
     print(f"total number of genes: {len(results)}")
-    for idx, (gene_name, chrom, p_value, ps, h1, h2, h1_pat, h1_mat, h2_pat, h2_mat) in enumerate(results):
+    for idx, (gene_name, chrom, gene_start, gene_end, p_value, ps, h1, h2, h1_pat, h1_mat, h2_pat,
+              h2_mat) in enumerate(results):
         if h1 + h2 >= min_support:
             pass_idx.append(idx)
             p_values.append(p_value)
@@ -720,13 +725,14 @@ def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, o
     else:
         adjusted_p_values = []
     with open(out_file, "w") as f:
-        f.write("#Gene_name\tChr\tPS\tH1\tH2\tP_value\tH1_Paternal\tH1_Maternal\tH2_Paternal\tH2_Maternal\tlogFC\n")
+        f.write("#Gene_name\tChr\tGene_start\tGene_end\tPS\tH1\tH2\tP_value\tH1_Paternal\tH1_Maternal\tH2_Paternal\tH2_Maternal\tlogFC\n")
         for pi in range(len(pass_idx)):
             idx = pass_idx[pi]
-            gene_name, chrom, p_value, ps, h1, h2, h1_pat, h1_mat, h2_pat, h2_mat = results[idx]
+            gene_name, chrom, gene_start, gene_end, p_value, ps, h1, h2, h1_pat, h1_mat, h2_pat, h2_mat = results[idx]
             p_value = adjusted_p_values[pi]
             logFC = math.log2((h1 + 1) / (h2 + 1))
-            f.write(f"{gene_name}\t{chrom}\t{ps}\t{h1}\t{h2}\t{p_value}\t{h1_pat}\t{h1_mat}\t{h2_pat}\t{h2_mat}\t{logFC}\n")
+            f.write(
+                f"{gene_name}\t{chrom}\t{gene_start}\t{gene_end}\t{ps}\t{h1}\t{h2}\t{p_value}\t{h1_pat}\t{h1_mat}\t{h2_pat}\t{h2_mat}\t{logFC}\n")
 
 
 def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_file3, out_file, threads, gene_types,
@@ -757,7 +763,7 @@ def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_f
     pass_idx = []
     p_values = []
     print(f"total number of genes: {len(results)}")
-    for idx, (gene_name, chrom, p_value, ps, h1, h2) in enumerate(results):
+    for idx, (gene_name, chrom, gene_start, gene_end, p_value, ps, h1, h2) in enumerate(results):
         if h1 + h2 >= min_support:
             pass_idx.append(idx)
             p_values.append(p_value)
@@ -767,13 +773,13 @@ def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_f
     else:
         adjusted_p_values = []
     with open(out_file, "w") as f:
-        f.write("#Gene_name\tChr\tPS\tH1\tH2\tP_value\tlogFC\n")
+        f.write("#Gene_name\tChr\tStart\tEnd\tPS\tH1\tH2\tP_value\tlogFC\n")
         for pi in range(len(pass_idx)):
             idx = pass_idx[pi]
-            gene_name, chrom, p_value, ps, h1, h2 = results[idx]
+            gene_name, chrom, gene_start, gene_end, p_value, ps, h1, h2 = results[idx]
             p_value = adjusted_p_values[pi]
             logFC = math.log2((h1 + 1) / (h2 + 1))
-            f.write(f"{gene_name}\t{chrom}\t{ps}\t{h1}\t{h2}\t{p_value}\t{logFC}\n")
+            f.write(f"{gene_name}\t{chrom}\t{gene_start}\t{gene_end}\t{ps}\t{h1}\t{h2}\t{p_value}\t{logFC}\n")
 
 
 if __name__ == "__main__":
