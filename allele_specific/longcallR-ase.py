@@ -186,6 +186,7 @@ def get_gene_regions(annotation_file, gene_types):
                     intron_regions[gene_id][transcript_id].append(
                         (exons_sorted[i - 1][0], intron_start, intron_end))  # 1-based, start-inclusive, end-inclusive
 
+    print(f"Number of genes extracted from annotation: {len(gene_regions)}")
     return gene_regions, gene_names, gene_strands, exon_regions, intron_regions
 
 

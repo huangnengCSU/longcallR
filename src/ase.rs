@@ -267,6 +267,7 @@ fn parse_gene_regions(
         }
     }
 
+    eprintln!("Number of genes extracted from annotation: {}", gene_infos.len());
     (gene_infos, exon_regions)
 }
 

@@ -362,6 +362,7 @@ fn get_gene_regions(
         }
     }
 
+    eprintln!("Number of genes extracted from annotation: {}", gene_regions.len());
     (
         gene_regions,
         gene_names,
