@@ -1212,6 +1212,47 @@ pub fn load_gene_annotation(
         }
     }
 
+    // ── Pre-pass (all formats): gene_id → gene_type ─────────────────────
+    // Used by exon records that do not carry gene_type/gene_biotype.
+    let mut gene_type_by_gene: HashMap<String, String> = HashMap::new();
+    {
+        let reader = open_annotation_reader(annotation_file);
+        for line in reader.lines() {
+            let line = line.unwrap();
+            if line.starts_with('#') {
+                continue;
+            }
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 9 || parts[2] != "gene" {
+                continue;
+            }
+
+            let attrs = if is_gff3 {
+                parse_attributes_gff3(parts[8])
+            } else {
+                parse_attributes_gtf(parts[8])
+            };
+
+            let gene_id: String = if let Some(v) = attrs.get("gene_id").filter(|v| !v.is_empty()) {
+                v.clone()
+            } else if is_gff3 {
+                match attrs.get("ID").filter(|v| !v.is_empty()) {
+                    Some(v) => v.clone(),
+                    None => continue,
+                }
+            } else {
+                continue;
+            };
+
+            let gene_type = attrs
+                .get("gene_type")
+                .or_else(|| attrs.get("gene_biotype"))
+                .cloned()
+                .unwrap_or_default();
+            gene_type_by_gene.insert(gene_id, gene_type);
+        }
+    }
+
     // ── Main pass ────────────────────────────────────────────────────────
     let mut genes: HashMap<String, GeneAnnotation> = HashMap::new();
     // Collect exons separately; merge into genes after the pass.
@@ -1278,9 +1319,17 @@ pub fn load_gene_annotation(
             .or_else(|| attrs.get("gene_biotype"))
             .cloned()
             .unwrap_or_default();
-        seen_gene_types.insert(gene_type.clone());
+        let effective_gene_type = if gene_type.is_empty() {
+            gene_type_by_gene
+                .get(&gene_id)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            gene_type
+        };
+        seen_gene_types.insert(effective_gene_type.clone());
         let tag = attrs.get("tag").cloned().unwrap_or_default();
-        if (!gene_types.is_empty() && !gene_types.contains(&gene_type))
+        if (!gene_types.is_empty() && !gene_types.contains(&effective_gene_type))
             || tag.contains("readthrough")
         {
             continue;
@@ -1309,7 +1358,7 @@ pub fn load_gene_annotation(
                     end,
                     strand,
                     name,
-                    gene_type,
+                    gene_type: effective_gene_type,
                     exons: HashMap::new(),
                 },
             );
@@ -1348,4 +1397,43 @@ pub fn load_gene_annotation(
 
     eprintln!("Number of genes extracted from annotation: {}", genes.len());
     genes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_gene_annotation;
+    use std::collections::HashSet;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn exon_gene_type_falls_back_to_gene_when_missing() {
+        let mut path = std::env::temp_dir();
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        path.push(format!("longcallr_gene_type_fallback_{}_{}.gff3", std::process::id(), ts));
+
+        let gff3 = "##gff-version 3
+chr1\tsrc\tgene\t1\t1000\t.\t+\t.\tID=geneA;Name=GeneA;gene_type=protein_coding
+chr1\tsrc\tmRNA\t1\t1000\t.\t+\t.\tID=tx1;Parent=geneA
+chr1\tsrc\texon\t1\t100\t.\t+\t.\tID=exon1;Parent=tx1
+chr1\tsrc\texon\t201\t300\t.\t+\t.\tID=exon2;Parent=tx1;gene_type=lncRNA
+";
+        fs::write(&path, gff3).unwrap();
+
+        let mut gene_types = HashSet::new();
+        gene_types.insert("protein_coding".to_string());
+
+        let genes = load_gene_annotation(path.to_str().unwrap(), &gene_types);
+        let gene = genes.get("geneA").unwrap();
+        let tx_exons = gene.exons.get("tx1").unwrap();
+
+        assert_eq!(tx_exons.len(), 1);
+        assert_eq!(tx_exons[0].1, 1);
+        assert_eq!(tx_exons[0].2, 100);
+
+        fs::remove_file(&path).unwrap();
+    }
 }
