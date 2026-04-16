@@ -151,10 +151,7 @@ def get_gene_regions(annotation_file, gene_types):
 
             if feature_type == "gene":
                 gene_id = attr_dict["gene_id"]
-                try:
-                    gene_type = attr_dict["gene_type"]
-                except KeyError:
-                    gene_type = attr_dict["gene_biotype"]
+                gene_type = attr_dict.get("gene_type") or attr_dict.get("gene_biotype", "")
                 tag = attr_dict.get("tag", "")
                 try:
                     gene_name = attr_dict["gene_name"]
@@ -163,10 +160,7 @@ def get_gene_regions(annotation_file, gene_types):
                 if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
                     process_gene(parts, gene_id, gene_name)
             elif feature_type == "exon":
-                try:
-                    gene_type = attr_dict["gene_type"]
-                except KeyError:
-                    gene_type = attr_dict["gene_biotype"]
+                gene_type = attr_dict.get("gene_type") or attr_dict.get("gene_biotype", "")
                 transcript_id = attr_dict["transcript_id"]
                 gene_id = attr_dict["gene_id"]
                 tag = attr_dict.get("tag", "")
