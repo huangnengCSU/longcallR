@@ -73,6 +73,24 @@ def get_gene_regions(annotation_file, gene_types):
                 if gene_id:
                     transcript_to_gene[tx_id] = gene_id
 
+    # Pre-pass (all formats): build gene_id -> gene_type map for exon fallback.
+    gene_type_by_gene = {}
+    with open_func(annotation_file, "rt") as fh:
+        for line in fh:
+            if line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 9 or parts[2] != "gene":
+                continue
+            attrs = parse_attrs(parts[8])
+            gene_id = attrs.get("gene_id", "").strip()
+            if not gene_id and is_gff3:
+                gene_id = attrs.get("ID", "").strip()
+            if not gene_id:
+                continue
+            gene_type = (attrs.get("gene_type") or attrs.get("gene_biotype", "")).strip()
+            gene_type_by_gene[gene_id] = gene_type
+
     gene_regions  = {}
     gene_names    = {}
     gene_strands  = {}
@@ -102,9 +120,10 @@ def get_gene_regions(annotation_file, gene_types):
                 continue
 
             gene_type = (attrs.get("gene_type") or attrs.get("gene_biotype", "")).strip()
-            seen_gene_types.add(gene_type)
+            effective_gene_type = gene_type or gene_type_by_gene.get(gene_id, "")
+            seen_gene_types.add(effective_gene_type)
             tag = attrs.get("tag", "")
-            if (gene_types and gene_type not in gene_types) or "readthrough" in tag:
+            if (gene_types and effective_gene_type not in gene_types) or "readthrough" in tag:
                 continue
 
             if feature == "gene":
@@ -141,8 +160,7 @@ def get_gene_regions(annotation_file, gene_types):
         missing = sorted(gene_types - seen_gene_types)
         if missing:
             if len(missing) == len(gene_types):
-                print(f"Warning [annotation]: none of the requested gene types {missing} were found. "
-                      f"Examples found: {sorted(seen_gene_types)[:5]}")
+                print(f"Warning [annotation]: none of the requested gene types {missing} were found.")
             else:
                 print(f"Warning [annotation]: gene types {missing} not found in annotation.")
 

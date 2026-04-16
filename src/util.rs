@@ -1022,13 +1022,9 @@ pub fn warn_gene_type_mismatch(
     }
     let missing_str = missing.join(",");
     if missing.len() == requested.len() {
-        let mut seen_examples: Vec<String> = seen.iter().cloned().collect();
-        seen_examples.sort();
-        let seen_str = seen_examples.into_iter().take(5).collect::<Vec<String>>().join(",");
         eprintln!(
-            "Warning [{}]: none of the requested gene types [{}] were found in the annotation. \
-             Gene types found in annotation (examples): [{}]",
-            module_name, missing_str, seen_str
+            "Warning [{}]: none of the requested gene types [{}] were found in the annotation.",
+            module_name, missing_str
         );
     } else {
         eprintln!(
