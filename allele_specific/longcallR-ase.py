@@ -1,15 +1,166 @@
 #!/usr/bin/env python
 
 import math
+import gzip
 import pysam
 from collections import defaultdict
-import gzip
-from intervaltree import Interval, IntervalTree
-from multiprocessing import Manager
 import concurrent.futures
-from scipy.stats import binomtest, betabinom
+from multiprocessing import Manager
+from scipy.stats import betabinom
 from statsmodels.stats.multitest import multipletests
+from intervaltree import Interval, IntervalTree
 import argparse
+
+
+def get_gene_regions(annotation_file, gene_types):
+    """Parse gene, exon, and intron regions from a GFF3 or GTF file.
+
+    Supports both GENCODE/Ensembl style (gene_id / transcript_id on every line)
+    and standard GFF3 style (ID / Parent hierarchy).
+    """
+    assert annotation_file.endswith((".gff3", ".gtf", ".gff3.gz", ".gtf.gz")), \
+        "Error: Unknown annotation file format"
+
+    is_gff3 = ".gff3" in annotation_file
+    open_func = gzip.open if annotation_file.endswith(".gz") else open
+
+    def parse_attributes_gff3(attributes):
+        attr_dict = {}
+        for attr in attributes.strip().split(";"):
+            attr = attr.strip()
+            if not attr or "=" not in attr:
+                continue
+            key, value = attr.split("=", 1)
+            attr_dict[key.strip()] = value.strip().strip('"')
+        return attr_dict
+
+    def parse_attributes_gtf(attributes):
+        attr_dict = {}
+        tags = []
+        for attr in attributes.strip().split(";"):
+            attr = attr.strip()
+            if not attr:
+                continue
+            parts = attr.split(" ", 1)
+            if len(parts) != 2:
+                continue
+            key, value = parts[0].strip(), parts[1].strip().strip('"')
+            if key == "tag":
+                tags.append(value)
+            else:
+                attr_dict[key] = value
+        attr_dict["tag"] = ",".join(tags)
+        return attr_dict
+
+    parse_attrs = parse_attributes_gff3 if is_gff3 else parse_attributes_gtf
+
+    # Pre-pass (GFF3 only): build transcript_id → gene_id from mRNA/transcript lines
+    # so exon lines can be resolved when they only carry Parent= pointing to an mRNA.
+    transcript_to_gene = {}
+    if is_gff3:
+        with open_func(annotation_file, "rt") as fh:
+            for line in fh:
+                if line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 9 or parts[2] not in ("mRNA", "transcript"):
+                    continue
+                attrs = parse_attributes_gff3(parts[8])
+                tx_id = attrs.get("ID", "").strip()
+                if not tx_id:
+                    continue
+                gene_id = (attrs.get("gene_id") or attrs.get("Parent", "")).strip()
+                if gene_id:
+                    transcript_to_gene[tx_id] = gene_id
+
+    gene_regions  = {}
+    gene_names    = {}
+    gene_strands  = {}
+    exon_regions  = defaultdict(lambda: defaultdict(list))
+    seen_gene_types = set()
+
+    with open_func(annotation_file, "rt") as fh:
+        for line in fh:
+            if line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 9 or parts[2] not in ("gene", "exon"):
+                continue
+            feature = parts[2]
+            attrs = parse_attrs(parts[8])
+
+            # Resolve gene_id: explicit attr → (GFF3 gene) ID → (GFF3 exon) Parent→map
+            gene_id = attrs.get("gene_id", "").strip()
+            if not gene_id and is_gff3:
+                if feature == "gene":
+                    gene_id = attrs.get("ID", "").strip()
+                else:
+                    tx_id = (attrs.get("transcript_id") or attrs.get("Parent", "")).strip()
+                    if tx_id:
+                        gene_id = transcript_to_gene.get(tx_id, tx_id)
+            if not gene_id:
+                continue
+
+            gene_type = (attrs.get("gene_type") or attrs.get("gene_biotype", "")).strip()
+            seen_gene_types.add(gene_type)
+            tag = attrs.get("tag", "")
+            if (gene_types and gene_type not in gene_types) or "readthrough" in tag:
+                continue
+
+            if feature == "gene":
+                try:
+                    start, end = int(parts[3]), int(parts[4])
+                except ValueError:
+                    continue
+                if start <= 0 or end < start:
+                    continue
+                gene_name = (
+                    attrs.get("gene_name")
+                    or (attrs.get("Name") if is_gff3 else None)
+                    or (attrs.get("ID") if is_gff3 else None)
+                    or gene_id
+                )
+                gene_regions[gene_id] = {"chr": parts[0], "start": start, "end": end}
+                gene_names[gene_id]   = gene_name
+                gene_strands[gene_id] = parts[6]
+            else:
+                tx_id = (
+                    attrs.get("transcript_id")
+                    or (attrs.get("Parent") if is_gff3 else None)
+                    or gene_id
+                )
+                try:
+                    start, end = int(parts[3]), int(parts[4])
+                except ValueError:
+                    continue
+                if start <= 0 or end < start:
+                    continue
+                exon_regions[gene_id][tx_id].append((parts[0], start, end))
+
+    if gene_types:
+        missing = sorted(gene_types - seen_gene_types)
+        if missing:
+            if len(missing) == len(gene_types):
+                print(f"Warning [annotation]: none of the requested gene types {missing} were found. "
+                      f"Examples found: {sorted(seen_gene_types)[:5]}")
+            else:
+                print(f"Warning [annotation]: gene types {missing} not found in annotation.")
+
+    intron_regions = defaultdict(lambda: defaultdict(list))
+    for gene_id, transcripts in exon_regions.items():
+        for tx_id, exons in transcripts.items():
+            if len(exons) <= 1:
+                continue
+            exons_sorted = sorted(exons, key=lambda x: x[1])
+            for i in range(1, len(exons_sorted)):
+                intron_start = exons_sorted[i - 1][2] + 1
+                intron_end   = exons_sorted[i][1] - 1
+                if intron_start < intron_end:
+                    intron_regions[gene_id][tx_id].append(
+                        (exons_sorted[i - 1][0], intron_start, intron_end))
+
+    print(f"Number of genes extracted from annotation: {len(gene_regions)}")
+    return gene_regions, gene_names, gene_strands, exon_regions, intron_regions
 
 
 def convert_mu_rho_to_alpha_beta(mu, rho):
@@ -94,100 +245,6 @@ def run_chr_name_checks(annotation_chrs, bam_chrs, module_name):
     warn_chr_name_mismatch(annotation_chrs, bam_chrs, module_name, label_a="annotation", label_b="BAM")
 
 
-def get_gene_regions(annotation_file, gene_types):
-    """Parse gene, exon, and intron regions from a GFF3 or GTF file.
-    :param annotation_file: Path to the annotation file
-    :return: Gene regions, exon regions, and intron regions
-    """
-    assert annotation_file.endswith((".gff3", ".gtf", ".gff3.gz", ".gtf.gz")), "Error: Unknown annotation file format"
-
-    gene_regions = {}
-    gene_names = {}
-    gene_strands = {}
-    exon_regions = defaultdict(lambda: defaultdict(list))
-    intron_regions = defaultdict(lambda: defaultdict(list))
-    def process_gene(parts, gene_id, gene_name):
-        chr, start, end = parts[0], int(parts[3]), int(parts[4])
-        gene_regions[gene_id] = {"chr": chr, "start": start, "end": end}  # 1-based, start-inclusive, end-inclusive
-        gene_names[gene_id] = gene_name
-        strand = parts[6]
-        gene_strands[gene_id] = strand
-
-    def process_exon(parts, gene_id, transcript_id):
-        chr, start, end = parts[0], int(parts[3]), int(parts[4])
-        exon_regions[gene_id][transcript_id].append((chr, start, end))  # 1-based, start-inclusive, end-inclusive
-
-    def parse_attributes_gff3(attributes):
-        attr_dict = {}
-        for attr in attributes.strip().split(";"):
-            key, value = attr.strip().split("=")
-            attr_dict[key] = value.replace('"', '')
-        return attr_dict
-
-    def parse_attributes_gtf(attributes):
-        attr_dict = {}
-        for attr in attributes.strip().split(";"):
-            if attr:
-                key, value = attr.strip().split(" ")
-                if key == "tag":
-                    attr_dict[key] = attr_dict.get(key, []) + [value.replace('"', '')]
-                else:
-                    attr_dict[key] = value.replace('"', '')
-        attr_dict["tag"] = ",".join(attr_dict.get("tag", []))
-        return attr_dict
-
-    def parse_file(file_handle, file_type):
-        for line in file_handle:
-            if line.startswith("#"):
-                continue
-            parts = line.strip().split("\t")
-            feature_type = parts[2]
-            attributes = parts[8]
-
-            if file_type == "gff3":
-                attr_dict = parse_attributes_gff3(attributes)
-            elif file_type == "gtf":
-                attr_dict = parse_attributes_gtf(attributes)
-
-            if feature_type == "gene":
-                gene_id = attr_dict["gene_id"]
-                gene_type = attr_dict.get("gene_type") or attr_dict.get("gene_biotype", "")
-                tag = attr_dict.get("tag", "")
-                try:
-                    gene_name = attr_dict["gene_name"]
-                except KeyError:
-                    gene_name = "."  # Use a placeholder if gene name is not available
-                if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
-                    process_gene(parts, gene_id, gene_name)
-            elif feature_type == "exon":
-                gene_type = attr_dict.get("gene_type") or attr_dict.get("gene_biotype", "")
-                transcript_id = attr_dict["transcript_id"]
-                gene_id = attr_dict["gene_id"]
-                tag = attr_dict.get("tag", "")
-                if (not gene_types or gene_type in gene_types) and "readthrough" not in tag:
-                    process_exon(parts, gene_id, transcript_id)
-
-    open_func = gzip.open if annotation_file.endswith(".gz") else open
-    file_type = "gff3" if ".gff3" in annotation_file else "gtf"
-
-    with open_func(annotation_file, "rt") as f:
-        parse_file(f, file_type)
-
-    # Calculate intron regions based on exons
-    for gene_id, transcripts in exon_regions.items():
-        for transcript_id, exons in transcripts.items():
-            if len(exons) == 1:
-                continue
-            exons_sorted = sorted(exons, key=lambda x: x[1])
-            for i in range(1, len(exons_sorted)):
-                intron_start = exons_sorted[i - 1][2] + 1
-                intron_end = exons_sorted[i][1] - 1
-                if intron_start < intron_end:
-                    intron_regions[gene_id][transcript_id].append(
-                        (exons_sorted[i - 1][0], intron_start, intron_end))  # 1-based, start-inclusive, end-inclusive
-
-    print(f"Number of genes extracted from annotation: {len(gene_regions)}")
-    return gene_regions, gene_names, gene_strands, exon_regions, intron_regions
 
 
 def merge_gene_exon_regions(exon_regions):
