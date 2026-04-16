@@ -1,6 +1,6 @@
 use bio::bio_types::strand::ReqStrand::Forward;
 use bio::io::fasta;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use flate2::read::MultiGzDecoder;
 use std::io::{BufRead, BufReader};
 use std::sync::Mutex;
@@ -1077,4 +1077,275 @@ pub fn warn_chr_name_mismatch(
         .map(|name| String::from_utf8_lossy(name).to_string())
         .collect();
     warn_chr_name_mismatch_sets(annotation_chrs, &bam_chrs, "annotation", "BAM", module_name);
+}
+
+// ---------------------------------------------------------------------------
+// Shared annotation parsing (GFF3 and GTF, both GENCODE/Ensembl and standard)
+// ---------------------------------------------------------------------------
+
+/// Open a plain-text or gzip-compressed file for line-by-line reading.
+pub fn open_annotation_reader(path: &str) -> BufReader<Box<dyn std::io::Read>> {
+    let file = File::open(path).unwrap_or_else(|e| panic!("failed to open {}: {}", path, e));
+    if path.ends_with(".gz") {
+        BufReader::new(Box::new(MultiGzDecoder::new(file)))
+    } else {
+        BufReader::new(Box::new(file))
+    }
+}
+
+/// Parse the attribute column of a GFF3 line (`key=value; ...`).
+pub fn parse_attributes_gff3(attrs: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for item in attrs.split(';') {
+        let trimmed = item.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut parts = trimmed.splitn(2, '=');
+        let key = parts.next().unwrap_or("").trim();
+        let value = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
+        if !key.is_empty() {
+            map.insert(key.to_string(), value);
+        }
+    }
+    map
+}
+
+/// Parse the attribute column of a GTF line (`key "value"; ...`).
+pub fn parse_attributes_gtf(attrs: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let mut tags: Vec<String> = Vec::new();
+    for item in attrs.split(';') {
+        let trimmed = item.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut parts = trimmed.splitn(2, ' ');
+        let key = parts.next().unwrap_or("").trim();
+        let value = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
+        if key == "tag" {
+            if !value.is_empty() {
+                tags.push(value);
+            }
+        } else if !key.is_empty() {
+            map.insert(key.to_string(), value);
+        }
+    }
+    map.insert("tag".to_string(), tags.join(","));
+    map
+}
+
+/// Per-gene data returned by [`load_gene_annotation`].
+pub struct GeneAnnotation {
+    pub chr: String,
+    pub start: u32,
+    pub end: u32,
+    pub strand: String,
+    pub name: String,
+    pub gene_type: String,
+    /// transcript_id → list of (chr, start, end) exon intervals (1-based, inclusive)
+    pub exons: HashMap<String, Vec<(String, u32, u32)>>,
+}
+
+/// Load gene and exon records from a GFF3 or GTF annotation file.
+///
+/// Supports two GFF3 styles transparently:
+/// * **GENCODE/Ensembl style** – every feature carries `gene_id`, `transcript_id`,
+///   `gene_type`/`gene_biotype`, `gene_name` attributes.
+/// * **Standard GFF3 style** – genes use `ID=`, transcripts use `ID=` + `Parent=`,
+///   exons use `Parent=` (pointing to the transcript).  Gene type/name come from
+///   optional `gene_type`, `gene_biotype`, or `Name` attributes.
+///
+/// `gene_types`: if non-empty only genes whose `gene_type`/`gene_biotype` is in the
+/// set are returned; pass an empty `HashSet` to include every gene.
+pub fn load_gene_annotation(
+    annotation_file: &str,
+    gene_types: &HashSet<String>,
+) -> HashMap<String, GeneAnnotation> {
+    assert!(
+        annotation_file.ends_with(".gff3")
+            || annotation_file.ends_with(".gtf")
+            || annotation_file.ends_with(".gff3.gz")
+            || annotation_file.ends_with(".gtf.gz"),
+        "Error: unknown annotation file format (expected .gff3/.gtf or .gz)"
+    );
+
+    let is_gff3 = annotation_file.contains(".gff3");
+
+    // ── Pre-pass (GFF3 only) ──────────────────────────────────────────────
+    // Build transcript_id → gene_id from mRNA/transcript lines so that we can
+    // resolve the gene for each exon even when the exon only carries a `Parent`
+    // pointing to the transcript (standard GFF3) rather than a `gene_id` attr
+    // (GENCODE GFF3).
+    let mut transcript_to_gene: HashMap<String, String> = HashMap::new();
+    if is_gff3 {
+        let reader = open_annotation_reader(annotation_file);
+        for line in reader.lines() {
+            let line = line.unwrap();
+            if line.starts_with('#') {
+                continue;
+            }
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 9 {
+                continue;
+            }
+            let feature = parts[2];
+            if feature != "mRNA" && feature != "transcript" {
+                continue;
+            }
+            let attrs = parse_attributes_gff3(parts[8]);
+            // ID is the transcript identifier in standard GFF3
+            let tx_id = match attrs.get("ID").filter(|v| !v.is_empty()) {
+                Some(v) => v.clone(),
+                None => continue,
+            };
+            // gene_id wins (GENCODE GFF3); fall back to Parent (standard GFF3)
+            let gene_id = attrs
+                .get("gene_id")
+                .or_else(|| attrs.get("Parent"))
+                .filter(|v| !v.is_empty())
+                .cloned()
+                .unwrap_or_default();
+            if !gene_id.is_empty() {
+                transcript_to_gene.insert(tx_id, gene_id);
+            }
+        }
+    }
+
+    // ── Main pass ────────────────────────────────────────────────────────
+    let mut genes: HashMap<String, GeneAnnotation> = HashMap::new();
+    // Collect exons separately; merge into genes after the pass.
+    let mut exon_map: HashMap<String, HashMap<String, Vec<(String, u32, u32)>>> = HashMap::new();
+    // Track all gene_types seen (for warning purposes).
+    let mut seen_gene_types: HashSet<String> = HashSet::new();
+
+    let reader = open_annotation_reader(annotation_file);
+    for line in reader.lines() {
+        let line = line.unwrap();
+        if line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 9 {
+            continue;
+        }
+        let feature = parts[2];
+        if feature != "gene" && feature != "exon" {
+            continue;
+        }
+
+        let attrs = if is_gff3 {
+            parse_attributes_gff3(parts[8])
+        } else {
+            parse_attributes_gtf(parts[8])
+        };
+
+        // ── Resolve gene_id ──────────────────────────────────────────────
+        // Priority: explicit gene_id attr → (GFF3 gene) ID attr → (GFF3 exon) Parent→transcript→gene
+        let gene_id: String = if let Some(v) = attrs.get("gene_id").filter(|v| !v.is_empty()) {
+            v.clone()
+        } else if is_gff3 {
+            match feature {
+                "gene" => match attrs.get("ID").filter(|v| !v.is_empty()) {
+                    Some(v) => v.clone(),
+                    None => continue,
+                },
+                "exon" => {
+                    // Prefer explicit transcript_id; fall back to Parent
+                    let tx_id = attrs
+                        .get("transcript_id")
+                        .or_else(|| attrs.get("Parent"))
+                        .filter(|v| !v.is_empty())
+                        .cloned();
+                    match tx_id {
+                        Some(tid) => match transcript_to_gene.get(&tid) {
+                            Some(gid) => gid.clone(),
+                            // If no mRNA line was seen, use transcript id as gene id
+                            None => tid,
+                        },
+                        None => continue,
+                    }
+                }
+                _ => continue,
+            }
+        } else {
+            continue; // GTF without gene_id — skip
+        };
+
+        // ── Gene-type filter ─────────────────────────────────────────────
+        let gene_type = attrs
+            .get("gene_type")
+            .or_else(|| attrs.get("gene_biotype"))
+            .cloned()
+            .unwrap_or_default();
+        seen_gene_types.insert(gene_type.clone());
+        let tag = attrs.get("tag").cloned().unwrap_or_default();
+        if (!gene_types.is_empty() && !gene_types.contains(&gene_type))
+            || tag.contains("readthrough")
+        {
+            continue;
+        }
+
+        // ── Process feature ──────────────────────────────────────────────
+        if feature == "gene" {
+            let chr = parts[0].to_string();
+            let start = parts[3].parse::<u32>().unwrap_or(0);
+            let end = parts[4].parse::<u32>().unwrap_or(0);
+            if start == 0 || end == 0 || end < start {
+                continue;
+            }
+            let strand = parts[6].to_string();
+            // gene_name: GENCODE → Name (standard GFF3) → ID (standard GFF3) → gene_id
+            let name = attrs
+                .get("gene_name")
+                .or_else(|| if is_gff3 { attrs.get("Name").or_else(|| attrs.get("ID")) } else { None })
+                .cloned()
+                .unwrap_or_else(|| gene_id.clone());
+            genes.insert(
+                gene_id,
+                GeneAnnotation {
+                    chr,
+                    start,
+                    end,
+                    strand,
+                    name,
+                    gene_type,
+                    exons: HashMap::new(),
+                },
+            );
+        } else {
+            // exon
+            // transcript_id: explicit attr → Parent (standard GFF3)
+            let transcript_id = attrs
+                .get("transcript_id")
+                .or_else(|| if is_gff3 { attrs.get("Parent") } else { None })
+                .cloned()
+                .unwrap_or_else(|| gene_id.clone());
+            let chr = parts[0].to_string();
+            let start = parts[3].parse::<u32>().unwrap_or(0);
+            let end = parts[4].parse::<u32>().unwrap_or(0);
+            if start == 0 || end == 0 || end < start {
+                continue;
+            }
+            exon_map
+                .entry(gene_id)
+                .or_default()
+                .entry(transcript_id)
+                .or_default()
+                .push((chr, start, end));
+        }
+    }
+
+    // Merge exons into gene records
+    for (gene_id, tx_exons) in exon_map {
+        if let Some(gene) = genes.get_mut(&gene_id) {
+            gene.exons = tx_exons;
+        }
+    }
+
+    // Warn if requested gene types are absent from the file
+    warn_gene_type_mismatch(gene_types, &seen_gene_types, "annotation");
+
+    eprintln!("Number of genes extracted from annotation: {}", genes.len());
+    genes
 }

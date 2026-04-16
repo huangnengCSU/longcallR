@@ -1,4 +1,3 @@
-use flate2::read::MultiGzDecoder;
 use rayon::prelude::*;
 use rust_htslib::bam;
 use rust_htslib::bam::record::{Aux, Cigar};
@@ -9,9 +8,12 @@ use statrs::function::gamma::ln_gamma;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufWriter, Write};
 
-use crate::util::{load_reference, warn_chr_name_mismatch, warn_chr_name_mismatch_sets};
+use crate::util::{
+    load_gene_annotation, load_reference, open_annotation_reader,
+    warn_chr_name_mismatch, warn_chr_name_mismatch_sets,
+};
 
 #[derive(clap::Parser, Debug, Clone)]
 pub struct AsjArgs {
@@ -184,65 +186,6 @@ struct ReadDataBundle {
     reads_introns: HashMap<String, Vec<(u32, u32, bool)>>,
 }
 
-fn open_text_reader(path: &str) -> BufReader<Box<dyn std::io::Read>> {
-    let file = File::open(path).unwrap_or_else(|e| panic!("failed to open {}: {}", path, e));
-    if path.ends_with(".gz") {
-        BufReader::new(Box::new(MultiGzDecoder::new(file)))
-    } else {
-        BufReader::new(Box::new(file))
-    }
-}
-
-fn parse_attributes_gtf(attrs: &str) -> HashMap<String, String> {
-    let mut attr_map: HashMap<String, String> = HashMap::new();
-    let mut tags: Vec<String> = Vec::new();
-    for item in attrs.split(';') {
-        let trimmed = item.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let mut parts = trimmed.splitn(2, ' ');
-        let key = parts.next().unwrap_or("").trim();
-        let value = parts
-            .next()
-            .unwrap_or("")
-            .trim()
-            .trim_matches('"')
-            .to_string();
-        if key == "tag" {
-            if !value.is_empty() {
-                tags.push(value);
-            }
-        } else if !key.is_empty() {
-            attr_map.insert(key.to_string(), value);
-        }
-    }
-    attr_map.insert("tag".to_string(), tags.join(","));
-    attr_map
-}
-
-fn parse_attributes_gff3(attrs: &str) -> HashMap<String, String> {
-    let mut attr_map: HashMap<String, String> = HashMap::new();
-    for item in attrs.split(';') {
-        let trimmed = item.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let mut parts = trimmed.splitn(2, '=');
-        let key = parts.next().unwrap_or("").trim();
-        let value = parts
-            .next()
-            .unwrap_or("")
-            .trim()
-            .trim_matches('"')
-            .to_string();
-        if !key.is_empty() {
-            attr_map.insert(key.to_string(), value);
-        }
-    }
-    attr_map
-}
-
 #[allow(clippy::type_complexity)]
 fn get_gene_regions(
     annotation_file: &str,
@@ -254,88 +197,19 @@ fn get_gene_regions(
     GeneRegionsByTranscript,
     GeneRegionsByTranscript,
 ) {
-    assert!(
-        annotation_file.ends_with(".gff3")
-            || annotation_file.ends_with(".gtf")
-            || annotation_file.ends_with(".gff3.gz")
-            || annotation_file.ends_with(".gtf.gz"),
-        "Error: Unknown annotation file format"
-    );
-
-    let file_type = if annotation_file.contains(".gff3") {
-        "gff3"
-    } else {
-        "gtf"
-    };
+    let annotation = load_gene_annotation(annotation_file, gene_types);
 
     let mut gene_regions: HashMap<String, GeneRegion> = HashMap::new();
     let mut gene_names: HashMap<String, String> = HashMap::new();
     let mut gene_strands: HashMap<String, String> = HashMap::new();
     let mut exon_regions: GeneRegionsByTranscript = HashMap::new();
 
-    let reader = open_text_reader(annotation_file);
-    for line in reader.lines() {
-        let line = line.unwrap();
-        if line.starts_with('#') {
-            continue;
-        }
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 9 {
-            continue;
-        }
-        let feature = parts[2];
-        let attrs = if file_type == "gff3" {
-            parse_attributes_gff3(parts[8])
-        } else {
-            parse_attributes_gtf(parts[8])
-        };
-
-        let gene_id = match attrs.get("gene_id") {
-            Some(v) => v.clone(),
-            None => continue,
-        };
-        let gene_type = attrs
-            .get("gene_type")
-            .or_else(|| attrs.get("gene_biotype"))
-            .cloned()
-            .unwrap_or_else(|| "".to_string());
-        let tag = attrs.get("tag").cloned().unwrap_or_else(|| "".to_string());
-        if (!gene_types.is_empty() && !gene_types.contains(&gene_type)) || tag.contains("readthrough") {
-            continue;
-        }
-
-        if feature == "gene" {
-            let chr = parts[0].to_string();
-            let start = parts[3].parse::<u32>().unwrap_or(0);
-            let end = parts[4].parse::<u32>().unwrap_or(0);
-            if start == 0 || end == 0 || end < start {
-                continue;
-            }
-            let strand = parts[6].to_string();
-            let gene_name = attrs
-                .get("gene_name")
-                .cloned()
-                .unwrap_or_else(|| ".".to_string());
-            gene_regions.insert(gene_id.clone(), GeneRegion { chr, start, end });
-            gene_names.insert(gene_id.clone(), gene_name);
-            gene_strands.insert(gene_id, strand);
-        } else if feature == "exon" {
-            let transcript_id = match attrs.get("transcript_id") {
-                Some(v) => v.clone(),
-                None => continue,
-            };
-            let chr = parts[0].to_string();
-            let start = parts[3].parse::<u32>().unwrap_or(0);
-            let end = parts[4].parse::<u32>().unwrap_or(0);
-            if start == 0 || end == 0 || end < start {
-                continue;
-            }
-            exon_regions
-                .entry(gene_id)
-                .or_default()
-                .entry(transcript_id)
-                .or_default()
-                .push((chr, start, end));
+    for (gene_id, gene) in annotation {
+        gene_regions.insert(gene_id.clone(), GeneRegion { chr: gene.chr, start: gene.start, end: gene.end });
+        gene_names.insert(gene_id.clone(), gene.name);
+        gene_strands.insert(gene_id.clone(), gene.strand);
+        if !gene.exons.is_empty() {
+            exon_regions.insert(gene_id, gene.exons);
         }
     }
 
@@ -362,14 +236,7 @@ fn get_gene_regions(
         }
     }
 
-    eprintln!("Number of genes extracted from annotation: {}", gene_regions.len());
-    (
-        gene_regions,
-        gene_names,
-        gene_strands,
-        exon_regions,
-        intron_regions,
-    )
+    (gene_regions, gene_names, gene_strands, exon_regions, intron_regions)
 }
 
 fn merge_gene_exon_regions(
@@ -1075,7 +942,7 @@ fn benjamini_hochberg(p_values: &[f64]) -> Vec<f64> {
 
 fn load_dna_vcf(vcf_file: &str) -> HashSet<String> {
     let mut dna_vcfs: HashSet<String> = HashSet::new();
-    let reader = open_text_reader(vcf_file);
+    let reader = open_annotation_reader(vcf_file);
     for line in reader.lines() {
         let line = line.unwrap();
         if line.starts_with('#') {
@@ -1111,7 +978,7 @@ fn load_dna_vcf(vcf_file: &str) -> HashSet<String> {
 
 fn load_longcallr_phased_vcf(vcf_file: &str) -> HashMap<i32, Vec<(String, u32)>> {
     let mut rna_vcfs: HashMap<i32, Vec<(String, u32)>> = HashMap::new();
-    let reader = open_text_reader(vcf_file);
+    let reader = open_annotation_reader(vcf_file);
     for line in reader.lines() {
         let line = line.unwrap();
         if line.starts_with('#') {
