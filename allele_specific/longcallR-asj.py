@@ -317,7 +317,7 @@ def process_chunk(bam_file, chromosome, start, end, ref_seq, no_gtag, min_juncti
             else:
                 HP_tag = "."
             if read.has_tag("PS"):
-                PS_tag = read.get_tag("PS")
+                PS_tag = str(read.get_tag("PS"))
             else:
                 PS_tag = "."
             reads_tags[read.query_name] = {"PS": PS_tag, "HP": HP_tag}
@@ -621,6 +621,7 @@ def load_longcallR_phased_vcf(vcf_file, with_dp_af = False):
             if gt in [(0, 1), (1, 0)] and record.samples[0].phased:
                 ps = record.samples[0].get('PS', None)
                 if ps and ps!=".":
+                    ps = str(ps)
                     if with_dp_af:
                         dp = record.samples[0]['DP']
                         af = record.samples[0]['AF'][0]
@@ -630,6 +631,45 @@ def load_longcallR_phased_vcf(vcf_file, with_dp_af = False):
                     else:
                         rna_vcfs[ps].append(f"{record.contig}:{record.pos}")  # 1-based, ctg:pos
     return rna_vcfs
+
+
+def load_main_ps_table(main_ps_file):
+    main_ps = {}
+    if main_ps_file is None:
+        return main_ps
+    with open(main_ps_file) as f:
+        header = None
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            fields = line.split("\t")
+            if header is None:
+                if fields[0].startswith("#"):
+                    fields[0] = fields[0].lstrip("#")
+                header = {name: idx for idx, name in enumerate(fields)}
+                continue
+            ps_col = header.get("Main_PS", header.get("PS"))
+            if ps_col is None or ps_col >= len(fields):
+                continue
+            ps = fields[ps_col]
+            if ps in {"", "."}:
+                continue
+            key = None
+            for key_col in ("Gene_id", "gene_id"):
+                idx = header.get(key_col)
+                if idx is not None and idx < len(fields) and fields[idx]:
+                    key = fields[idx]
+                    break
+            if key is None:
+                for key_col in ("Gene_name", "gene_name"):
+                    idx = header.get(key_col)
+                    if idx is not None and idx < len(fields) and fields[idx]:
+                        key = fields[idx]
+                        break
+            if key is not None:
+                main_ps[key] = ps
+    return main_ps
 
 
 class AseEvent:
@@ -727,7 +767,7 @@ def g_test_2x2(table, pseudocount=1e-10):
     return G, p_value
 
 
-def haplotype_event_test(absent_reads, present_reads, reads_tags):
+def haplotype_event_test(absent_reads, present_reads, reads_tags, requested_ps=None):
     """
     Perform Fisher's exact test to determine if the haplotype distribution is significantly different between absent and present reads.
     :param absent_reads:
@@ -746,17 +786,24 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags):
         phase_set = reads_tags[read_name]["PS"]
         hap_present_counts[phase_set][hap] += 1
     all_phase_sets = set(hap_absent_counts.keys()).union(set(hap_present_counts.keys()))
-    # get the ps with the most reads
-    ps_read_count = {}
-    for ps in all_phase_sets:
-        h1_a, h2_a = hap_absent_counts[ps][1], hap_absent_counts[ps][2]
-        h1_p, h2_p = hap_present_counts[ps][1], hap_present_counts[ps][2]
-        ps_read_count[ps] = h1_a + h2_a + h1_p + h2_p
-    if ps_read_count:
-        most_reads_ps = sorted(ps_read_count.items(), key=lambda x: x[1], reverse=True)[0][0]
+    if requested_ps is not None:
+        phase_set = requested_ps
+        h1_a, h2_a = hap_absent_counts[phase_set][1], hap_absent_counts[phase_set][2]
+        h1_p, h2_p = hap_present_counts[phase_set][1], hap_present_counts[phase_set][2]
+        if h1_a + h2_a + h1_p + h2_p == 0:
+            return None
     else:
+        ps_read_count = {}
+        for ps in all_phase_sets:
+            h1_a, h2_a = hap_absent_counts[ps][1], hap_absent_counts[ps][2]
+            h1_p, h2_p = hap_present_counts[ps][1], hap_present_counts[ps][2]
+            ps_read_count[ps] = h1_a + h2_a + h1_p + h2_p
+        if ps_read_count:
+            phase_set = sorted(ps_read_count.items(), key=lambda x: x[1], reverse=True)[0][0]
+        else:
+            return None
+    if phase_set == ".":
         return None
-    phase_set = most_reads_ps
     table = np.array([[hap_absent_counts[phase_set][1], hap_absent_counts[phase_set][2]],
                       [hap_present_counts[phase_set][1], hap_present_counts[phase_set][2]]])
     ## Fisher's exact test
@@ -802,12 +849,15 @@ def haplotype_event_test(absent_reads, present_reads, reads_tags):
     # return events
 
 
-def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
-    global reads_positions, reads_tags, reads_exons, reads_introns
+def analyze_gene(gene_id, gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
+    global reads_positions, reads_tags, reads_exons, reads_introns, main_ps_lookup
     # Subset reads for this gene
     # Compute the intersection of read names present in both gene_reads and reads_tags
     valid_read_names = set(gene_reads) & set(reads_tags.keys())
     phased_read_names = [name for name in valid_read_names if reads_tags[name]["HP"] != "."]
+    requested_ps = (main_ps_lookup.get(gene_id) or main_ps_lookup.get(gene_name)) if main_ps_lookup else None
+    if requested_ps is not None:
+        phased_read_names = [name for name in phased_read_names if reads_tags[name]["PS"] == requested_ps]
     sub_reads_positions = {name: reads_positions[name] for name in phased_read_names}
     sub_reads_tags = {name: reads_tags[name] for name in phased_read_names}
     sub_reads_exons = {name: reads_exons[name] for name in phased_read_names}
@@ -871,7 +921,7 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
             # absences, presents = check_absent_present(extended_junction_start, extended_junction_end, reads_positions,
             #                                           reads_introns)
             absences, presents = check_absent_present(junction_start, junction_end, sub_reads_positions, sub_reads_introns)
-            test_result = haplotype_event_test(absences, presents, sub_reads_tags)
+            test_result = haplotype_event_test(absences, presents, sub_reads_tags, requested_ps)
             if test_result is None:
                 continue
             (phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor) = test_result
@@ -880,12 +930,15 @@ def analyze_gene(gene_name, gene_strand, annotation_exons, annotation_junctions,
     return gene_ase_events
 
 
-def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
-    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
+def analyze_gene_with_filtering(gene_id, gene_name, gene_strand, annotation_exons, annotation_junctions, gene_region, gene_reads, min_count, cluster_with_exons):
+    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs, main_ps_lookup
     # Subset reads for this gene
     # Compute the intersection of read names present in both gene_reads and reads_tags
     valid_read_names = set(gene_reads) & set(reads_tags.keys())
     phased_read_names = [name for name in valid_read_names if reads_tags[name]["HP"] != "."]
+    requested_ps = (main_ps_lookup.get(gene_id) or main_ps_lookup.get(gene_name)) if main_ps_lookup else None
+    if requested_ps is not None:
+        phased_read_names = [name for name in phased_read_names if reads_tags[name]["PS"] == requested_ps]
     sub_reads_positions = {name: reads_positions[name] for name in phased_read_names}
     sub_reads_tags = {name: reads_tags[name] for name in phased_read_names}
     sub_reads_exons = {name: reads_exons[name] for name in phased_read_names}
@@ -961,7 +1014,7 @@ def analyze_gene_with_filtering(gene_name, gene_strand, annotation_exons, annota
             # absences, presents = check_absent_present(extended_junction_start, extended_junction_end, reads_positions,
             #                                           reads_introns)
             absences, presents = check_absent_present(junction_start, junction_end, sub_reads_positions, sub_reads_introns)
-            test_result = haplotype_event_test(absences, presents, sub_reads_tags)
+            test_result = haplotype_event_test(absences, presents, sub_reads_tags, requested_ps)
             if test_result is None:
                 continue
             (phase_set, h1_a, h1_p, h2_a, h2_p, pvalue, sor) = test_result
@@ -977,20 +1030,22 @@ reads_exons = None
 reads_introns = None
 dna_vcfs = None
 rna_vcfs = None
+main_ps_lookup = None
 
 
-def _init_worker(pos, tags, exons, introns, dna=None, rna=None):
+def _init_worker(pos, tags, exons, introns, dna=None, rna=None, main_ps=None):
     """Initializer for ProcessPoolExecutor workers: sets global shared data."""
-    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
+    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs, main_ps_lookup
     reads_positions = pos
     reads_tags = tags
     reads_exons = exons
     reads_introns = introns
     dna_vcfs = dna
     rna_vcfs = rna
+    main_ps_lookup = main_ps
 
-def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, min_junctions, cluster_with_exons):
-    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
+def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, min_junctions, cluster_with_exons, main_ps_by_gene=None):
+    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs, main_ps_lookup
 
     all_ase_events = {}  # key: (chr, start, end), value: {gene_name: AseEvent}
     start_time = time.time()
@@ -1025,6 +1080,7 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
     reads_tags = reads_tags_local
     reads_exons = reads_exons_local
     reads_introns = reads_introns_local
+    main_ps_lookup = main_ps_by_gene or {}
 
     with open(output_prefix + ".gene_coverage.tsv", "w") as f:
         f.write("#Gene_name\tChr\tStart\tEnd\tNum_reads\n")
@@ -1040,19 +1096,21 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
     for gene_id, gene_region in anno_gene_regions.items():
         if (gene_region["chr"] in genome_dict) and (len(gene_assigned_reads[gene_id]) > 0):
             gene_name = anno_gene_names[gene_id]
+            if main_ps_by_gene is not None and (main_ps_by_gene.get(gene_id) or main_ps_by_gene.get(gene_name)) is None:
+                continue
             gene_strand = anno_gene_strands[gene_id]
             gene_anno_exons = anno_exon_regions[gene_id]
             gene_anno_introns = anno_intron_regions[gene_id]
             gene_reads = gene_assigned_reads[gene_id]
             gene_data_list.append(
-                (gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count, cluster_with_exons))
+                (gene_id, gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count, cluster_with_exons))
 
     print(f"Total genes to be analyzed: {len(gene_data_list)}")
     start_time = time.time()
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=threads,
         initializer=_init_worker,
-        initargs=(reads_positions, reads_tags, reads_exons, reads_introns),
+        initargs=(reads_positions, reads_tags, reads_exons, reads_introns, None, None, main_ps_lookup),
     ) as executor:
         futures = [executor.submit(analyze_gene, *gene_data) for gene_data in gene_data_list]
         for future in concurrent.futures.as_completed(futures):
@@ -1106,8 +1164,8 @@ def analyze(annotation_file, bam_file, reference_file, output_prefix, min_count,
             event = asj_genes[gene_name]
             f.write(f"{gene_name}\t{event.chr}\t{event.p_value}\t{event.sor}\n")
 
-def analyze_with_filtering(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, min_junctions, cluster_with_exons, dna_vcfs_in, rna_vcfs_in):
-    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs
+def analyze_with_filtering(annotation_file, bam_file, reference_file, output_prefix, min_count, gene_types, threads, no_gtag, min_junctions, cluster_with_exons, dna_vcfs_in, rna_vcfs_in, main_ps_by_gene=None):
+    global reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs, main_ps_lookup
 
     all_ase_events = {}  # key: (chr, start, end), value: {gene_name: AseEvent}
     start_time = time.time()
@@ -1144,6 +1202,7 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
     reads_introns = reads_introns_local
     dna_vcfs = dna_vcfs_in
     rna_vcfs = rna_vcfs_in
+    main_ps_lookup = main_ps_by_gene or {}
 
     with open(output_prefix + ".gene_coverage.tsv", "w") as f:
         f.write("#Gene_name\tChr\tStart\tEnd\tNum_reads\n")
@@ -1158,18 +1217,20 @@ def analyze_with_filtering(annotation_file, bam_file, reference_file, output_pre
     for gene_id, gene_region in anno_gene_regions.items():
         if (gene_region["chr"] in genome_dict) and (len(gene_assigned_reads[gene_id]) > 0):
             gene_name = anno_gene_names[gene_id]
+            if main_ps_by_gene is not None and (main_ps_by_gene.get(gene_id) or main_ps_by_gene.get(gene_name)) is None:
+                continue
             gene_strand = anno_gene_strands[gene_id]
             gene_anno_exons = anno_exon_regions[gene_id]
             gene_anno_introns = anno_intron_regions[gene_id]
             gene_reads = gene_assigned_reads[gene_id]
-            gene_data_list.append((gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count, cluster_with_exons))
+            gene_data_list.append((gene_id, gene_name, gene_strand, gene_anno_exons, gene_anno_introns, gene_region, gene_reads, min_count, cluster_with_exons))
     print(f"Total genes to be analyzed: {len(gene_data_list)}")
 
     start_time = time.time()
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=threads,
         initializer=_init_worker,
-        initargs=(reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs),
+        initargs=(reads_positions, reads_tags, reads_exons, reads_introns, dna_vcfs, rna_vcfs, main_ps_lookup),
     ) as executor:
         futures = [executor.submit(analyze_gene_with_filtering, *gene_data) for gene_data in gene_data_list]
         for future in concurrent.futures.as_completed(futures):
@@ -1257,16 +1318,22 @@ if __name__ == "__main__":
     parse.add_argument("--no_gtag",
                        action="store_true",
                        help="Disable GT-AG splice motif filtering on read-derived junctions")
+    parse.add_argument("--main_ps",
+                       default=None,
+                       help="TSV of user-selected/main PS per gene. Recognized columns: Gene_name and Main_PS/PS")
     args = parse.parse_args()
     if (args.dna_vcf is None) ^ (args.rna_vcf is None):
         parse.error("--dna_vcf and --rna_vcf must be provided together")
     gene_types = set(args.gene_types) if args.gene_types else set()
     print(f"Gene types: {'all' if not gene_types else ', '.join(sorted(gene_types))}")
+    main_ps_by_gene = load_main_ps_table(args.main_ps) if args.main_ps else None
+    if main_ps_by_gene is not None:
+        print(f"Loaded main PS genes: {len(main_ps_by_gene)}")
     if args.dna_vcf and args.rna_vcf:
         dna_vcfs = load_dna_vcf(args.dna_vcf)
         rna_vcfs = load_longcallR_phased_vcf(args.rna_vcf, with_dp_af=False)
         analyze_with_filtering(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, gene_types,
-                args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons, dna_vcfs, rna_vcfs)
+                args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons, dna_vcfs, rna_vcfs, main_ps_by_gene)
     else:
         analyze(args.annotation_file, args.bam_file, args.reference, args.output_prefix, args.min_sup, gene_types,
-            args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons)
+            args.threads, args.no_gtag, args.min_junctions, args.cluster_with_exons, main_ps_by_gene)

@@ -538,6 +538,7 @@ def load_longcallR_phased_vcf(vcf_file, with_dp_af = False):
             if gt in [(0, 1), (1, 0)] and record.samples[0].phased:
                 ps = record.samples[0].get('PS', None)
                 if ps and ps!=".":
+                    ps = str(ps)
                     if with_dp_af:
                         dp = record.samples[0]['DP']
                         af = record.samples[0]['AF'][0]
@@ -553,13 +554,72 @@ def get_reads_tag(bam_file, chr, start_pos, end_pos):
     reads_tag = {}
     with pysam.AlignmentFile(bam_file, "rb") as f:
         for read in f.fetch(chr, start_pos - 1, end_pos):  # start_pos is 1-based, pysam expects 0-based
-            PS = read.get_tag("PS") if read.has_tag("PS") else None
+            PS = str(read.get_tag("PS")) if read.has_tag("PS") else None
             HP = read.get_tag("HP") if read.has_tag("HP") else None
             reads_tag[read.query_name] = {"PS": PS, "HP": HP}
     return reads_tag
 
 
-def calculate_ase_pvalue(bam_file, gene_id, gene_name, gene_region, min_count, overdispersion, gene_assigned_reads):
+def load_main_ps_table(main_ps_file):
+    main_ps = {}
+    if main_ps_file is None:
+        return main_ps
+    with open(main_ps_file) as f:
+        header = None
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            fields = line.split("\t")
+            if header is None:
+                if fields[0].startswith("#"):
+                    fields[0] = fields[0].lstrip("#")
+                header = {name: idx for idx, name in enumerate(fields)}
+                continue
+            ps_col = header.get("Main_PS", header.get("PS"))
+            if ps_col is None or ps_col >= len(fields):
+                continue
+            ps = fields[ps_col]
+            if ps in {"", "."}:
+                continue
+            key = None
+            for key_col in ("Gene_id", "gene_id"):
+                idx = header.get(key_col)
+                if idx is not None and idx < len(fields) and fields[idx]:
+                    key = fields[idx]
+                    break
+            if key is None:
+                for key_col in ("Gene_name", "gene_name"):
+                    idx = header.get(key_col)
+                    if idx is not None and idx < len(fields) and fields[idx]:
+                        key = fields[idx]
+                        break
+            if key is not None:
+                main_ps[key] = ps
+    return main_ps
+
+
+def selected_main_ps(main_ps_by_gene, gene_id, gene_name):
+    if main_ps_by_gene is None:
+        return None
+    return main_ps_by_gene.get(gene_id) or main_ps_by_gene.get(gene_name)
+
+
+def choose_phase_set(phase_set_hap_count, requested_ps=None):
+    if requested_ps is not None:
+        return requested_ps, phase_set_hap_count.get(requested_ps, {1: 0, 2: 0})
+    ps_read_cnt = {
+        ps: hap_cnt[1] + hap_cnt[2]
+        for ps, hap_cnt in phase_set_hap_count.items()
+    }
+    if not ps_read_cnt:
+        return None, None
+    most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
+    return most_reads_ps, phase_set_hap_count[most_reads_ps]
+
+
+def calculate_ase_pvalue(bam_file, gene_id, gene_name, gene_region, min_count, overdispersion, gene_assigned_reads,
+                         main_ps_by_gene=None):
     reads_tag = get_reads_tag(bam_file, gene_region["chr"], gene_region["start"], gene_region["end"])
     assigned_reads = set(gene_assigned_reads[gene_id])
     phase_set_hap_count = defaultdict(lambda: {1: 0, 2: 0})  # key: phase set, value: {haplotype: count}
@@ -569,15 +629,10 @@ def calculate_ase_pvalue(bam_file, gene_id, gene_name, gene_region, min_count, o
             hp = reads_tag[rname]["HP"]
             if ps and hp:
                 phase_set_hap_count[ps][hp] += 1
-    # get the ps with the most reads
-    ps_read_cnt = {}
-    for ps, hap_cnt in phase_set_hap_count.items():
-        ps_read_cnt[ps] = hap_cnt[1] + hap_cnt[2]
-    if ps_read_cnt:
-        most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
-    else:
+    requested_ps = selected_main_ps(main_ps_by_gene, gene_id, gene_name)
+    most_reads_ps, hap_count = choose_phase_set(phase_set_hap_count, requested_ps)
+    if most_reads_ps is None:
         return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0)
-    hap_count = phase_set_hap_count[most_reads_ps]
     if hap_count[1] + hap_count[2] < min_count:
         return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, most_reads_ps, 0, 0)
     # p_value_ase = binomtest(hap_count[1], hap_count[1] + hap_count[2], 0.5, alternative='two-sided').pvalue
@@ -588,7 +643,7 @@ def calculate_ase_pvalue(bam_file, gene_id, gene_name, gene_region, min_count, o
 
 
 def calculate_ase_pvalue_pat_mat(bam_file, gene_id, gene_name, gene_region, min_count, overdispersion,
-                                 gene_assigned_reads, rna_vcfs, wg_vcfs):
+                                 gene_assigned_reads, rna_vcfs, wg_vcfs, main_ps_by_gene=None):
     reads_tag = get_reads_tag(bam_file, gene_region["chr"], gene_region["start"], gene_region["end"])
     assigned_reads = set(gene_assigned_reads[gene_id])
     phase_set_hap_count = defaultdict(lambda: {1: 0, 2: 0})  # key: phase set, value: {haplotype: count}
@@ -598,16 +653,11 @@ def calculate_ase_pvalue_pat_mat(bam_file, gene_id, gene_name, gene_region, min_
             hp = reads_tag[rname]["HP"]
             if ps and hp:
                 phase_set_hap_count[ps][hp] += 1
-    # get the ps with the most reads
-    ps_read_cnt = {}
-    for ps, hap_cnt in phase_set_hap_count.items():
-        ps_read_cnt[ps] = hap_cnt[1] + hap_cnt[2]
-    if ps_read_cnt:
-        most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
-    else:
+    requested_ps = selected_main_ps(main_ps_by_gene, gene_id, gene_name)
+    most_reads_ps, hap_count = choose_phase_set(phase_set_hap_count, requested_ps)
+    if most_reads_ps is None:
         return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0, 0, 0, 0,
                 0)
-    hap_count = phase_set_hap_count[most_reads_ps]
     h1_count, h2_count = hap_count[1], hap_count[2]
     if h1_count + h2_count < min_count:
         return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0, 0, 0, 0,
@@ -669,7 +719,7 @@ def calculate_ase_pvalue_pat_mat(bam_file, gene_id, gene_name, gene_region, min_
 
 
 def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, min_count, overdispersion,
-                                 gene_assigned_reads, rna_vcfs, dna_vcfs):
+                                 gene_assigned_reads, rna_vcfs, dna_vcfs, main_ps_by_gene=None):
     reads_tag = get_reads_tag(bam_file, gene_region["chr"], gene_region["start"], gene_region["end"])
     assigned_reads = set(gene_assigned_reads[gene_id])
     phase_set_hap_count = defaultdict(lambda: {1: 0, 2: 0})  # key: phase set, value: {haplotype: count}
@@ -679,15 +729,10 @@ def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, mi
             hp = reads_tag[rname]["HP"]
             if ps and hp:
                 phase_set_hap_count[ps][hp] += 1
-    # get the ps with the most reads
-    ps_read_cnt = {}
-    for ps, hap_cnt in phase_set_hap_count.items():
-        ps_read_cnt[ps] = hap_cnt[1] + hap_cnt[2]
-    if ps_read_cnt:
-        most_reads_ps = sorted(ps_read_cnt.items(), key=lambda x: x[1], reverse=True)[0][0]
-    else:
+    requested_ps = selected_main_ps(main_ps_by_gene, gene_id, gene_name)
+    most_reads_ps, hap_count = choose_phase_set(phase_set_hap_count, requested_ps)
+    if most_reads_ps is None:
         return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, ".", 0, 0)
-    hap_count = phase_set_hap_count[most_reads_ps]
     h1_count, h2_count = hap_count[1], hap_count[2]
     if h1_count + h2_count < min_count:
         return (gene_name, gene_region["chr"], gene_region["start"], gene_region["end"], 1.0, most_reads_ps, 0, 0)
@@ -715,6 +760,7 @@ def calculate_ase_pvalue_filtering(bam_file, gene_id, gene_name, gene_region, mi
 
 
 def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, min_support, overdispersion,
+                      main_ps_by_gene=None,
                       ):
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
     with pysam.AlignmentFile(bam_file, "rb") as bam:
@@ -724,13 +770,19 @@ def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, 
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
-    gene_args = [(bam_file, gene_id, gene_names[gene_id], gene_regions[gene_id], min_support, overdispersion)
-                 for gene_id in gene_regions.keys() if gene_id in gene_assigned_reads]
+    gene_args = [
+        (bam_file, gene_id, gene_names[gene_id], gene_regions[gene_id], min_support, overdispersion)
+        for gene_id in gene_regions.keys()
+        if gene_id in gene_assigned_reads
+        and (main_ps_by_gene is None or selected_main_ps(main_ps_by_gene, gene_id, gene_names[gene_id]) is not None)
+    ]
     results = []
     with Manager() as manager:
         shared_assignments = manager.dict(gene_assigned_reads)
+        shared_main_ps = manager.dict(main_ps_by_gene or {})
         with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
-            futures = [executor.submit(calculate_ase_pvalue, *gene_data, shared_assignments) for gene_data in gene_args]
+            futures = [executor.submit(calculate_ase_pvalue, *gene_data, shared_assignments, shared_main_ps)
+                       for gene_data in gene_args]
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
     # apply Benjamini–Hochberg correction for all genes with at least min_support reads
@@ -757,7 +809,7 @@ def analyze_ase_genes(annotation_file, bam_file, out_file, threads, gene_types, 
 
 
 def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, out_file, threads, gene_types,
-                              min_support, overdispersion):
+                              min_support, overdispersion, main_ps_by_gene=None):
     rna_vcfs = load_longcallR_phased_vcf(vcf_file1)
     wg_vcfs = load_whole_genome_phased_vcf(vcf_file2)
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
@@ -768,16 +820,21 @@ def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, o
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
-    gene_args = [(bam_file, gene_id, gene_names[gene_id], gene_regions[gene_id], min_support, overdispersion)
-                 for gene_id in gene_regions.keys() if gene_id in gene_assigned_reads]
+    gene_args = [
+        (bam_file, gene_id, gene_names[gene_id], gene_regions[gene_id], min_support, overdispersion)
+        for gene_id in gene_regions.keys()
+        if gene_id in gene_assigned_reads
+        and (main_ps_by_gene is None or selected_main_ps(main_ps_by_gene, gene_id, gene_names[gene_id]) is not None)
+    ]
     results = []
     with Manager() as manager:
         shared_assignments = manager.dict(gene_assigned_reads)
         shared_rna_vcfs = manager.dict(rna_vcfs)
         shared_wg_vcfs = manager.dict(wg_vcfs)
+        shared_main_ps = manager.dict(main_ps_by_gene or {})
         with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
             futures = [executor.submit(calculate_ase_pvalue_pat_mat, *gene_data, shared_assignments, shared_rna_vcfs,
-                                       shared_wg_vcfs) for gene_data in gene_args]
+                                       shared_wg_vcfs, shared_main_ps) for gene_data in gene_args]
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
     # apply Benjamini–Hochberg correction
@@ -806,7 +863,7 @@ def analyze_ase_genes_pat_mat(annotation_file, bam_file, vcf_file1, vcf_file2, o
 
 
 def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_file3, out_file, threads, gene_types,
-                              min_support, overdispersion):
+                              min_support, overdispersion, main_ps_by_gene=None):
     rna_vcfs = load_longcallR_phased_vcf(vcf_file1, with_dp_af=True)
     dna_vcfs = load_dna_vcf(vcf_file3)
     gene_regions, gene_names, gene_strands, exon_regions, intron_regions = get_gene_regions(annotation_file, gene_types)
@@ -817,16 +874,21 @@ def analyze_ase_genes_with_filtering(annotation_file, bam_file, vcf_file1, vcf_f
     merged_genes_exons = merge_gene_exon_regions(exon_regions)
     read_assignment = assign_reads_to_gene_parallel(bam_file, merged_genes_exons, threads)
     gene_assigned_reads = transform_read_assignment(read_assignment)
-    gene_args = [(bam_file, gene_id, gene_names[gene_id], gene_regions[gene_id], min_support, overdispersion)
-                 for gene_id in gene_regions.keys() if gene_id in gene_assigned_reads]
+    gene_args = [
+        (bam_file, gene_id, gene_names[gene_id], gene_regions[gene_id], min_support, overdispersion)
+        for gene_id in gene_regions.keys()
+        if gene_id in gene_assigned_reads
+        and (main_ps_by_gene is None or selected_main_ps(main_ps_by_gene, gene_id, gene_names[gene_id]) is not None)
+    ]
     results = []
     with Manager() as manager:
         shared_assignments = manager.dict(gene_assigned_reads)
         shared_rna_vcfs = manager.dict(rna_vcfs)
         shared_dna_vcfs = manager.dict(dna_vcfs)
+        shared_main_ps = manager.dict(main_ps_by_gene or {})
         with concurrent.futures.ProcessPoolExecutor(max_workers=threads) as executor:
             futures = [executor.submit(calculate_ase_pvalue_filtering, *gene_data, shared_assignments, shared_rna_vcfs,
-                                       shared_dna_vcfs) for gene_data in gene_args]
+                                       shared_dna_vcfs, shared_main_ps) for gene_data in gene_args]
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
     # apply Benjamini–Hochberg correction for all genes with at least min_support reads
@@ -867,18 +929,23 @@ if __name__ == "__main__":
                              'Pass --gene_types with no values to include all gene types.', )
     parser.add_argument("-m", "--min_support", type=int, default=10,
                         help="Minimum support reads for counting event (default: 10)")
+    parser.add_argument("--main_ps", default=None,
+                        help="TSV of user-selected/main PS per gene. Recognized columns: Gene_id/Gene_name and Main_PS/PS")
 
     args = parser.parse_args()
 
     gene_types = set(args.gene_types)
     print(f"Gene types: {'all' if not gene_types else ', '.join(sorted(gene_types))}")
+    main_ps_by_gene = load_main_ps_table(args.main_ps) if args.main_ps else None
+    if main_ps_by_gene is not None:
+        print(f"Loaded main PS genes: {len(main_ps_by_gene)}")
 
     if args.vcf1 and args.vcf2:
         analyze_ase_genes_pat_mat(args.annotation, args.bam, args.vcf1, args.vcf2, args.output + ".patmat_ase.tsv",
-                                  args.threads, gene_types, args.min_support, args.overdispersion)
+                                  args.threads, gene_types, args.min_support, args.overdispersion, main_ps_by_gene)
     elif args.vcf1 and args.vcf3:
         analyze_ase_genes_with_filtering(args.annotation, args.bam, args.vcf1, args.vcf3, args.output + ".filter_ase.tsv",
-                                  args.threads, gene_types, args.min_support, args.overdispersion)
+                                  args.threads, gene_types, args.min_support, args.overdispersion, main_ps_by_gene)
     else:
         analyze_ase_genes(args.annotation, args.bam, args.output + ".ase.tsv", args.threads, gene_types,
-                          args.min_support, args.overdispersion)
+                          args.min_support, args.overdispersion, main_ps_by_gene)
