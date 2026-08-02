@@ -29,12 +29,13 @@ cargo build --release # The executable will be located at: target/release/longca
 
 # call SNPs and phasing
 longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-cdna       # Nanopore cDNA reads
-longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna       # Nanopore dRNA reads (no strand bias filtering)
+longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna       # Nanopore dRNA reads
 longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-isoseq    # PacBio iso-seq reads
-longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq    # PacBio mas-seq reads (no strand bias filtering)
+longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq    # PacBio mas-seq reads
 
-# Note: If read strandedness is uncertain, set --strand-bias false to avoid over-filtering.
-longcallR -b input.bam -f ref.fa -o output -t 8 -p <preset> --strand-bias false
+# Note: Strand bias filtering is disabled by default for all presets and should only be enabled for double-stranded data.
+# Enabling it for single-stranded data may cause many false negatives.
+longcallR -b input.bam -f ref.fa -o output -t 8 -p <preset> --strand-bias true
 
 # Allele-specific junction analysis
 longcallR asj -a annotation.gtf.gz -b phased.bam -f ref.fa -o output_prefix -t threads
