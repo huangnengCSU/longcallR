@@ -346,7 +346,7 @@ fn main() {
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
-            strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
+            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -406,7 +406,7 @@ fn main() {
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
-            strand_bias = Option::from(arg.strand_bias.unwrap_or(true));
+            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
