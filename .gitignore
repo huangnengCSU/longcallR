@@ -1,3 +1,7 @@
 /target
 /.idea
+/.claude
 /Cargo.lock
+/demo
+/tests
+/allele_specific
