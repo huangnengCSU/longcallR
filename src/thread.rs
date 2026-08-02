@@ -77,8 +77,12 @@ pub fn run(
         HashMap::new()
     };
 
-    let (use_strand_bias_for_dataset, strand_bias_source) = match use_strand_bias {
-        Some(value) => (value, "explicit --strand-bias setting".to_string()),
+    let (use_strand_bias_for_dataset, strand_bias_source, library_strand) = match use_strand_bias {
+        Some(value) => (
+            value,
+            "explicit --strand-bias setting".to_string(),
+            "not-detected",
+        ),
         None => {
             const MAX_STRAND_DETECTION_REGIONS: usize = 20;
             let region_count = isolated_regions.len();
@@ -127,6 +131,7 @@ pub fn run(
                     strandedness.as_str(),
                     informative_regions
                 ),
+                strandedness.short_name(),
             )
         }
     };
@@ -228,10 +233,12 @@ pub fn run(
             }
             if snpfrag.fragments.len() > 0 {
                 println!(
-                    "number of fragments: {:?} in {:?}, apply downsampling: {:?}", 
+                    "number of fragments: {:?} in {:?}, apply downsampling: {:?}, strand: {}",
                     snpfrag.fragments.len(),
-                    reg, 
-                    apply_downsampling);
+                    reg,
+                    apply_downsampling,
+                    library_strand
+                );
             }
             // snpfrag.clean_fragments();
 

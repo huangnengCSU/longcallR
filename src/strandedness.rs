@@ -22,6 +22,14 @@ impl ReadStrandedness {
             ReadStrandedness::Unknown => "unknown",
         }
     }
+
+    pub fn short_name(self) -> &'static str {
+        match self {
+            ReadStrandedness::SingleStrand => "single",
+            ReadStrandedness::DoubleStrand => "double",
+            ReadStrandedness::Unknown => "unknown",
+        }
+    }
 }
 
 /// Infer library strandedness from the forward/reverse read counts at covered
