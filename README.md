@@ -33,11 +33,6 @@ longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna       # Nanopore dRN
 longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-isoseq    # PacBio iso-seq reads
 longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq    # PacBio mas-seq reads
 
-# Note: By default, longcallR detects whether each region contains single- or double-stranded reads.
-# Strand bias filtering is enabled only for confidently double-stranded regions; ambiguous regions remain disabled.
-# Enabling it explicitly for single-stranded data may cause many false negatives.
-longcallR -b input.bam -f ref.fa -o output -t 8 -p <preset> --strand-bias true
-
 # Allele-specific junction analysis
 longcallR asj -a annotation.gtf.gz -b phased.bam -f ref.fa -o output_prefix -t threads
 
