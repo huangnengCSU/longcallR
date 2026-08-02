@@ -10,6 +10,7 @@ use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Aux, bam::For
 use rust_lapper::Interval;
 
 use crate::snpfrags::SNPFrag;
+use crate::strandedness::{infer_read_strandedness, ReadStrandedness};
 use crate::util::{load_reference, parse_fai, Profile, Region};
 use crate::vcf::get_genotype_quality_phase_from_vcf;
 use crate::Platform;
@@ -31,7 +32,7 @@ pub fn run(
     min_allele_freq: f32,
     min_qual: u32,
     min_allele_freq_include_intron: f32,
-    use_strand_bias: bool,
+    use_strand_bias: Option<bool>,
     min_depth: u32,
     max_depth: u32,
     downsample: bool,
@@ -107,6 +108,26 @@ pub fn run(
                 distance_to_read_end,
                 polya_tail_len,
             );
+            let (use_strand_bias_for_region, strand_bias_source) = match use_strand_bias {
+                Some(value) => (value, "explicit --strand-bias setting".to_string()),
+                None => {
+                    let strandedness = infer_read_strandedness(&profile);
+                    (
+                        matches!(strandedness, ReadStrandedness::DoubleStrand),
+                        format!("auto-detected {} reads", strandedness.as_str()),
+                    )
+                }
+            };
+            eprintln!(
+                "Strand bias filtering: {} in {} ({})",
+                if use_strand_bias_for_region {
+                    "enabled"
+                } else {
+                    "disabled"
+                },
+                reg.to_string(),
+                strand_bias_source
+            );
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.min_linkers = min_linkers;
@@ -136,7 +157,7 @@ pub fn run(
                     min_depth,
                     max_depth,
                     min_baseq,
-                    use_strand_bias,
+                    use_strand_bias_for_region,
                     dense_win_size,
                     min_dense_cnt,
                     low_allele_frac_cutoff,

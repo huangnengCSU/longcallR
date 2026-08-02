@@ -33,8 +33,9 @@ longcallR -b input.bam -f ref.fa -o output -t 8 -p ont-drna       # Nanopore dRN
 longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-isoseq    # PacBio iso-seq reads
 longcallR -b input.bam -f ref.fa -o output -t 8 -p hifi-masseq    # PacBio mas-seq reads
 
-# Note: Strand bias filtering is disabled by default for all presets and should only be enabled for double-stranded data.
-# Enabling it for single-stranded data may cause many false negatives.
+# Note: By default, longcallR detects whether each region contains single- or double-stranded reads.
+# Strand bias filtering is enabled only for confidently double-stranded regions; ambiguous regions remain disabled.
+# Enabling it explicitly for single-stranded data may cause many false negatives.
 longcallR -b input.bam -f ref.fa -o output -t 8 -p <preset> --strand-bias true
 
 # Allele-specific junction analysis
@@ -148,6 +149,13 @@ If you use LongcallR in your work or analysis, please cite the preprint:
 > Neng Huang, Heng Li, Human Pangenome Reference Consortium, SNP calling, haplotype phasing and allele-specific analysis with long RNA-seq reads. *nature methods*, 2026. [https://doi.org/10.1038/s41592-026-03045-6](https://doi.org/10.1038/s41592-026-03045-6)
 
 ## Update Log
+
+### Unreleased - 2026-08-02
+- Added automatic per-region detection of single- and double-stranded reads using forward and reverse coverage stored in the base-frequency matrix.
+- Classification requires at least 50 informative positions within a region, with a read coverage depth of at least 10 at each position.
+- Strand bias filtering is now enabled automatically only for confidently double-stranded regions. It remains disabled for single-stranded or ambiguous regions to reduce false negatives.
+- Explicit `--strand-bias true` or `--strand-bias false` settings override automatic detection.
+- The runtime log reports whether strand bias filtering is enabled or disabled for each region and whether the decision was automatic or explicitly configured.
 
 ### 2.0.1 - 2026-04-03
 - Improved robustness of `--direct-haplotag` mode: non-SNV records (indels, spanning deletions, symbolic alleles) in the input VCF are now filtered out before haplotagging to prevent mismatched interpretation at indel loci.

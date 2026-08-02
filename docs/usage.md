@@ -22,10 +22,10 @@ Available Presets
 
 | **Preset**     | **Description**                                               |
 |----------------|---------------------------------------------------------------|
-| `hifi-masseq`  | PacBio Mas-Seq data (strand bias filtering **disabled**)      |
-| `hifi-isoseq`  | PacBio Iso-Seq data (strand bias filtering **enabled**)       |
-| `ont-cdna`     | ONT cDNA data (strand bias filtering **enabled**)             |
-| `ont-drna`     | ONT direct RNA data (strand bias filtering **disabled**)      |
+| `hifi-masseq`  | PacBio Mas-Seq data (strand bias filtering auto-detected)      |
+| `hifi-isoseq`  | PacBio Iso-Seq data (strand bias filtering auto-detected)      |
+| `ont-cdna`     | ONT cDNA data (strand bias filtering auto-detected)            |
+| `ont-drna`     | ONT direct RNA data (strand bias filtering auto-detected)      |
 
 ## Advanced Usage
 To perform SNP calling and phasing in a **specific genomic region**, use the following command:
@@ -91,7 +91,7 @@ Full Arguments
 + --divergence: Max sequence divergence for valid reads [Default: 0.05]
 + --min-depth: Minimum depth for a candidate SNP [Default: 10]
 + --max-depth: Maximum depth for a candidate SNP [Default: 50000]
-+ --strand-bias: Whether to use strand bias to filter SNPs [Default: false] [possible values: true, false]
++ --strand-bias: Whether to use strand bias to filter SNPs [Default: auto-detect per region] [possible values: true, false]
 + --min-qual: Minimum QUAL for candidate SNPs [Default: 2]
 + --distance-to-read-end: Ignore bases within distance to read end [Default: 20]
 + --polya-tail-length: PolyA tail length threshold for filtering [Default: 5]
@@ -108,8 +108,6 @@ Full Arguments
 + --exon-only: When set, only call SNPs in exons
 + --no-bam-output: When set, do not output phased bam file
 + --get-blocks: When set, show all regions to be processed.
-
-
 
 
 

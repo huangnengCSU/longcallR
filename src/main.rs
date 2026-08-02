@@ -14,6 +14,7 @@ mod low_frac;
 mod phase;
 mod snp;
 mod snpfrags;
+mod strandedness;
 mod thread;
 mod util;
 mod vcf;
@@ -145,7 +146,7 @@ struct Args {
     #[arg(long)]
     max_depth: Option<u32>,
 
-    /// Whether to use strand bias to filter SNPs [Default: false]
+    /// Whether to use strand bias to filter SNPs [Default: auto-detect]
     #[arg(long)]
     strand_bias: Option<bool>,
 
@@ -346,7 +347,7 @@ fn main() {
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
-            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+            strand_bias = arg.strand_bias;
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -376,7 +377,7 @@ fn main() {
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(20));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
-            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+            strand_bias = arg.strand_bias;
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -406,7 +407,7 @@ fn main() {
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
-            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+            strand_bias = arg.strand_bias;
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -436,7 +437,7 @@ fn main() {
             distance_to_read_end = Option::from(arg.distance_to_read_end.unwrap_or(40));
             dense_win_size = Option::from(arg.dense_win_size.unwrap_or(100));
             min_dense_cnt = Option::from(arg.min_dense_cnt.unwrap_or(5));
-            strand_bias = Option::from(arg.strand_bias.unwrap_or(false));
+            strand_bias = arg.strand_bias;
 
             threads = Option::from(arg.threads.unwrap_or(1));
             max_enum_snps = Option::from(arg.max_enum_snps.unwrap_or(10));
@@ -534,7 +535,7 @@ fn main() {
         min_allele_freq.unwrap(),
         min_qual.unwrap(),
         min_allele_freq_include_intron.unwrap(),
-        strand_bias.unwrap(),
+        strand_bias,
         min_depth.unwrap(),
         max_depth.unwrap(),
         downsample,
