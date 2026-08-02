@@ -146,11 +146,8 @@ If you use LongcallR in your work or analysis, please cite the preprint:
 ## Update Log
 
 ### Unreleased - 2026-08-02
-- Added automatic per-region detection of single- and double-stranded reads using forward and reverse coverage stored in the base-frequency matrix.
-- Classification requires at least 50 informative positions within a region, with a read coverage depth of at least 10 at each position.
-- Strand bias filtering is now enabled automatically only for confidently double-stranded regions. It remains disabled for single-stranded or ambiguous regions to reduce false negatives.
-- Explicit `--strand-bias true` or `--strand-bias false` settings override automatic detection.
-- The runtime log reports whether strand bias filtering is enabled or disabled for each region and whether the decision was automatic or explicitly configured.
+- Added automatic library-level detection of single- and double-stranded reads by sampling up to 20 regions: each informative region requires at least 50 positions with depth ≥10 and is classified as `SingleStrand` when ≥80% of positions have a minor-strand fraction ≤0.05, as `DoubleStrand` when ≥80% have a minor-strand fraction ≥0.20, or as `Unknown` otherwise; the library classification requires ≥80% agreement among informative sampled regions.
+- Explicit `--strand-bias true` or `--strand-bias false` settings override and skip automatic detection, avoiding its additional runtime.
 
 ### 2.0.1 - 2026-04-03
 - Improved robustness of `--direct-haplotag` mode: non-SNV records (indels, spanning deletions, symbolic alleles) in the input VCF are now filtered out before haplotagging to prevent mismatched interpretation at indel loci.

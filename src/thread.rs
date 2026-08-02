@@ -10,7 +10,9 @@ use rust_htslib::{bam, bam::ext::BamRecordExtensions, bam::record::Aux, bam::For
 use rust_lapper::Interval;
 
 use crate::snpfrags::SNPFrag;
-use crate::strandedness::{infer_read_strandedness, ReadStrandedness};
+use crate::strandedness::{
+    infer_dataset_strandedness, infer_read_strandedness, ReadStrandedness,
+};
 use crate::util::{load_reference, parse_fai, Profile, Region};
 use crate::vcf::get_genotype_quality_phase_from_vcf;
 use crate::Platform;
@@ -75,6 +77,69 @@ pub fn run(
         HashMap::new()
     };
 
+    let (use_strand_bias_for_dataset, strand_bias_source) = match use_strand_bias {
+        Some(value) => (value, "explicit --strand-bias setting".to_string()),
+        None => {
+            const MAX_STRAND_DETECTION_REGIONS: usize = 20;
+            let region_count = isolated_regions.len();
+            let sample_count = region_count.min(MAX_STRAND_DETECTION_REGIONS);
+            let sampled_regions: Vec<&Region> = if sample_count == 0 {
+                Vec::new()
+            } else {
+                (0..sample_count)
+                    .map(|sample_index| {
+                        &isolated_regions[sample_index * region_count / sample_count]
+                    })
+                    .collect()
+            };
+            let region_results: Vec<ReadStrandedness> = pool.install(|| {
+                sampled_regions
+                    .par_iter()
+                    .map(|reg| {
+                        let mut profile = Profile::default();
+                        let ref_seq = ref_seqs.get(&reg.chr).unwrap_or_else(|| {
+                            panic!(
+                                "Chromosome '{}' from target region is missing in reference FASTA",
+                                reg.chr
+                            )
+                        });
+                        profile.fill_data_into_freq_vec(
+                            bam_file,
+                            reg,
+                            ref_seq,
+                            platform,
+                            min_mapq,
+                            min_read_length,
+                            divergence,
+                            distance_to_read_end,
+                            polya_tail_len,
+                        );
+                        infer_read_strandedness(&profile)
+                    })
+                    .collect()
+            });
+            let (strandedness, informative_regions) =
+                infer_dataset_strandedness(&region_results);
+            (
+                matches!(strandedness, ReadStrandedness::DoubleStrand),
+                format!(
+                    "auto-detected {} library from {} informative sampled regions",
+                    strandedness.as_str(),
+                    informative_regions
+                ),
+            )
+        }
+    };
+    eprintln!(
+        "Strand bias filtering: {} for all regions ({})",
+        if use_strand_bias_for_dataset {
+            "enabled"
+        } else {
+            "disabled"
+        },
+        strand_bias_source
+    );
+
     pool.install(|| {
         isolated_regions.par_iter().for_each(|reg| {
             let mut profile = Profile::default();
@@ -108,26 +173,6 @@ pub fn run(
                 distance_to_read_end,
                 polya_tail_len,
             );
-            let (use_strand_bias_for_region, strand_bias_source) = match use_strand_bias {
-                Some(value) => (value, "explicit --strand-bias setting".to_string()),
-                None => {
-                    let strandedness = infer_read_strandedness(&profile);
-                    (
-                        matches!(strandedness, ReadStrandedness::DoubleStrand),
-                        format!("auto-detected {} reads", strandedness.as_str()),
-                    )
-                }
-            };
-            eprintln!(
-                "Strand bias filtering: {} in {} ({})",
-                if use_strand_bias_for_region {
-                    "enabled"
-                } else {
-                    "disabled"
-                },
-                reg.to_string(),
-                strand_bias_source
-            );
             let mut snpfrag = SNPFrag::default();
             snpfrag.region = reg.clone();
             snpfrag.min_linkers = min_linkers;
@@ -157,7 +202,7 @@ pub fn run(
                     min_depth,
                     max_depth,
                     min_baseq,
-                    use_strand_bias_for_region,
+                    use_strand_bias_for_dataset,
                     dense_win_size,
                     min_dense_cnt,
                     low_allele_frac_cutoff,

@@ -5,6 +5,7 @@ const MIN_INFORMATIVE_POSITIONS: usize = 50;
 const SINGLE_STRAND_MINOR_FRACTION: f32 = 0.05;
 const DOUBLE_STRAND_MINOR_FRACTION: f32 = 0.20;
 const REQUIRED_POSITION_FRACTION: f32 = 0.80;
+const REQUIRED_REGION_FRACTION: f32 = 0.80;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadStrandedness {
@@ -63,6 +64,36 @@ pub fn infer_read_strandedness(profile: &Profile) -> ReadStrandedness {
     }
 }
 
+/// Combine local observations into one library-level classification. Local
+/// disagreements are treated as artifacts unless at least 80% of informative
+/// regions support the same result.
+pub fn infer_dataset_strandedness(
+    region_results: &[ReadStrandedness],
+) -> (ReadStrandedness, usize) {
+    let single_count = region_results
+        .iter()
+        .filter(|&&result| result == ReadStrandedness::SingleStrand)
+        .count();
+    let double_count = region_results
+        .iter()
+        .filter(|&&result| result == ReadStrandedness::DoubleStrand)
+        .count();
+    let informative_count = single_count + double_count;
+
+    if informative_count == 0 {
+        return (ReadStrandedness::Unknown, 0);
+    }
+
+    let result = if double_count as f32 / informative_count as f32 >= REQUIRED_REGION_FRACTION {
+        ReadStrandedness::DoubleStrand
+    } else if single_count as f32 / informative_count as f32 >= REQUIRED_REGION_FRACTION {
+        ReadStrandedness::SingleStrand
+    } else {
+        ReadStrandedness::Unknown
+    };
+    (result, informative_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +142,27 @@ mod tests {
         counts.extend(vec![(12, 8); 25]);
         let profile = profile_with_counts(&counts);
         assert_eq!(infer_read_strandedness(&profile), ReadStrandedness::Unknown);
+    }
+
+    #[test]
+    fn local_artifact_does_not_change_dataset_classification() {
+        let mut results = vec![ReadStrandedness::SingleStrand; 9];
+        results.push(ReadStrandedness::DoubleStrand);
+        assert_eq!(
+            infer_dataset_strandedness(&results),
+            (ReadStrandedness::SingleStrand, 10)
+        );
+    }
+
+    #[test]
+    fn conflicting_regions_make_dataset_unknown() {
+        let results = vec![
+            ReadStrandedness::SingleStrand,
+            ReadStrandedness::DoubleStrand,
+        ];
+        assert_eq!(
+            infer_dataset_strandedness(&results),
+            (ReadStrandedness::Unknown, 2)
+        );
     }
 }
